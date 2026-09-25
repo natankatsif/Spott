@@ -9,21 +9,13 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any
-
+from common.text import check_contacts, format_table_markdown, has_contacts
 from parsing.normalize import normalize_lang
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
 
 MAX_MERGE_CHARS = 1500
 MAX_BLOCK_CHARS = 2500
 OVERLAP_CHARS = 200
-
-PHONE_RE = re.compile(r"(?:(?:\+373|0)\s*\(?\d{2,3}\)?[\s.-]*\d{2,3}[\s.-]*\d{2,4})")
-EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-
-
-def check_contacts(text: str) -> bool:
-    return bool(PHONE_RE.search(text) or EMAIL_RE.search(text))
 
 
 def split_long_text(text: str, target_size: int = 1500, max_size: int = 2500, overlap: int = 200) -> list[str]:
@@ -84,21 +76,6 @@ def split_long_text(text: str, target_size: int = 1500, max_size: int = 2500, ov
             chunks.append(c_str)
 
     return chunks or [text]
-
-
-def format_table_markdown(header: list[str], rows: list[list[str]]) -> str:
-    cols = max(len(header), max((len(r) for r in rows), default=0))
-    if cols == 0:
-        return ""
-    h = header + [""] * (cols - len(header))
-    lines = [
-        "| " + " | ".join(h) + " |",
-        "| " + " | ".join(["---"] * cols) + " |",
-    ]
-    for r in rows:
-        padded = r + [""] * (cols - len(r))
-        lines.append("| " + " | ".join(padded) + " |")
-    return "\n".join(lines)
 
 
 def chunk_table_block(table_block: dict, target_size: int = 1500) -> list[str]:

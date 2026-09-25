@@ -11,10 +11,9 @@ import re
 import sys
 import numpy as np
 import psycopg
-import torch
-from sentence_transformers import SentenceTransformer
 
 from .db import get_connection
+from .embeddings import get_device, get_embedding_model
 
 MODEL_NAME = "BAAI/bge-m3"
 RRF_K = 60
@@ -118,18 +117,13 @@ def deduplicate_results(results: list[dict], k: int | None = None) -> list[dict]
 class HybridSearcher:
     def __init__(self, conn: psycopg.Connection | None = None):
         self.conn = conn or get_connection(autocommit=True)
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
-        self._model: SentenceTransformer | None = None
+        self.device = get_device()
+        self._model = None
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self):
         if self._model is None:
-            self._model = SentenceTransformer(MODEL_NAME, device=self.device)
+            self._model = get_embedding_model(self.device)
         return self._model
 
     def search(self, query: str, k: int = 5, lang: str | None = None) -> list[dict]:

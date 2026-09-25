@@ -34,44 +34,69 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def run_pages_parsing(
+    registry: Registry,
+    data_dir: Path,
+    config_path: Path,
+    sites: list[str] | None = None,
+    limit: int | None = None,
+    reparse: bool = False,
+) -> dict:
+    pages = registry.pages_to_parse(sites, limit, reparse)
+    if not pages:
+        print("No pages to parse.")
+        return {}
+
+    categories = {s.id: s.category for s in load_sites(config_path)} if config_path.exists() else {}
+    out_dir = data_dir / "parsed" / "pages"
+
+    # Group by site for site-wide boilerplate filtering
+    by_site: dict[str, list] = defaultdict(list)
+    for row in pages:
+        by_site[row["site"]].append(row)
+
+    started = time.monotonic()
+    total_stats = {"parsed": 0, "empty": 0, "failed": 0, "boilerplate_dropped": 0}
+
+    for site_id, site_rows in by_site.items():
+        t = time.monotonic()
+        stats = parse_site_pages(site_rows, data_dir, categories, registry, out_dir)
+        for k in total_stats:
+            total_stats[k] += stats.get(k, 0)
+        log.info(
+            "site %s: %d pages parsed, %d empty, %d dropped boilerplate (%.1fs)",
+            site_id,
+            stats["parsed"],
+            stats["empty"],
+            stats["boilerplate_dropped"],
+            time.monotonic() - t,
+        )
+
+    print(f"\nPages parsing run ({time.monotonic() - started:.1f}s):")
+    print(f"  parsed:              {total_stats['parsed']}")
+    print(f"  empty (<200 chars):  {total_stats['empty']}")
+    print(f"  failed:              {total_stats['failed']}")
+    print(f"  boilerplate dropped: {total_stats['boilerplate_dropped']}")
+
+    counts = registry.status_counts()["pages"]
+    print("\nRegistry pages:", ", ".join(f"{k}={v}" for k, v in counts.items()))
+    return total_stats
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
     registry = Registry(args.db)
     try:
-        pages = registry.pages_to_parse(args.sites, args.limit, args.reparse)
-        if not pages:
-            print("No pages to parse.")
-            return
-
-        categories = {s.id: s.category for s in load_sites(args.config)} if args.config.exists() else {}
-        out_dir = args.data / "parsed" / "pages"
-
-        # Group by site for site-wide boilerplate filtering
-        by_site: dict[str, list] = defaultdict(list)
-        for row in pages:
-            by_site[row["site"]].append(row)
-
-        started = time.monotonic()
-        total_stats = {"parsed": 0, "empty": 0, "failed": 0, "boilerplate_dropped": 0}
-
-        for site_id, site_rows in by_site.items():
-            t = time.monotonic()
-            stats = parse_site_pages(site_rows, args.data, categories, registry, out_dir)
-            for k in total_stats:
-                total_stats[k] += stats.get(k, 0)
-            log.info("site %s: %d pages parsed, %d empty, %d dropped boilerplate (%.1fs)",
-                     site_id, stats["parsed"], stats["empty"], stats["boilerplate_dropped"], time.monotonic() - t)
-
-        print(f"\nPages parsing run ({time.monotonic() - started:.1f}s):")
-        print(f"  parsed:              {total_stats['parsed']}")
-        print(f"  empty (<200 chars):  {total_stats['empty']}")
-        print(f"  failed:              {total_stats['failed']}")
-        print(f"  boilerplate dropped: {total_stats['boilerplate_dropped']}")
-
-        counts = registry.status_counts()["pages"]
-        print("\nRegistry pages:", ", ".join(f"{k}={v}" for k, v in counts.items()))
+        run_pages_parsing(
+            registry=registry,
+            data_dir=args.data,
+            config_path=args.config,
+            sites=args.sites,
+            limit=args.limit,
+            reparse=args.reparse,
+        )
     finally:
         registry.close()
 

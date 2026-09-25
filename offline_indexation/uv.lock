@@ -1206,11 +1206,15 @@ dependencies = [
     { name = "ocrmac", marker = "sys_platform == 'darwin'" },
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
-    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "selectolax" },
     { name = "sentence-transformers" },
     { name = "trafilatura" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -1220,12 +1224,14 @@ requires-dist = [
     { name = "ocrmac", marker = "sys_platform == 'darwin'", specifier = ">=1.0.1" },
     { name = "pgvector", specifier = ">=0.5.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
-    { name = "pytest", specifier = ">=9.1.1" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "selectolax", specifier = ">=0.4.12" },
     { name = "sentence-transformers", specifier = ">=6.1.0" },
     { name = "trafilatura", specifier = ">=2.2.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "olefile"

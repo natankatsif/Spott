@@ -7,10 +7,8 @@ from typing import Any
 
 import numpy as np
 import psycopg
-import torch
-from sentence_transformers import SentenceTransformer
-
 from .db import get_connection, init_db
+from .embeddings import get_device, get_embedding_model
 
 log = logging.getLogger("indexing.indexer")
 
@@ -21,23 +19,13 @@ class Indexer:
     def __init__(self, conn: psycopg.Connection | None = None, batch_size: int = 32):
         self.conn = conn or get_connection(autocommit=True)
         self.batch_size = batch_size
-        self._model: SentenceTransformer | None = None
-
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
-        log.info("Using device %s for embedding model %s", self.device, MODEL_NAME)
+        self._model = None
+        self.device = get_device()
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self):
         if self._model is None:
-            t = time.monotonic()
-            log.info("Loading %s on %s...", MODEL_NAME, self.device)
-            self._model = SentenceTransformer(MODEL_NAME, device=self.device)
-            log.info("Model loaded in %.1fs", time.monotonic() - t)
+            self._model = get_embedding_model(self.device)
         return self._model
 
     def find_cached_embeddings(self, content_hashes: list[str]) -> dict[str, list[float]]:
