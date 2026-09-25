@@ -13,10 +13,11 @@ import logging
 import sys
 from pathlib import Path
 
-import httpx
+from common.http import make_clients
+from common.registry import Registry
 
 from .config import Site, load_sites
-from .site import USER_AGENT, SiteCrawler
+from .site import SiteCrawler
 
 log = logging.getLogger("crawler")
 
@@ -25,7 +26,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m crawler", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", type=Path, default=Path("data/sources/sites.toml"))
-    p.add_argument("--out", type=Path, default=Path("data/crawl"))
+    p.add_argument("--out", type=Path, default=Path("data/crawl"), help="raw HTML and crawl state")
+    p.add_argument("--db", type=Path, default=Path("data/registry.sqlite"))
     p.add_argument("--sites", nargs="+", metavar="ID", help="site ids from the config (default: all)")
     p.add_argument("--max-depth", type=int, help="override max_depth for every site")
     p.add_argument("--max-pages", type=int, help="override max_pages for every site")
@@ -55,20 +57,15 @@ def select_sites(args: argparse.Namespace) -> list[Site]:
 
 
 async def crawl_all(sites: list[Site], args: argparse.Namespace) -> dict[str, dict]:
-    client_opts = {
-        "headers": {"User-Agent": USER_AGENT, "Accept-Language": "ro,ru;q=0.9,en;q=0.5"},
-        "follow_redirects": True,
-        "timeout": httpx.Timeout(20.0, connect=10.0),
-    }
     semaphore = asyncio.Semaphore(args.concurrency)
+    registry = Registry(args.db)
 
-    async with httpx.AsyncClient(**client_opts) as client, \
-               httpx.AsyncClient(verify=False, **client_opts) as insecure_client:
+    async with make_clients() as (client, insecure_client):
 
         async def crawl_one(site: Site) -> tuple[str, dict]:
             async with semaphore:
                 log.info("start %s", site.id)
-                crawler = SiteCrawler(site, client, insecure_client, args.out,
+                crawler = SiteCrawler(site, client, insecure_client, registry, args.out,
                                       respect_robots=not args.ignore_robots)
                 try:
                     stats = await crawler.run(resume=args.resume)
@@ -78,7 +75,10 @@ async def crawl_all(sites: list[Site], args: argparse.Namespace) -> dict[str, di
                 log.info("done %s %s", site.id, stats)
                 return site.id, stats
 
-        return dict(await asyncio.gather(*(crawl_one(s) for s in sites)))
+        try:
+            return dict(await asyncio.gather(*(crawl_one(s) for s in sites)))
+        finally:
+            registry.close()
 
 
 def write_summary(out: Path, results: dict[str, dict]) -> None:
@@ -87,12 +87,12 @@ def write_summary(out: Path, results: dict[str, dict]) -> None:
     summary |= results
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"\n{'site':28} {'pages':>6} {'docs':>6} {'wp':>5} {'errors':>6} {'robots':>6} {'queue':>6}")
+    print(f"\n{'site':28} {'pages':>6} {'docs':>6} {'new':>5} {'wp':>5} {'errors':>6} {'robots':>6} {'queue':>6}")
     for site_id, s in results.items():
         if "failed" in s:
             print(f"{site_id:28} FAILED: {s['failed']}")
             continue
-        print(f"{site_id:28} {s['pages']:>6} {s['documents']:>6} {s['wp_media']:>5} "
+        print(f"{site_id:28} {s['pages']:>6} {s['documents']:>6} {s['new_documents']:>5} {s['wp_media']:>5} "
               f"{s['errors']:>6} {s['robots_blocked']:>6} {s['queue_left']:>6}")
     print(f"\nSummary: {path}")
 

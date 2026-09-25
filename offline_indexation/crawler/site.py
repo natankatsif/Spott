@@ -1,10 +1,9 @@
 """Breadth-first crawler for a single site.
 
-Output (data/crawl/<site id>/):
-    pages.jsonl      one record per fetched HTML page (title, lang, hreflang pairs, parent, depth)
-    documents.jsonl  one record per discovered document link (pdf/doc/xls/..., with provenance)
-    html/            raw HTML of every page, named by hash of the URL
-    state.json       queue + seen sets, for --resume
+Pages and discovered document links go to the registry (tables pages, documents, document_sources).
+Files on disk (data/crawl/<site id>/):
+    html/        raw HTML of every page, named by hash of the URL
+    state.json   queue + seen sets, for --resume
 """
 
 import asyncio
@@ -14,7 +13,6 @@ import json
 import logging
 import time
 from collections import deque
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
@@ -22,8 +20,9 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from selectolax.parser import HTMLParser
 
-from .config import Site
-from .urls import (
+from common.http import HTML_TYPES, RETRY_STATUSES, USER_AGENT, content_type, tls_failed
+from common.registry import Registry, now
+from common.urls import (
     bare_host,
     extension,
     is_document_type,
@@ -36,24 +35,15 @@ from .urls import (
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
-HTML_TYPES = ("text/html", "application/xhtml+xml")
+from .config import Site
+
 MAX_BODY_BYTES = 15 * 1024 * 1024
 RETRIES = 2
-RETRY_STATUSES = {429, 500, 502, 503, 504}
 STATE_EVERY = 25
 WP_MEDIA_MAX_PAGES = 100
 
 # Elements whose attribute can point at a page or a document.
 LINK_SELECTORS = (("a[href]", "href"), ("iframe[src]", "src"), ("embed[src]", "src"), ("object[data]", "data"))
-
-
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def tls_failed(error: httpx.TransportError) -> bool:
-    return isinstance(error, httpx.ConnectError) and "CERTIFICATE_VERIFY_FAILED" in str(error)
 
 
 class SiteCrawler:
@@ -62,6 +52,7 @@ class SiteCrawler:
         site: Site,
         client: httpx.AsyncClient,
         insecure_client: httpx.AsyncClient,
+        registry: Registry,
         out_dir: Path,
         *,
         respect_robots: bool = True,
@@ -69,6 +60,7 @@ class SiteCrawler:
         self.site = site
         self.client = client
         self.insecure_client = insecure_client
+        self.registry = registry
         self.out = out_dir / site.id
         self.respect_robots = respect_robots and not site.ignore_robots
         self.delay = site.delay
@@ -79,34 +71,30 @@ class SiteCrawler:
         self.seen: set[str] = set()
         self.docs_seen: set[str] = set()
         self.titles: dict[str, str] = {}
-        self.stats = {"pages": 0, "errors": 0, "documents": 0, "wp_media": 0, "robots_blocked": 0}
+        self.stats = {"pages": 0, "errors": 0, "documents": 0, "new_documents": 0, "wp_media": 0,
+                      "robots_blocked": 0}
 
     async def run(self, resume: bool = False) -> dict:
         started = time.monotonic()
         (self.out / "html").mkdir(parents=True, exist_ok=True)
         resumed = resume and self._load_state()
-        mode = "a" if resumed else "w"
-        with (
-            open(self.out / "pages.jsonl", mode, encoding="utf-8") as self.pages_f,
-            open(self.out / "documents.jsonl", mode, encoding="utf-8") as self.docs_f,
-        ):
-            await self._load_robots()
-            if not resumed:
-                for url in self.site.start_urls:
-                    self._enqueue(url, 0, None, "")
-                await self._discover_wp_media()
+        await self._load_robots()
+        if not resumed:
+            for url in self.site.start_urls:
+                self._enqueue(url, 0, None, "")
+            await self._discover_wp_media()
 
-            steps = 0
-            try:
-                while self.queue and self.stats["pages"] < self.site.max_pages:
-                    await self._visit(*self.queue.popleft())
-                    steps += 1
-                    if steps % STATE_EVERY == 0:
-                        self._save_state()
-                        log.info("%s: pages=%d docs=%d queue=%d", self.site.id,
-                                 self.stats["pages"], self.stats["documents"], len(self.queue))
-            finally:
-                self._save_state()
+        steps = 0
+        try:
+            while self.queue and self.stats["pages"] < self.site.max_pages:
+                await self._visit(*self.queue.popleft())
+                steps += 1
+                if steps % STATE_EVERY == 0:
+                    self._save_state()
+                    log.info("%s: pages=%d docs=%d queue=%d", self.site.id,
+                             self.stats["pages"], self.stats["documents"], len(self.queue))
+        finally:
+            self._save_state()
 
         return self.stats | {"queue_left": len(self.queue), "seconds": round(time.monotonic() - started)}
 
@@ -127,13 +115,14 @@ class SiteCrawler:
             self.stats["robots_blocked"] += 1
             return
 
-        page = {"url": url, "depth": depth, "parent": parent, "anchor_text": anchor, "fetched_at": now()}
+        page = {"url": url, "site": self.site.id, "depth": depth, "parent": parent, "anchor_text": anchor,
+                "fetched_at": now()}
         try:
             status, final_url, ctype, body = await self._fetch(url, HTML_TYPES)
         except httpx.HTTPError as e:
             self.stats["pages"] += 1
             self.stats["errors"] += 1
-            self._write(self.pages_f, page | {"error": f"{type(e).__name__}: {e}"})
+            self.registry.upsert_page(page | {"error": f"{type(e).__name__}: {e}"})
             return
 
         final = normalize(final_url) or url
@@ -152,13 +141,13 @@ class SiteCrawler:
             return  # some other non-HTML resource
 
         self.stats["pages"] += 1
-        page |= {"final_url": final, "status": status, "content_type": ctype}
+        page |= {"url": final, "status": status, "content_type": ctype}
         if status >= 400:
             self.stats["errors"] += 1
-            self._write(self.pages_f, page)
+            self.registry.upsert_page(page)
             return
 
-        self._write(self.pages_f, page | self._process_html(final, depth, body))
+        self.registry.upsert_page(page | self._process_html(final, depth, body))
 
     def _process_html(self, url: str, depth: int, body: bytes) -> dict:
         tree = HTMLParser(body)
@@ -200,14 +189,8 @@ class SiteCrawler:
                     self._enqueue(target, depth + 1, url, anchor)
                     links_enqueued += len(self.queue) - before
 
-        return {
-            "title": title,
-            "lang": lang,
-            "alternates": alternates,
-            "html_file": html_file,
-            "links_enqueued": links_enqueued,
-            "documents_found": docs_found,
-        }
+        log.debug("%s: %s → %d links, %d documents", self.site.id, url, links_enqueued, docs_found)
+        return {"title": title, "lang": lang, "alternates": alternates, "html_file": html_file}
 
     def _add_document(
         self,
@@ -221,23 +204,25 @@ class SiteCrawler:
         **extra,
     ) -> None:
         key = url_key(url)
-        if key in self.docs_seen:
-            return
-        self.docs_seen.add(key)
-        self.stats["documents"] += 1
-        self._write(self.docs_f, {
-            "url": url,
-            "site": self.site.id,
-            "category": self.site.category,
-            "extension": extension(url),
-            "found_on": found_on,
-            "found_on_title": self.titles.get(found_on or "", ""),
-            "anchor_text": anchor,
-            "depth": depth,
-            "via": via,
-            "external": external,
-            "discovered_at": now(),
-        } | extra)
+        is_new = self.registry.add_document(
+            key=key,
+            url=url,
+            site=self.site.id,
+            category=self.site.category,
+            extension=extension(url),
+            external=external,
+            source={
+                "found_on": found_on,
+                "found_on_title": self.titles.get(found_on or ""),
+                "anchor_text": anchor,
+                "depth": depth,
+                "via": via,
+            } | extra,
+        )
+        self.stats["new_documents"] += is_new
+        if key not in self.docs_seen:
+            self.docs_seen.add(key)
+            self.stats["documents"] += 1
 
     async def _discover_wp_media(self) -> None:
         """WordPress exposes its whole media library over REST — finds files no page links to."""
@@ -259,7 +244,7 @@ class SiteCrawler:
                 src = normalize(item.get("source_url") or "")
                 if not src or not (is_document_type(item.get("mime_type") or "") or is_document_url(src)):
                     continue
-                before = self.stats["documents"]
+                self.stats["wp_media"] += 1
                 self._add_document(
                     src,
                     item.get("link"),
@@ -269,7 +254,6 @@ class SiteCrawler:
                     external=bare_host(urlsplit(src).hostname or "") not in self.allowed_hosts,
                     published=item.get("date"),
                 )
-                self.stats["wp_media"] += self.stats["documents"] - before
 
     # --- HTTP -----------------------------------------------------------------
 
@@ -295,7 +279,7 @@ class SiteCrawler:
     async def _request(self, url: str, read_types: tuple[str, ...]) -> tuple[int, str, str, bytes | None]:
         try:
             async with self.client.stream("GET", url) as resp:
-                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                ctype = content_type(resp)
                 body = None
                 if resp.status_code < 400 and ctype in read_types:
                     chunks, size = [], 0
@@ -328,11 +312,6 @@ class SiteCrawler:
         return self.robots is None or self.robots.can_fetch(USER_AGENT, url)
 
     # --- persistence ----------------------------------------------------------
-
-    @staticmethod
-    def _write(f, record: dict) -> None:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        f.flush()
 
     def _save_state(self) -> None:
         state = {

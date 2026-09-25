@@ -14,13 +14,19 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 
 ## Запуск
 
-**Краулер** (результат в `offline_indexation/data/crawl/`):
+**Offline indexation** — этапы пишут в общий реестр `offline_indexation/data/registry.sqlite`:
 ```bash
 cd offline_indexation
 uv run python -m crawler --list                          # сайты из Annex 1
-uv run python -m crawler --max-depth 2 --max-pages 200   # быстрая разведка
-uv run python -m crawler --resume                        # продолжить прерванный обход
+uv run python -m crawler --max-depth 2 --max-pages 200   # 1. обход сайтов → страницы и ссылки на документы
+uv run python -m crawler --resume                        #    продолжить прерванный обход
+uv run python -m downloader                              # 2. скачать новые документы → data/raw/<sha>.<ext>
+uv run python -m downloader --refresh                    #    проверить скачанные на обновления (304 = не изменился)
+uv run python -m parsing                                 # 3. разобрать файлы (Docling + OCR) → data/parsed/<sha>.json и .md
+uv run python -m parsing --rebuild                       #    пересобрать JSON/MD из кэша Docling, без повторного OCR
 ```
+
+`data/parsed/<sha>.json` — текстовое представление документа: метаданные (тип акта, номер, дата, язык), источники (URL и страница сайта, где найден), страницы (текстовый слой или OCR) и блоки (`heading` / `paragraph` / `list_item` / `table`) с номером страницы и путём разделов — из них дальше режутся фрагменты для поиска и цитирования.
 Список сайтов и их настройки — [`offline_indexation/data/sources/sites.toml`](offline_indexation/data/sources/sites.toml).
 
 **Backend** (http://localhost:8000, документация API — `/docs`):
