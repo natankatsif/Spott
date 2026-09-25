@@ -85,8 +85,8 @@ def test_no_merge_across_languages():
         "sha256": "lang123",
         "metadata": {"title": "Bilingual Doc"},
         "blocks": [
-            {"id": 0, "type": "paragraph", "text": "Text în limba română.", "section": ["A"], "lang": "ro"},
-            {"id": 1, "type": "paragraph", "text": "Текст на русском языке.", "section": ["A"], "lang": "ru"},
+            {"id": 0, "type": "paragraph", "text": "Acesta este un text complet în limba română pentru document.", "section": ["A"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "Это подробный текст на русском языке для проверки документа.", "section": ["A"], "lang": "ru"},
         ],
     }
     chunks = chunk_document(doc)
@@ -101,7 +101,7 @@ def test_stable_chunk_id():
         "sha256": "fixedsha",
         "metadata": {"title": "Doc"},
         "blocks": [
-            {"id": 0, "type": "paragraph", "text": "Continut neschimbat.", "section": [], "lang": "ro"},
+            {"id": 0, "type": "paragraph", "text": "Continut neschimbat si stabil pentru testarea identificatorului.", "section": [], "lang": "ro"},
         ],
     }
     chunks1 = chunk_document(doc)
@@ -118,7 +118,7 @@ def test_bboxes_and_pages_preserved():
             {
                 "id": 0,
                 "type": "paragraph",
-                "text": "Text cu coordonate.",
+                "text": "Text cu coordonate pentru verificare bboxes in cadrul chunking.",
                 "page": 2,
                 "bboxes": [{"page": 2, "l": 10.0, "t": 20.0, "r": 100.0, "b": 150.0, "origin": "BOTTOMLEFT"}],
                 "section": [],
@@ -132,6 +132,88 @@ def test_bboxes_and_pages_preserved():
     assert len(chunks[0]["bboxes"]) == 1
     assert chunks[0]["bboxes"][0]["page"] == 2
     assert chunks[0]["bboxes"][0]["l"] == 10.0
+
+
+def test_heading_sticks_to_next_content():
+    """Headings must not form isolated chunks; they attach to the following content."""
+    doc = {
+        "sha256": "heading_doc",
+        "metadata": {"title": "Pagina de servicii"},
+        "blocks": [
+            {"id": 0, "type": "heading", "text": "Servicii publice", "section": [], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "Primăria oferă servicii de eliberare a actelor pentru toți cetățenii municipiului Chișinău.", "section": ["Servicii publice"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    assert "Servicii publice" in chunks[0]["text"]
+    assert "Primăria oferă servicii" in chunks[0]["text"]
+    assert chunks[0]["section"] == ["Servicii publice"]
+    assert "Servicii publice" in chunks[0]["citation_label"]
+
+
+def test_nested_headings_stick_to_content():
+    """Multiple nested headings attach to the content under them."""
+    doc = {
+        "sha256": "nested_doc",
+        "metadata": {"title": "Ghid"},
+        "blocks": [
+            {"id": 0, "type": "heading", "text": "Urbanism", "section": [], "lang": "ro"},
+            {"id": 1, "type": "heading", "text": "Autorizații", "section": ["Urbanism"], "lang": "ro"},
+            {"id": 2, "type": "paragraph", "text": "Pentru construirea unei clădiri este necesară obținerea autorizației de construire.", "section": ["Urbanism", "Autorizații"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    assert "Urbanism" in chunks[0]["text"]
+    assert "Autorizații" in chunks[0]["text"]
+    assert chunks[0]["section"] == ["Urbanism", "Autorizații"]
+
+
+def test_short_chunk_merged_with_neighbor():
+    """Chunks < 150 chars are merged with neighbors in the same section."""
+    doc = {
+        "sha256": "short_merge_doc",
+        "metadata": {"title": "Doc"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Aceasta este o secțiune principală care conține informații destul de lungi despre regulament.", "section": ["S1"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "Notă scurtă adițională de text.", "section": ["S1"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    assert "Notă scurtă adițională" in chunks[0]["text"]
+
+
+def test_short_chunk_not_merged_across_sections():
+    """Chunks < 150 chars do not merge across different sections, but are kept if >= 30 chars."""
+    doc = {
+        "sha256": "cross_sec_doc",
+        "metadata": {"title": "Doc"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Acesta este un paragraf lung în prima secțiune a documentului oficial al primăriei.", "section": ["S1"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "Paragraf scurt dar valid de peste 30 de caractere.", "section": ["S2"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 2
+    assert chunks[0]["section"] == ["S1"]
+    assert chunks[1]["section"] == ["S2"]
+
+
+def test_isolated_tail_discarded():
+    """Isolated tail < 30 chars without eligible neighbors is discarded."""
+    doc = {
+        "sha256": "tail_doc",
+        "metadata": {"title": "Doc"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Acesta este un paragraf complet și substanțial pentru secțiunea principală a documentului.", "section": ["S1"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "Pag. 15", "section": ["S2"], "lang": "ro"},  # < 30 chars, different section
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    assert "Pag. 15" not in chunks[0]["text"]
 
 
 def test_split_long_text_no_newlines_and_giant_word():

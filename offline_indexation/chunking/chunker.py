@@ -177,8 +177,29 @@ def build_chunk(
     chunk_id_raw = f"{doc_id}:{first_block_id}:{last_block_id}:{part_idx}:{parser_version}"
     chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
 
-    section = override_section if override_section is not None else (blocks[0].get("section", []) if blocks else [])
-    legal_path = override_legal_path if override_legal_path is not None else (blocks[0].get("legal_path", []) if blocks else [])
+    if override_section is not None:
+        section = override_section
+    else:
+        content_blocks = [b for b in blocks if b.get("type") not in ("heading", "title", "section_header")]
+        if content_blocks:
+            section = content_blocks[0].get("section", [])
+        elif blocks:
+            last_h = blocks[-1]
+            last_text = last_h.get("text", "").strip()
+            section = list(last_h.get("section", [])) + ([last_text] if last_text else [])
+        else:
+            section = []
+
+    if override_legal_path is not None:
+        legal_path = override_legal_path
+    else:
+        content_blocks = [b for b in blocks if b.get("type") not in ("heading", "title", "section_header") and b.get("legal_path")]
+        if content_blocks:
+            legal_path = content_blocks[0].get("legal_path", [])
+        elif blocks:
+            legal_path = blocks[0].get("legal_path", [])
+        else:
+            legal_path = []
 
     citation_label = make_citation_label(meta, kind, legal_path, section)
     title = meta.get("title") or ""
@@ -187,7 +208,12 @@ def build_chunk(
     block_ids = [b["id"] for b in blocks if "id" in b]
     pages = sorted({b["page"] for b in blocks if b.get("page") is not None})
     bboxes = [bbox for b in blocks for bbox in b.get("bboxes", [])]
-    lang = blocks[0].get("lang") or meta.get("lang") or "ro"
+
+    content_blocks_with_lang = [b for b in blocks if b.get("type") not in ("heading", "title", "section_header") and b.get("lang")]
+    if content_blocks_with_lang:
+        lang = content_blocks_with_lang[0].get("lang")
+    else:
+        lang = blocks[0].get("lang") if blocks else meta.get("lang") or "ro"
 
     has_contacts = any(b.get("has_contacts", False) for b in blocks) or check_contacts(text)
 
@@ -217,6 +243,101 @@ def build_chunk(
         "url": meta.get("url"),
         "found_on": meta.get("found_on"),
     }
+
+
+def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
+    """Merges two adjacent chunks from the same document and section."""
+    merged_text = (a["text"] + "\n\n" + b["text"]).strip()
+    block_ids = list(dict.fromkeys(a.get("block_ids", []) + b.get("block_ids", [])))
+    pages = sorted(set(a.get("pages", []) + b.get("pages", [])))
+    bboxes = a.get("bboxes", []) + b.get("bboxes", [])
+    has_contacts = a.get("has_contacts", False) or b.get("has_contacts", False)
+
+    first_block_id = block_ids[0] if block_ids else 0
+    last_block_id = block_ids[-1] if block_ids else 0
+    doc_id = a["doc_id"]
+    part_idx = 0
+    chunk_id_raw = f"{doc_id}:{first_block_id}:{last_block_id}:{part_idx}:{parser_version}"
+    chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
+
+    citation_label = a.get("citation_label") or b.get("citation_label") or ""
+    title = a.get("title") or b.get("title") or ""
+    embed_text = f"{title}\n{citation_label}\n{merged_text}"
+
+    merged = dict(a)
+    merged.update({
+        "chunk_id": chunk_id,
+        "text": merged_text,
+        "embed_text": embed_text,
+        "citation_label": citation_label,
+        "block_ids": block_ids,
+        "pages": pages,
+        "bboxes": bboxes,
+        "char_count": len(merged_text),
+        "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
+        "has_contacts": has_contacts,
+    })
+    return merged
+
+
+def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[dict]:
+    """Merges chunks < 150 chars with neighbors in same section/article, and drops isolated tails < 30 chars."""
+    if not chunks:
+        return []
+
+    # 1. Merge chunks < 150 chars with neighbor in same section / legal_path / lang
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        while i < len(chunks):
+            c = chunks[i]
+            if not c.get("is_table") and len(c.get("text", "")) < 150:
+                merged = False
+                # Try previous neighbor first
+                if i > 0:
+                    prev = chunks[i - 1]
+                    if (
+                        not prev.get("is_table")
+                        and prev.get("doc_id") == c.get("doc_id")
+                        and prev.get("section") == c.get("section")
+                        and prev.get("legal_path") == c.get("legal_path")
+                        and prev.get("lang") == c.get("lang")
+                        and len(prev.get("text", "")) + len(c.get("text", "")) + 2 <= MAX_MERGE_CHARS
+                    ):
+                        chunks[i - 1] = merge_two_chunks(prev, c, parser_version)
+                        chunks.pop(i)
+                        changed = True
+                        merged = True
+                # If not merged with previous, try next neighbor
+                if not merged and i + 1 < len(chunks):
+                    nxt = chunks[i + 1]
+                    if (
+                        not nxt.get("is_table")
+                        and nxt.get("doc_id") == c.get("doc_id")
+                        and nxt.get("section") == c.get("section")
+                        and nxt.get("legal_path") == c.get("legal_path")
+                        and nxt.get("lang") == c.get("lang")
+                        and len(nxt.get("text", "")) + len(c.get("text", "")) + 2 <= MAX_MERGE_CHARS
+                    ):
+                        chunks[i] = merge_two_chunks(c, nxt, parser_version)
+                        chunks.pop(i + 1)
+                        changed = True
+                        merged = True
+                if not merged:
+                    i += 1
+            else:
+                i += 1
+
+    # 2. Discard isolated tails < 30 chars
+    filtered = []
+    for c in chunks:
+        text = c.get("text", "").strip()
+        if len(text) < 30 and not c.get("is_table"):
+            continue
+        filtered.append(c)
+
+    return filtered
 
 
 def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
@@ -331,28 +452,52 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                 ))
             continue
 
-        # Check boundary rules with current group
-        if cur_group:
-            prev = cur_group[-1]
-            prev_legal = tuple(prev.get("legal_path", []))
-            curr_legal = tuple(block.get("legal_path", []))
-            prev_sec = tuple(prev.get("section", []))
-            curr_sec = tuple(block.get("section", []))
-            prev_lang = prev.get("lang")
-            curr_lang = block.get("lang")
+        is_heading = (b_type in ("heading", "title", "section_header"))
+        has_non_heading = any(b.get("type") not in ("heading", "title", "section_header") for b in cur_group)
 
-            # Boundary: change in legal path, change in section, change in language, or merge length limit
-            boundary = (
-                prev_legal != curr_legal or
-                prev_sec != curr_sec or
-                (prev_lang and curr_lang and prev_lang != curr_lang) or
-                (cur_len + len(b_text) + 2 > MAX_MERGE_CHARS)
-            )
-            if boundary:
+        if is_heading:
+            # If current group already has content (non-heading blocks), this new heading
+            # marks the start of a new section/group -> flush previous group.
+            if has_non_heading:
                 flush_group()
+            else:
+                # cur_group contains only headings.
+                # If the new heading is not a child of existing heading, flush previous.
+                if cur_group:
+                    prev_h = cur_group[-1]
+                    prev_sec_extended = tuple(prev_h.get("section", [])) + (prev_h.get("text", "").strip(),)
+                    curr_sec = tuple(block.get("section", []))
+                    if not (curr_sec and curr_sec[:len(prev_sec_extended)] == prev_sec_extended):
+                        flush_group()
+        else:
+            # Current block is a content block (paragraph, list_item, etc.)
+            if cur_group:
+                prev = cur_group[-1]
+                prev_lang = prev.get("lang")
+                curr_lang = block.get("lang")
+                lang_changed = bool(prev_lang and curr_lang and prev_lang != curr_lang)
+
+                prev_legal = tuple(prev.get("legal_path", []))
+                curr_legal = tuple(block.get("legal_path", []))
+                legal_changed = (prev_legal != curr_legal)
+
+                if has_non_heading:
+                    prev_sec = tuple(prev.get("section", []))
+                    curr_sec = tuple(block.get("section", []))
+                    sec_changed = (prev_sec != curr_sec)
+                    length_exceeded = (cur_len + len(b_text) + 2 > MAX_MERGE_CHARS)
+
+                    if legal_changed or sec_changed or lang_changed or length_exceeded:
+                        flush_group()
+                else:
+                    # cur_group contains only headings. Headings attach to this content.
+                    length_exceeded = (cur_len + len(b_text) + 2 > MAX_MERGE_CHARS)
+                    if lang_changed or length_exceeded:
+                        flush_group()
 
         cur_group.append(block)
         cur_len += len(b_text) + 2
 
     flush_group()
-    return chunks
+    return postprocess_chunks(chunks, parser_version=parser_version)
+
