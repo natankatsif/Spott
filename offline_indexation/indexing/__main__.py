@@ -126,9 +126,12 @@ def main() -> None:
 
     all_chunks = [c for chunks in by_doc.values() for c in chunks]
     total_chunks = len(all_chunks)
-    log.info("Found %d total chunks across %d documents.", total_chunks, len(by_doc))
+    # Ensure document rows exist before inserting chunk batches
+    for doc_id, doc_chunks in by_doc.items():
+        if doc_chunks:
+            indexer.upsert_document_meta(doc_id, doc_chunks[0])
 
-    # Compute/fetch embeddings for all chunks in batch
+    # Compute/fetch embeddings for all chunks in batch (persisted after each batch)
     reused, computed = indexer.compute_embeddings(all_chunks)
     total_reused += reused
     total_computed += computed

@@ -34,6 +34,11 @@ def get_embedding_model(device: str | None = None):
         dev = device or get_device()
         t = time.monotonic()
         log.info("Loading %s on %s...", MODEL_NAME, dev)
-        _cached_model = SentenceTransformer(MODEL_NAME, device=dev)
-        log.info("Model loaded in %.1fs", time.monotonic() - t)
+        model = SentenceTransformer(MODEL_NAME, device=dev)
+        if dev in ("mps", "cuda"):
+            model = model.half()
+        model.max_seq_length = 1024
+        _cached_model = model
+        log.info("Model loaded in %.1fs (fp16=%s, max_seq_length=%d)", time.monotonic() - t, dev in ("mps", "cuda"), _cached_model.max_seq_length)
     return _cached_model
+

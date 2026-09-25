@@ -136,11 +136,11 @@ class HybridSearcher:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type,
+                SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type, doc_id, site,
                        1 - (embedding <=> %s::vector) AS sim
                 FROM chunks
                 WHERE embedding IS NOT NULL
-                  AND (%s IS NULL OR lang = %s)
+                  AND (%s::text IS NULL OR lang = %s::text)
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s;
                 """,
@@ -157,8 +157,10 @@ class HybridSearcher:
                     "content_hash": row[6],
                     "kind": row[7],
                     "doc_type": row[8],
-                    "score": float(row[9]),
-                    "rrf_score": float(row[9]),
+                    "doc_id": row[9],
+                    "site": row[10],
+                    "score": float(row[11]),
+                    "rrf_score": float(row[11]),
                 })
 
         return deduplicate_results(results, k=k)
@@ -175,11 +177,11 @@ class HybridSearcher:
             try:
                 cur.execute(
                     """
-                    SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type,
+                    SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type, doc_id, site,
                            ts_rank_cd(tsv, (to_tsquery('ro_unaccent', %s) || to_tsquery('ru_unaccent', %s))) AS rank_score
                     FROM chunks
                     WHERE tsv @@ (to_tsquery('ro_unaccent', %s) || to_tsquery('ru_unaccent', %s))
-                      AND (%s IS NULL OR lang = %s)
+                      AND (%s::text IS NULL OR lang = %s::text)
                     ORDER BY rank_score DESC
                     LIMIT %s;
                     """,
@@ -196,8 +198,10 @@ class HybridSearcher:
                         "content_hash": row[6],
                         "kind": row[7],
                         "doc_type": row[8],
-                        "score": float(row[9]),
-                        "rrf_score": float(row[9]),
+                        "doc_id": row[9],
+                        "site": row[10],
+                        "score": float(row[11]),
+                        "rrf_score": float(row[11]),
                     })
             except Exception as e:
                 log.warning("FTS query failed for '%s' (fts_query='%s'): %s", query, fts_query, e)
@@ -241,6 +245,8 @@ class HybridSearcher:
                 "content_hash": c.get("content_hash"),
                 "kind": c.get("kind"),
                 "doc_type": c.get("doc_type"),
+                "doc_id": c.get("doc_id"),
+                "site": c.get("site"),
             })
 
         return deduplicate_results(scored, k=k)
