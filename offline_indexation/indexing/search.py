@@ -6,6 +6,8 @@ Usage:
 """
 
 import argparse
+import logging
+import re
 import sys
 import numpy as np
 import psycopg
@@ -16,6 +18,55 @@ from .db import get_connection
 
 MODEL_NAME = "BAAI/bge-m3"
 RRF_K = 60
+
+log = logging.getLogger("indexing.search")
+
+STOP_WORDS = {
+    # Romanian
+    "cat", "cât", "cum", "unde", "ce", "care", "pentru", "este", "sunt",
+    "cine", "cand", "când", "daca", "dacă", "acest", "aceasta", "aceste",
+    "acesti", "acești",
+    # Russian
+    "как", "где", "что", "какой", "какая", "какие", "сколько", "для",
+    "это", "эта", "этот", "эти", "или", "кто", "когда", "почему",
+    "зачем", "было", "быть", "есть", "будет",
+}
+
+
+def clean_tsquery_term(term: str) -> str:
+    """Removes tsquery operators and special characters: & | ! ( ) : * ' \\ "."""
+    return re.sub(r"[&|!()\\:*\'\"]", "", term).strip()
+
+
+def build_fts_query(query: str) -> str:
+    """Builds a sanitized OR-connected tsquery string for PostgreSQL to_tsquery('simple', ...).
+
+    Discards tokens < 3 characters and RO/RU stop-words.
+    Sanitizes special tsquery syntax characters.
+    Joins significant tokens with ' | '.
+    """
+    if not query:
+        return ""
+
+    raw_tokens = re.findall(r"[^\s]+", query)
+    tokens = []
+    for raw in raw_tokens:
+        clean = clean_tsquery_term(raw)
+        clean = re.sub(r"^[\W_]+|[\W_]+$", "", clean)
+        if len(clean) < 3:
+            continue
+        if clean.lower() in STOP_WORDS:
+            continue
+        tokens.append(f"'{clean}'")
+
+    if not tokens:
+        for raw in raw_tokens:
+            clean = clean_tsquery_term(raw)
+            clean = re.sub(r"^[\W_]+|[\W_]+$", "", clean)
+            if len(clean) >= 2:
+                tokens.append(f"'{clean}'")
+
+    return " | ".join(tokens)
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,32 +126,34 @@ class HybridSearcher:
 
         # 2. Full-text search (top-40)
         fts_results = []
-        with self.conn.cursor() as cur:
-            try:
-                cur.execute(
-                    """
-                    SELECT chunk_id, citation_label, url, lang, text,
-                           ts_rank_cd(tsv, websearch_to_tsquery('simple', immutable_unaccent(%s))) AS rank_score
-                    FROM chunks
-                    WHERE tsv @@ websearch_to_tsquery('simple', immutable_unaccent(%s))
-                      AND (%s IS NULL OR lang = %s)
-                    ORDER BY rank_score DESC
-                    LIMIT 40;
-                    """,
-                    (query, query, lang, lang),
-                )
-                for row in cur.fetchall():
-                    fts_results.append({
-                        "chunk_id": row[0],
-                        "citation_label": row[1],
-                        "url": row[2] or "",
-                        "lang": row[3] or "",
-                        "text": row[4],
-                        "score": row[5],
-                    })
-            except Exception as e:
-                # If query syntax fails for tsquery, ignore FTS errors gracefully
-                pass
+        fts_query = build_fts_query(query)
+        if fts_query:
+            with self.conn.cursor() as cur:
+                try:
+                    cur.execute(
+                        """
+                        SELECT chunk_id, citation_label, url, lang, text,
+                               ts_rank_cd(tsv, to_tsquery('simple', immutable_unaccent(%s))) AS rank_score
+                        FROM chunks
+                        WHERE tsv @@ to_tsquery('simple', immutable_unaccent(%s))
+                          AND (%s IS NULL OR lang = %s)
+                        ORDER BY rank_score DESC
+                        LIMIT 40;
+                        """,
+                        (fts_query, fts_query, lang, lang),
+                    )
+                    for row in cur.fetchall():
+                        fts_results.append({
+                            "chunk_id": row[0],
+                            "citation_label": row[1],
+                            "url": row[2] or "",
+                            "lang": row[3] or "",
+                            "text": row[4],
+                            "score": row[5],
+                        })
+                except Exception as e:
+                    log.warning("FTS query failed for '%s' (fts_query='%s'): %s", query, fts_query, e)
+
 
         # 3. RRF fusion (k=60)
         vec_ranks = {c["chunk_id"]: idx + 1 for idx, c in enumerate(vec_results)}
