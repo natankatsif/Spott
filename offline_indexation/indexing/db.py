@@ -32,6 +32,19 @@ INIT_SQL = """
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'ro_unaccent') THEN
+    CREATE TEXT SEARCH CONFIGURATION ro_unaccent (COPY = romanian);
+    ALTER TEXT SEARCH CONFIGURATION ro_unaccent ALTER MAPPING FOR hword, hword_part, word WITH unaccent, romanian_stem;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'ru_unaccent') THEN
+    CREATE TEXT SEARCH CONFIGURATION ru_unaccent (COPY = russian);
+    ALTER TEXT SEARCH CONFIGURATION ru_unaccent ALTER MAPPING FOR hword, hword_part, word WITH unaccent, russian_stem;
+  END IF;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION immutable_unaccent(text)
   RETURNS text AS $$
     SELECT public.unaccent($1);
@@ -49,6 +62,7 @@ CREATE TABLE IF NOT EXISTS documents (
     url TEXT,
     found_on TEXT,
     lang TEXT,
+    page_sizes JSONB,
     indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
@@ -63,6 +77,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     citation_label TEXT NOT NULL,
     section JSONB,
     legal_path JSONB,
+    parent_legal_path JSONB,
     block_ids JSONB,
     pages JSONB,
     bboxes JSONB,
@@ -80,10 +95,20 @@ CREATE TABLE IF NOT EXISTS chunks (
     url TEXT,
     found_on TEXT,
     embedding vector(1024),
-    tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', immutable_unaccent(embed_text))) STORED
+    tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            CASE 
+                WHEN lang = 'ro' THEN 'ro_unaccent'::regconfig
+                WHEN lang = 'ru' THEN 'ru_unaccent'::regconfig
+                ELSE 'simple'::regconfig
+            END,
+            embed_text
+        )
+    ) STORED
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_parent_legal ON chunks(doc_id, parent_legal_path);
 CREATE INDEX IF NOT EXISTS idx_chunks_category ON chunks(category);
 CREATE INDEX IF NOT EXISTS idx_chunks_lang ON chunks(lang);
 CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);

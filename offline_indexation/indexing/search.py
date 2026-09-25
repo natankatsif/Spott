@@ -126,73 +126,89 @@ class HybridSearcher:
             self._model = get_embedding_model(self.device)
         return self._model
 
-    def search(self, query: str, k: int = 5, lang: str | None = None) -> list[dict]:
-        # 1. Vector search (top-40)
+    def search_vector(self, query: str, k: int = 5, lang: str | None = None, limit: int | None = None) -> list[dict]:
+        """Pure vector search using BGE-M3 cosine similarity."""
+        fetch_limit = limit or (k * 4 if k else 20)
         q_vec = self.model.encode([query], normalize_embeddings=True)[0]
         q_arr = np.array(q_vec, dtype=np.float32)
 
-        vec_results = []
+        results = []
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT chunk_id, citation_label, url, lang, text, content_hash, kind, doc_type,
+                SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type,
                        1 - (embedding <=> %s::vector) AS sim
                 FROM chunks
                 WHERE embedding IS NOT NULL
                   AND (%s IS NULL OR lang = %s)
                 ORDER BY embedding <=> %s::vector
-                LIMIT 40;
+                LIMIT %s;
                 """,
-                (q_arr, lang, lang, q_arr),
+                (q_arr, lang, lang, q_arr, fetch_limit),
             )
             for row in cur.fetchall():
-                vec_results.append({
+                results.append({
                     "chunk_id": row[0],
                     "citation_label": row[1],
                     "url": row[2] or "",
                     "lang": row[3] or "",
                     "text": row[4],
-                    "content_hash": row[5],
-                    "kind": row[6],
-                    "doc_type": row[7],
-                    "score": row[8],
+                    "embed_text": row[5],
+                    "content_hash": row[6],
+                    "kind": row[7],
+                    "doc_type": row[8],
+                    "score": float(row[9]),
+                    "rrf_score": float(row[9]),
                 })
 
-        # 2. Full-text search (top-40)
-        fts_results = []
+        return deduplicate_results(results, k=k)
+
+    def search_fts(self, query: str, k: int = 5, lang: str | None = None, limit: int | None = None) -> list[dict]:
+        """Pure full-text search with ro_unaccent and ru_unaccent stemming."""
+        fetch_limit = limit or (k * 4 if k else 20)
         fts_query = build_fts_query(query)
-        if fts_query:
-            with self.conn.cursor() as cur:
-                try:
-                    cur.execute(
-                        """
-                        SELECT chunk_id, citation_label, url, lang, text, content_hash, kind, doc_type,
-                               ts_rank_cd(tsv, to_tsquery('simple', immutable_unaccent(%s))) AS rank_score
-                        FROM chunks
-                        WHERE tsv @@ to_tsquery('simple', immutable_unaccent(%s))
-                          AND (%s IS NULL OR lang = %s)
-                        ORDER BY rank_score DESC
-                        LIMIT 40;
-                        """,
-                        (fts_query, fts_query, lang, lang),
-                    )
-                    for row in cur.fetchall():
-                        fts_results.append({
-                            "chunk_id": row[0],
-                            "citation_label": row[1],
-                            "url": row[2] or "",
-                            "lang": row[3] or "",
-                            "text": row[4],
-                            "content_hash": row[5],
-                            "kind": row[6],
-                            "doc_type": row[7],
-                            "score": row[8],
-                        })
-                except Exception as e:
-                    log.warning("FTS query failed for '%s' (fts_query='%s'): %s", query, fts_query, e)
+        if not fts_query:
+            return []
 
+        results = []
+        with self.conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    SELECT chunk_id, citation_label, url, lang, text, embed_text, content_hash, kind, doc_type,
+                           ts_rank_cd(tsv, (to_tsquery('ro_unaccent', %s) || to_tsquery('ru_unaccent', %s))) AS rank_score
+                    FROM chunks
+                    WHERE tsv @@ (to_tsquery('ro_unaccent', %s) || to_tsquery('ru_unaccent', %s))
+                      AND (%s IS NULL OR lang = %s)
+                    ORDER BY rank_score DESC
+                    LIMIT %s;
+                    """,
+                    (fts_query, fts_query, fts_query, fts_query, lang, lang, fetch_limit),
+                )
+                for row in cur.fetchall():
+                    results.append({
+                        "chunk_id": row[0],
+                        "citation_label": row[1],
+                        "url": row[2] or "",
+                        "lang": row[3] or "",
+                        "text": row[4],
+                        "embed_text": row[5],
+                        "content_hash": row[6],
+                        "kind": row[7],
+                        "doc_type": row[8],
+                        "score": float(row[9]),
+                        "rrf_score": float(row[9]),
+                    })
+            except Exception as e:
+                log.warning("FTS query failed for '%s' (fts_query='%s'): %s", query, fts_query, e)
 
-        # 3. RRF fusion (k=60)
+        return deduplicate_results(results, k=k)
+
+    def search_hybrid(self, query: str, k: int = 5, lang: str | None = None, top_candidates: int = 40) -> list[dict]:
+        """Hybrid search combining Vector + FTS via Reciprocal Rank Fusion (RRF)."""
+        vec_results = self.search_vector(query, k=top_candidates, lang=lang, limit=top_candidates)
+        fts_results = self.search_fts(query, k=top_candidates, lang=lang, limit=top_candidates)
+
         vec_ranks = {c["chunk_id"]: idx + 1 for idx, c in enumerate(vec_results)}
         fts_ranks = {c["chunk_id"]: idx + 1 for idx, c in enumerate(fts_results)}
 
@@ -214,18 +230,33 @@ class HybridSearcher:
             scored.append({
                 "chunk_id": cid,
                 "rrf_score": rrf_score,
+                "score": rrf_score,
                 "vec_rank": vr,
                 "fts_rank": fr,
                 "citation_label": c["citation_label"],
                 "url": c["url"],
                 "lang": c["lang"],
                 "text": c["text"],
+                "embed_text": c.get("embed_text") or c["text"],
                 "content_hash": c.get("content_hash"),
                 "kind": c.get("kind"),
                 "doc_type": c.get("doc_type"),
             })
 
         return deduplicate_results(scored, k=k)
+
+    def search_rerank(self, query: str, k: int = 5, lang: str | None = None, top_candidates: int = 50) -> list[dict]:
+        """4th search mode: Hybrid search (top-50) -> BGE-Reranker-v2-m3 -> top-k."""
+        from .rerank import rerank_candidates
+        candidates = self.search_hybrid(query, k=top_candidates, lang=lang, top_candidates=top_candidates)
+        if not candidates:
+            return []
+        reranked = rerank_candidates(query, candidates, top_k=k, device=self.device)
+        return reranked
+
+    def search(self, query: str, k: int = 5, lang: str | None = None) -> list[dict]:
+        """Default search method: delegates to search_hybrid."""
+        return self.search_hybrid(query, k=k, lang=lang)
 
 
 def main() -> None:

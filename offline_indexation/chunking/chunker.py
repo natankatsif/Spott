@@ -148,6 +148,7 @@ def build_chunk(
     is_table: bool = False,
     override_legal_path: list[str] | None = None,
     override_section: list[str] | None = None,
+    page_sizes: list[dict] | None = None,
 ) -> dict:
     first_block_id = blocks[0]["id"] if blocks else 0
     last_block_id = blocks[-1]["id"] if blocks else 0
@@ -179,6 +180,8 @@ def build_chunk(
         else:
             legal_path = []
 
+    parent_legal_path = legal_path[:-1] if legal_path else []
+
     citation_label = make_citation_label(meta, kind, legal_path, section)
     title = meta.get("title") or ""
     embed_text = f"{title}\n{citation_label}\n{text}"
@@ -205,6 +208,8 @@ def build_chunk(
         "citation_label": citation_label,
         "section": section,
         "legal_path": legal_path,
+        "parent_legal_path": parent_legal_path,
+        "page_sizes": page_sizes or [],
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
@@ -249,6 +254,8 @@ def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
         "text": merged_text,
         "embed_text": embed_text,
         "citation_label": citation_label,
+        "parent_legal_path": a.get("parent_legal_path", []),
+        "page_sizes": a.get("page_sizes", []),
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
@@ -337,6 +344,8 @@ def merge_legal_group(group: list[dict], parser_version: str = "2") -> dict:
         "embed_text": embed_text,
         "citation_label": citation_label,
         "legal_path": merged_legal_path,
+        "parent_legal_path": parent,
+        "page_sizes": first.get("page_sizes", []),
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
@@ -523,6 +532,13 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             tracker.process_block(b_copy)
             blocks.append(b_copy)
 
+    # Extract page_sizes for documents (used for citation overlay and online part)
+    raw_pages = doc.get("pages", [])
+    page_sizes = [
+        {"n": p.get("n"), "width": p.get("width"), "height": p.get("height")}
+        for p in raw_pages if p.get("width") and p.get("height")
+    ]
+
     chunks: list[dict] = []
     cur_group: list[dict] = []
     cur_len = 0
@@ -549,6 +565,7 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                     parser_version=parser_version,
                     part_idx=p_idx,
                     is_table=False,
+                    page_sizes=page_sizes,
                 ))
         else:
             chunks.append(build_chunk(
@@ -560,6 +577,7 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                 parser_version=parser_version,
                 part_idx=0,
                 is_table=False,
+                page_sizes=page_sizes,
             ))
         cur_group = []
         cur_len = 0
@@ -584,6 +602,7 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                     parser_version=parser_version,
                     part_idx=p_idx,
                     is_table=True,
+                    page_sizes=page_sizes,
                 ))
             continue
 

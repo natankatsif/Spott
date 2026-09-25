@@ -29,6 +29,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--data", type=Path, default=Path("data"), help="path to data directory")
     p.add_argument("--batch-size", type=int, default=32, help="embedding batch size")
     p.add_argument("--from-jsonl", action="store_true", help="load chunks from existing .jsonl files instead of re-chunking from data/parsed")
+    p.add_argument("--recreate", action="store_true", help="drop and recreate database tables")
     p.add_argument("--clean-orphans", action=argparse.BooleanOptionalAction, default=True, help="remove stale documents from index (default: True)")
     return p.parse_args(args)
 
@@ -94,6 +95,11 @@ def main() -> None:
 
     # 1. Initialize DB schema
     conn = get_connection(autocommit=True)
+    if args.recreate:
+        log.info("Recreating database schema (--recreate)...")
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS chunks CASCADE;")
+            cur.execute("DROP TABLE IF EXISTS documents CASCADE;")
     init_db(conn)
 
     # 2. Get chunks to index (default: rechunk from data/parsed)

@@ -98,8 +98,8 @@ class Indexer:
             # 1. Upsert document
             cur.execute(
                 """
-                INSERT INTO documents (doc_id, kind, title, doc_type, number, date, category, site, url, found_on, lang, indexed_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO documents (doc_id, kind, title, doc_type, number, date, category, site, url, found_on, lang, page_sizes, indexed_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (doc_id) DO UPDATE SET
                   kind = EXCLUDED.kind,
                   title = EXCLUDED.title,
@@ -111,6 +111,7 @@ class Indexer:
                   url = EXCLUDED.url,
                   found_on = EXCLUDED.found_on,
                   lang = EXCLUDED.lang,
+                  page_sizes = EXCLUDED.page_sizes,
                   indexed_at = NOW();
                 """,
                 (
@@ -125,6 +126,7 @@ class Indexer:
                     first.get("url"),
                     first.get("found_on"),
                     first.get("lang"),
+                    json.dumps(first.get("page_sizes", []), ensure_ascii=False),
                 ),
             )
 
@@ -132,16 +134,20 @@ class Indexer:
             chunk_ids = []
             for c in chunks:
                 chunk_ids.append(c["chunk_id"])
+                parent_lp = c.get("parent_legal_path")
+                if parent_lp is None:
+                    parent_lp = c.get("legal_path", [])[:-1] if c.get("legal_path") else []
+
                 cur.execute(
                     """
                     INSERT INTO chunks (
                       chunk_id, doc_id, kind, text, embed_text, citation_label,
-                      section, legal_path, block_ids, pages, bboxes, lang,
+                      section, legal_path, parent_legal_path, block_ids, pages, bboxes, lang,
                       char_count, content_hash, has_contacts, is_table,
                       title, doc_type, number, date, category, site, url, found_on, embedding
                     ) VALUES (
                       %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s, %s, %s,
                       %s, %s, %s, %s,
                       %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) ON CONFLICT (chunk_id) DO UPDATE SET
@@ -150,6 +156,7 @@ class Indexer:
                       citation_label = EXCLUDED.citation_label,
                       section = EXCLUDED.section,
                       legal_path = EXCLUDED.legal_path,
+                      parent_legal_path = EXCLUDED.parent_legal_path,
                       block_ids = EXCLUDED.block_ids,
                       pages = EXCLUDED.pages,
                       bboxes = EXCLUDED.bboxes,
@@ -177,6 +184,7 @@ class Indexer:
                         c["citation_label"],
                         json.dumps(c.get("section", []), ensure_ascii=False),
                         json.dumps(c.get("legal_path", []), ensure_ascii=False),
+                        json.dumps(parent_lp, ensure_ascii=False),
                         json.dumps(c.get("block_ids", []), ensure_ascii=False),
                         json.dumps(c.get("pages", []), ensure_ascii=False),
                         json.dumps(c.get("bboxes", []), ensure_ascii=False),
