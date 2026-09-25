@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--limit", type=int, help="limit number of documents processed")
     p.add_argument("--files-only", action="store_true", help="only chunk parsed files")
     p.add_argument("--pages-only", action="store_true", help="only chunk parsed pages")
+    p.add_argument("--stats", action="store_true", help="print corpus statistics without re-chunking")
     return p.parse_args()
 
 
@@ -38,6 +39,21 @@ def safe_id(doc_id: str) -> str:
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+
+    if args.stats:
+        from scripts.corpus_stats import calculate_corpus_metrics, generate_markdown_table
+        m = calculate_corpus_metrics(args.data)
+        print(f"Documents: {m['parsed_files']} files, {m['parsed_pages']} pages (Total: {m['total_docs']})")
+        print(f"Chunks:    {m['total_chunks']} (file: {m['file_chunks']}, page: {m['page_chunks']})")
+        print(f"Lengths:   min={m['min_len']}, median={m['med_len']}, max={m['max_len']}")
+        print(f"<80 chars: {m['less_80']} ({m['pct_less_80']:.2f}%), file<80={m['file_less_80']}")
+        print(f"Legal:     {m['with_legal']} ({m['pct_legal']:.2f}%)")
+        print(f"BBoxes:    {m['file_with_bbox']}/{m['total_file_bbox']} ({m['pct_bbox']:.1f}%)")
+        print(f"Tables:    {m['tables']} ({m['pct_tables']:.2f}%)")
+        print(f"Contacts:  {m['contacts']} ({m['pct_contacts']:.2f}%)")
+        print(f"Dupes:     {m['dupe_hashes']}")
+        print("\n" + generate_markdown_table(m))
+        return
 
     parsed_dir = args.data / "parsed"
     pages_dir = parsed_dir / "pages"
