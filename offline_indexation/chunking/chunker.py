@@ -30,41 +30,57 @@ def split_long_text(text: str, target_size: int = 1500, max_size: int = 2500, ov
     if len(text) <= max_size:
         return [text]
 
-    # Split into units by double newline, newline, or sentence end
     tokens = re.split(r"(\n\n+|\n|(?<=[.!?])\s+)", text)
     units = []
-    buf = ""
-    for part in tokens:
-        buf += part
-        if len(buf) >= 100 or "\n" in part:
-            units.append(buf)
+    unit_max = target_size // 2
+    for t in tokens:
+        if not t:
+            continue
+        if len(t) > unit_max:
+            words = re.split(r"(\s+)", t)
             buf = ""
-    if buf:
-        units.append(buf)
+            for w in words:
+                if len(buf) + len(w) > unit_max:
+                    if buf:
+                        units.append(buf)
+                        buf = ""
+                    if len(w) > unit_max:
+                        for k in range(0, len(w), unit_max):
+                            units.append(w[k:k + unit_max])
+                    else:
+                        buf = w
+                else:
+                    buf += w
+            if buf:
+                units.append(buf)
+        else:
+            units.append(t)
 
     chunks = []
     cur_chunk = []
     cur_len = 0
     i = 0
     while i < len(units):
-        unit = units[i]
-        cur_chunk.append(unit)
-        cur_len += len(unit)
-        if cur_len >= target_size or i == len(units) - 1:
-            chunk_str = "".join(cur_chunk).strip()
-            if chunk_str:
-                chunks.append(chunk_str)
-            if i == len(units) - 1:
-                break
-            # Rewind backwards for overlap
+        u = units[i]
+        if cur_chunk and (cur_len + len(u) > max_size or cur_len >= target_size):
+            c_str = "".join(cur_chunk).strip()
+            if c_str:
+                chunks.append(c_str)
             overlap_len = 0
             back_idx = len(cur_chunk) - 1
             while back_idx >= 0 and overlap_len < overlap:
                 overlap_len += len(cur_chunk[back_idx])
                 back_idx -= 1
             cur_chunk = cur_chunk[max(0, back_idx + 1):]
-            cur_len = sum(len(u) for u in cur_chunk)
+            cur_len = sum(len(x) for x in cur_chunk)
+        cur_chunk.append(u)
+        cur_len += len(u)
         i += 1
+
+    if cur_chunk:
+        c_str = "".join(cur_chunk).strip()
+        if c_str:
+            chunks.append(c_str)
 
     return chunks or [text]
 

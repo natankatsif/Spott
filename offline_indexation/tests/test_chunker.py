@@ -132,3 +132,27 @@ def test_bboxes_and_pages_preserved():
     assert len(chunks[0]["bboxes"]) == 1
     assert chunks[0]["bboxes"][0]["page"] == 2
     assert chunks[0]["bboxes"][0]["l"] == 10.0
+
+
+def test_split_long_text_no_newlines_and_giant_word():
+    """Long text without newlines and very long word are split into parts <= MAX_BLOCK_CHARS with overlap, without text loss."""
+    # 1. Long text without newlines (many sentences/words separated by spaces only)
+    words = [f"cuvânt{i}" for i in range(1500)]
+    text_no_newlines = " ".join(words)  # ~13000 chars
+    parts = split_long_text(text_no_newlines, target_size=1500, max_size=2500, overlap=200)
+    assert len(parts) > 1
+    for p in parts:
+        assert len(p) <= 2500
+    # Coverage: words across the range must be present
+    for w in words[::20]:
+        assert any(w in p for p in parts)
+
+    # 2. Giant word without spaces or newlines
+    giant_word = "A" * 6000
+    parts_giant = split_long_text(giant_word, target_size=1500, max_size=2500, overlap=200)
+    assert len(parts_giant) >= 3
+    for p in parts_giant:
+        assert len(p) <= 2500
+    # Overlap verification
+    for i in range(len(parts_giant) - 1):
+        assert parts_giant[i][-100:] in parts_giant[i + 1] or parts_giant[i + 1][:100] in parts_giant[i]
