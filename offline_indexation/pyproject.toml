@@ -1,0 +1,9 @@
+[project]
+name = "offline-indexation"
+description = "Crawls the Annex 1 sites and builds the document corpus"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "selectolax>=0.4.12",
+]

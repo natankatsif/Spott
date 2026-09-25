@@ -1,0 +1,230 @@
+# Сайты из Annex 1, по одной записи на домен.
+# Поля по умолчанию берутся из [defaults]; любое можно переопределить у сайта.
+#   start_urls    — откуда начинать обход в ширину (глубина 0)
+#   max_depth     — сколько кликов от стартовых страниц
+#   max_pages     — лимит HTML-страниц на сайт
+#   delay         — пауза между запросами к сайту, сек
+#   ignore_robots — обходить, даже если robots.txt запрещает
+
+[defaults]
+max_depth = 4
+max_pages = 2000
+delay = 0.5
+ignore_robots = false
+
+# --- Transparency & Municipal Projects ---
+[[site]]
+id = "chisinau.md"
+category = "transparency"
+start_urls = [
+  "https://www.chisinau.md/ro/transparenta",
+  "https://www.chisinau.md/ro",
+  "https://www.chisinau.md/ru",
+]
+# robots.txt: "Disallow: /". Включить ignore_robots только после согласования с ментором.
+
+[[site]]
+id = "suburbii.chisinau.md"
+category = "transparency"
+start_urls = ["https://suburbii.chisinau.md/"]
+
+[[site]]
+id = "proiecte.chisinau.md"
+category = "transparency"
+start_urls = [
+  "https://proiecte.chisinau.md/",
+  "https://proiecte.chisinau.md/ro/pv-289-startup-pentru-tineri-si-migranti",
+]
+
+# --- Urban Mobility ---
+[[site]]
+id = "mobilitatechisinau.md"
+category = "mobility"
+start_urls = ["https://mobilitatechisinau.md/"]
+
+[[site]]
+id = "rtec.md"
+category = "mobility"
+start_urls = ["https://rtec.md/"]
+
+[[site]]
+id = "autourban.md"
+category = "mobility"
+start_urls = ["https://autourban.md/ro/rute/suburbane"]
+
+[[site]]
+id = "exdrupo.md"
+category = "mobility"
+start_urls = ["https://exdrupo.md/"]
+
+# --- Architecture, Green Spaces & Urban Utilities ---
+[[site]]
+id = "dgaurf.md"
+category = "urban_utilities"
+start_urls = ["https://dgaurf.md/"]
+
+[[site]]
+id = "dglca.md"
+category = "urban_utilities"
+start_urls = ["https://dglca.md/"]
+
+[[site]]
+id = "autosalubritate.md"
+category = "urban_utilities"
+start_urls = ["https://autosalubritate.md/informatie-de-contact/"]
+
+[[site]]
+id = "acc.md"
+category = "urban_utilities"
+start_urls = ["https://www.acc.md/"]
+
+[[site]]
+id = "agsv.md"
+category = "urban_utilities"
+start_urls = ["https://agsv.md/diagrama-defrisare-curatare-a-arborilor-2/"]
+
+# --- Education ---
+[[site]]
+id = "chisinauedu.dgets.md"
+category = "education"
+start_urls = ["https://chisinauedu.dgets.md/"]
+
+[[site]]
+id = "detsriscani.md"
+category = "education"
+start_urls = ["https://detsriscani.md/"]
+
+[[site]]
+id = "detsciocana.educ.md"
+category = "education"
+start_urls = ["https://detsciocana.educ.md/"]
+
+[[site]]
+id = "detscentru.md"
+category = "education"
+start_urls = ["https://detscentru.md/"]
+
+[[site]]
+id = "buiucanidets.md"
+category = "education"
+start_urls = ["https://buiucanidets.md"]
+
+[[site]]
+id = "detsbotanica.md"
+category = "education"
+start_urls = ["https://detsbotanica.md"]
+
+[[site]]
+id = "educatieonline.md"
+category = "education"
+start_urls = ["https://educatieonline.md/"]
+
+[[site]]
+id = "extrascolar.md"
+category = "education"
+start_urls = ["https://extrascolar.md/"]
+
+[[site]]
+id = "egradinita.md"
+category = "education"
+start_urls = ["https://egradinita.md/"]
+max_depth = 0  # React SPA — только цель навигации
+
+[[site]]
+id = "escoala.chisinau.md"
+category = "education"
+start_urls = ["https://escoala.chisinau.md/"]
+
+# --- Healthcare ---
+[[site]]
+id = "dgams.md"
+category = "healthcare"
+start_urls = ["https://dgams.md/"]
+
+[[site]]
+id = "help.chisinau.md"
+category = "healthcare"
+start_urls = ["https://help.chisinau.md/"]
+
+[[site]]
+id = "amt-botanica.md"
+category = "healthcare"
+start_urls = ["https://amt-botanica.md/"]
+
+[[site]]
+id = "amt-centru.md"
+category = "healthcare"
+start_urls = ["https://amt-centru.md/"]
+
+[[site]]
+id = "amtbuiucani.md"
+category = "healthcare"
+start_urls = ["https://amtbuiucani.md/"]
+
+[[site]]
+id = "amt-ciocana.md"
+category = "healthcare"
+start_urls = ["https://amt-ciocana.md/"]
+
+[[site]]
+id = "amtriscani.md"
+category = "healthcare"
+start_urls = ["http://amtriscani.md/"]
+
+# --- District Administration ---
+[[site]]
+id = "botanica.md"
+category = "district"
+start_urls = ["https://www.botanica.md/"]
+
+[[site]]
+id = "chisinaucentru.md"
+category = "district"
+start_urls = ["https://chisinaucentru.md/"]
+
+[[site]]
+id = "ciocana.md"
+category = "district"
+start_urls = ["https://ciocana.md/"]
+
+[[site]]
+id = "rascani.md"
+category = "district"
+start_urls = ["https://rascani.md/"]
+
+[[site]]
+id = "preturabuiucani.md"
+category = "district"
+start_urls = ["https://preturabuiucani.md/"]
+
+# --- Services (Commerce, Tourism, Investment, Youth) ---
+[[site]]
+id = "comert.chisinau.md"
+category = "services"
+start_urls = ["https://comert.chisinau.md/"]
+
+[[site]]
+id = "visit.chisinau.md"
+category = "services"
+start_urls = ["https://visit.chisinau.md/"]
+
+[[site]]
+id = "invest.chisinau.md"
+category = "services"
+start_urls = ["https://invest.chisinau.md/"]
+
+[[site]]
+id = "e-tineret.md"
+category = "services"
+start_urls = ["https://e-tineret.md/"]
+
+# --- Other Public Services ---
+[[site]]
+id = "infocom.md"
+category = "other"
+start_urls = ["http://www.infocom.md/"]
+
+[[site]]
+id = "liftservice.md"
+category = "other"
+start_urls = ["https://liftservice.md/"]
