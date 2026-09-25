@@ -20,7 +20,7 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument, SectionHeaderI
 from . import metadata
 from .normalize import detect_lang, normalize_text
 
-PARSER_VERSION = "1"
+PARSER_VERSION = "2"
 SUPPORTED_EXTENSIONS = {
     ".pdf", ".docx", ".doc", ".rtf", ".odt",
     ".xlsx", ".xls", ".ods", ".csv",
@@ -65,6 +65,23 @@ def page_of(item) -> int | None:
     return item.prov[0].page_no if getattr(item, "prov", None) else None
 
 
+def bboxes_of(item) -> list[dict]:
+    bboxes = []
+    for prov in getattr(item, "prov", []) or []:
+        if getattr(prov, "bbox", None) is not None:
+            bbox = prov.bbox
+            origin = bbox.coord_origin.value if hasattr(bbox.coord_origin, "value") else str(bbox.coord_origin)
+            bboxes.append({
+                "page": prov.page_no,
+                "l": bbox.l,
+                "t": bbox.t,
+                "r": bbox.r,
+                "b": bbox.b,
+                "origin": origin,
+            })
+    return bboxes
+
+
 def table_block(item: TableItem, doc: DoclingDocument) -> dict:
     grid = [[normalize_text(cell.text) for cell in row] for row in item.data.grid]
     header_rows = 0
@@ -106,6 +123,7 @@ def build_blocks(doc: DoclingDocument) -> list[dict]:
         block |= {
             "id": len(blocks),
             "page": page_of(item),
+            "bboxes": bboxes_of(item),
             "section": [t for _, t in section],  # a heading's section is the path above it
             "lang": detect_lang(block["text"]),
         }
@@ -129,13 +147,21 @@ def build_document(doc: DoclingDocument, *, file: dict, sources: list[dict], tex
     body = "\n".join(b["text"] for b in blocks)
     n_pages = len(doc.pages) or max(text_layer, default=0)
 
+    pages = []
+    for n in range(1, n_pages + 1):
+        p_data = {"n": n, "text_layer": text_layer.get(n)}
+        if (page_item := doc.pages.get(n)) and getattr(page_item, "size", None):
+            p_data["width"] = page_item.size.width
+            p_data["height"] = page_item.size.height
+        pages.append(p_data)
+
     return {
         "sha256": file["sha256"],
         "parser_version": PARSER_VERSION,
         "file": file,
         "sources": sources,
         "metadata": metadata.extract(blocks, sources) | {"lang": detect_lang(body)},
-        "pages": [{"n": n, "text_layer": text_layer.get(n)} for n in range(1, n_pages + 1)],
+        "pages": pages,
         "stats": {
             "pages": n_pages,
             "ocr_pages": sum(1 for has_text in text_layer.values() if not has_text),
