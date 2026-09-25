@@ -64,13 +64,17 @@ def main() -> None:
     all_chunks: list[dict] = []
     docs_processed = 0
 
+    active_files: set[str] = set()
+
     for path in doc_paths:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
             chunks = chunk_document(doc)
             if chunks:
                 doc_id = chunks[0]["doc_id"]
-                out_file = chunks_dir / f"{safe_id(doc_id)}.jsonl"
+                filename = f"{safe_id(doc_id)}.jsonl"
+                active_files.add(filename)
+                out_file = chunks_dir / filename
                 with out_file.open("w", encoding="utf-8") as f:
                     for c in chunks:
                         f.write(json.dumps(c, ensure_ascii=False) + "\n")
@@ -78,6 +82,12 @@ def main() -> None:
                 docs_processed += 1
         except Exception as e:
             log.warning("Failed chunking %s: %s", path.name, e)
+
+    # Delete stale .jsonl of documents that no longer exist (only on full runs)
+    if not args.limit and not args.files_only and not args.pages_only:
+        for existing in chunks_dir.glob("*.jsonl"):
+            if existing.name not in active_files:
+                existing.unlink()
 
     # Calculate statistics
     total = len(all_chunks)
