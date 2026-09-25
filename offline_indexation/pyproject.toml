@@ -7,6 +7,11 @@ dependencies = [
     "docling>=2.130.0",
     "httpx>=0.28.1",
     "ocrmac>=1.0.1; sys_platform == 'darwin'",
+    "pytest>=9.1.1",
     "selectolax>=0.4.12",
     "trafilatura>=2.2.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
