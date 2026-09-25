@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from parsing.normalize import normalize_lang
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
 
 MAX_MERGE_CHARS = 1500
@@ -211,9 +212,10 @@ def build_chunk(
 
     content_blocks_with_lang = [b for b in blocks if b.get("type") not in ("heading", "title", "section_header") and b.get("lang")]
     if content_blocks_with_lang:
-        lang = content_blocks_with_lang[0].get("lang")
+        raw_lang = content_blocks_with_lang[0].get("lang")
     else:
-        lang = blocks[0].get("lang") if blocks else meta.get("lang") or "ro"
+        raw_lang = blocks[0].get("lang") if blocks else meta.get("lang")
+    lang = normalize_lang(raw_lang, fallback_text=text)
 
     has_contacts = any(b.get("has_contacts", False) for b in blocks) or check_contacts(text)
 
@@ -359,7 +361,7 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "site": doc.get("site") or "",
             "url": doc.get("url") or "",
             "found_on": doc.get("url") or "",
-            "lang": doc.get("lang") or "ro",
+            "lang": normalize_lang(doc.get("lang")),
         }
         allow_sub = is_act_or_has_major_legal(meta, raw_blocks)
         tracker = LegalHierarchyTracker(allow_sub_articles=allow_sub)
@@ -383,7 +385,7 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "site": src0.get("site") or "",
             "url": src0.get("url") or "",
             "found_on": src0.get("found_on") or "",
-            "lang": doc_meta.get("lang") or "ro",
+            "lang": normalize_lang(doc_meta.get("lang")),
         }
 
         # Apply legal hierarchy tracker to assign legal_path to every block

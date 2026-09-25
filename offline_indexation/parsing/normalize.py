@@ -70,3 +70,30 @@ def detect_lang(text: str) -> str | None:
     en = sum(w in EN_WORDS for w in words)
     ro = sum(w in RO_WORDS for w in words)
     return "en" if en > ro else "ro"
+
+
+SUPPORTED_LANGS = {"ro", "ru", "en", "uk"}
+
+
+def normalize_lang(lang: str | None, fallback_text: str = "") -> str:
+    """Normalizes language to one of 'ro', 'ru', 'en', 'uk'.
+
+    - Strips regional suffixes ('ru-RU' -> 'ru', 'ro-RO' -> 'ro', 'en-US' -> 'en', 'uk-UA' -> 'uk')
+    - Maps 3-letter codes ('ron'/'rum' -> 'ro', 'rus' -> 'ru', 'eng' -> 'en', 'ukr' -> 'uk')
+    - If empty or unrecognized, falls back to detect_lang(fallback_text) or 'ro'
+    """
+    if lang:
+        cleaned = lang.strip().lower().replace("_", "-")
+        prefix = cleaned.split("-")[0]
+        if prefix in SUPPORTED_LANGS:
+            return prefix
+        iso_3_map = {"ron": "ro", "rum": "ro", "rus": "ru", "eng": "en", "ukr": "uk"}
+        if prefix in iso_3_map:
+            return iso_3_map[prefix]
+
+    if fallback_text:
+        detected = detect_lang(fallback_text)
+        if detected in SUPPORTED_LANGS:
+            return detected
+
+    return "ro"

@@ -18,7 +18,7 @@ from selectolax.parser import HTMLParser
 from common.registry import Registry
 from common.urls import url_key
 
-from .normalize import detect_lang, normalize_text
+from .normalize import detect_lang, normalize_lang, normalize_text
 
 log = logging.getLogger("parsing.html")
 
@@ -174,7 +174,7 @@ def build_page_blocks(raw_blocks: list[dict], boilerplate_texts: set[str]) -> li
             "page": None,
             "bboxes": [],
             "section": [t for _, t in section],
-            "lang": detect_lang(text),
+            "lang": normalize_lang(None, fallback_text=text),
             "has_contacts": raw.get("has_contacts", False),
         }
         if is_heading:
@@ -276,7 +276,7 @@ def parse_site_pages(
         title = pdata["h1_title"] or row["title"] or ""
         # Determine language
         body_text = "\n".join(b["text"] for b in blocks)
-        lang = row["lang"] or detect_lang(body_text) or "ro"
+        lang = normalize_lang(row["lang"], fallback_text=body_text)
 
         # Determine alternates
         try:
