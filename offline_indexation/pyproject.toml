@@ -8,4 +8,5 @@ dependencies = [
     "httpx>=0.28.1",
     "ocrmac>=1.0.1; sys_platform == 'darwin'",
     "selectolax>=0.4.12",
+    "trafilatura>=2.2.0",
 ]

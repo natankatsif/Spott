@@ -52,6 +52,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reparse", action="store_true", help="also parse already parsed files, with OCR")
     p.add_argument("--rebuild", action="store_true",
                    help="re-derive JSON/Markdown of parsed files from cached Docling output")
+    p.add_argument("--pages", action="store_true", help="parse crawled HTML pages instead of files")
+    p.add_argument("--sites", nargs="+", metavar="ID", help="site filter when parsing pages")
     return p.parse_args()
 
 
@@ -122,6 +124,41 @@ def main() -> None:
 
     registry = Registry(args.db)
     try:
+        if args.pages:
+            from collections import defaultdict
+            from crawler.config import load_sites
+            from parsing.html import parse_site_pages
+
+            pages = registry.pages_to_parse(args.sites, args.limit, args.reparse)
+            if not pages:
+                print("No pages to parse.")
+                return
+            config_path = args.data / "sources" / "sites.toml"
+            categories = {s.id: s.category for s in load_sites(config_path)} if config_path.exists() else {}
+            out_dir = args.data / "parsed" / "pages"
+            by_site: dict[str, list] = defaultdict(list)
+            for row in pages:
+                by_site[row["site"]].append(row)
+
+            started = time.monotonic()
+            total_stats = {"parsed": 0, "empty": 0, "failed": 0, "boilerplate_dropped": 0}
+            for site_id, site_rows in by_site.items():
+                t = time.monotonic()
+                stats = parse_site_pages(site_rows, args.data, categories, registry, out_dir)
+                for k in total_stats:
+                    total_stats[k] += stats.get(k, 0)
+                log.info("site %s: %d pages parsed, %d empty, %d dropped boilerplate (%.1fs)",
+                         site_id, stats["parsed"], stats["empty"], stats["boilerplate_dropped"], time.monotonic() - t)
+
+            print(f"\nPages parsing run ({time.monotonic() - started:.1f}s):")
+            print(f"  parsed:              {total_stats['parsed']}")
+            print(f"  empty (<200 chars):  {total_stats['empty']}")
+            print(f"  failed:              {total_stats['failed']}")
+            print(f"  boilerplate dropped: {total_stats['boilerplate_dropped']}")
+            counts = registry.status_counts()["pages"]
+            print("\nRegistry pages:", ", ".join(f"{k}={v}" for k, v in counts.items()))
+            return
+
         files = registry.files_to_parse(statuses, args.limit, args.sha)
         if not files:
             print("Nothing to parse.")

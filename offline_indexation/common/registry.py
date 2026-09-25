@@ -98,6 +98,19 @@ class Registry:
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._ensure_pages_columns()
+
+    def _ensure_pages_columns(self) -> None:
+        for col, col_def in [
+            ("parse_status", "TEXT NOT NULL DEFAULT 'pending'"),
+            ("html_hash", "TEXT"),
+            ("parsed_at", "TEXT"),
+            ("parse_error", "TEXT"),
+        ]:
+            try:
+                self.conn.execute(f"ALTER TABLE pages ADD COLUMN {col} {col_def}")
+            except sqlite3.OperationalError:
+                pass
 
     def close(self) -> None:
         self.conn.close()
@@ -216,7 +229,33 @@ class Registry:
                 (status, parser_version, error, now(), sha256),
             )
 
+    # --- pages parsing --------------------------------------------------------
+
+    def pages_to_parse(self, sites: list[str] | None = None, limit: int | None = None, reparse: bool = False):
+        query = "SELECT * FROM pages WHERE status < 400 AND html_file IS NOT NULL"
+        params: list = []
+        if not reparse:
+            query += " AND (parse_status = 'pending' OR parse_status IS NULL)"
+        if sites:
+            query += f" AND site IN ({', '.join('?' * len(sites))})"
+            params += sites
+        query += " ORDER BY fetched_at"
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+        return self.conn.execute(query, params).fetchall()
+
+    def mark_page_parsed(self, url: str, status: str, *, html_hash: str | None = None,
+                         error: str | None = None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE pages SET parse_status = ?, html_hash = ?, parsed_at = ?, parse_error = ? WHERE url = ?",
+                (status, html_hash, now(), error, url),
+            )
+
     def status_counts(self) -> dict[str, dict[str, int]]:
         docs = dict(self.conn.execute("SELECT status, COUNT(*) FROM documents GROUP BY status").fetchall())
         files = dict(self.conn.execute("SELECT parse_status, COUNT(*) FROM files GROUP BY parse_status").fetchall())
-        return {"documents": docs, "files": files}
+        pages = dict(self.conn.execute("SELECT parse_status, COUNT(*) FROM pages GROUP BY parse_status").fetchall())
+        return {"documents": docs, "files": files, "pages": pages}
+
