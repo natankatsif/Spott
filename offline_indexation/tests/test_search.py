@@ -49,3 +49,79 @@ def test_build_fts_query_empty_and_short():
     # Short words fallback
     tsq = build_fts_query("ce e")
     assert "ce" in tsq or tsq == ""
+
+
+def test_deduplicate_results_prefers_act_over_page():
+    from indexing.search import deduplicate_results
+
+    items = [
+        {
+            "chunk_id": "c_page",
+            "content_hash": "hash_same",
+            "kind": "page",
+            "doc_type": None,
+            "rrf_score": 0.035,
+            "text": "Text comun",
+            "citation_label": "Pagina oficiala",
+        },
+        {
+            "chunk_id": "c_act",
+            "content_hash": "hash_same",
+            "kind": "file",
+            "doc_type": "decizie",
+            "rrf_score": 0.025,
+            "text": "Text comun",
+            "citation_label": "Decizia nr. 10/2",
+        },
+    ]
+
+    deduped = deduplicate_results(items, k=5)
+    assert len(deduped) == 1
+    # File-act must win over page even if page had higher initial score
+    assert deduped[0]["chunk_id"] == "c_act"
+    assert deduped[0]["kind"] == "file"
+    assert deduped[0]["doc_type"] == "decizie"
+    # Inherits top RRF score
+    assert deduped[0]["rrf_score"] == 0.035
+
+
+def test_deduplicate_results_prefers_higher_rrf_for_same_kind():
+    from indexing.search import deduplicate_results
+
+    items = [
+        {
+            "chunk_id": "p1",
+            "content_hash": "hash_rep",
+            "kind": "page",
+            "doc_type": None,
+            "rrf_score": 0.010,
+            "text": "Informatii utile",
+        },
+        {
+            "chunk_id": "p2",
+            "content_hash": "hash_rep",
+            "kind": "page",
+            "doc_type": None,
+            "rrf_score": 0.045,
+            "text": "Informatii utile",
+        },
+    ]
+
+    deduped = deduplicate_results(items)
+    assert len(deduped) == 1
+    assert deduped[0]["chunk_id"] == "p2"
+    assert deduped[0]["rrf_score"] == 0.045
+
+
+def test_deduplicate_results_preserves_unique():
+    from indexing.search import deduplicate_results
+
+    items = [
+        {"chunk_id": "c1", "content_hash": "h1", "kind": "file", "rrf_score": 0.02, "text": "T1"},
+        {"chunk_id": "c2", "content_hash": "h2", "kind": "file", "rrf_score": 0.05, "text": "T2"},
+        {"chunk_id": "c3", "content_hash": "h3", "kind": "page", "rrf_score": 0.03, "text": "T3"},
+    ]
+
+    deduped = deduplicate_results(items, k=2)
+    assert len(deduped) == 2
+    assert [d["chunk_id"] for d in deduped] == ["c2", "c3"]

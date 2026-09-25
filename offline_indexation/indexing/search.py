@@ -78,6 +78,43 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def kind_priority(item: dict) -> int:
+    kind = item.get("kind", "")
+    doc_type = item.get("doc_type")
+    if kind == "file" and doc_type:
+        return 2  # official act file
+    if kind == "file":
+        return 1  # regular file
+    return 0  # page / other
+
+
+def deduplicate_results(results: list[dict], k: int | None = None) -> list[dict]:
+    """Deduplicates search results by content_hash, preferring official act files over pages, then higher RRF score."""
+    if not results:
+        return []
+
+    import hashlib
+
+    groups: dict[str, list[dict]] = {}
+    for r in results:
+        chash = r.get("content_hash")
+        if not chash and r.get("text"):
+            chash = hashlib.sha1(r["text"].encode("utf-8")).hexdigest()
+        chash = chash or r.get("chunk_id", "")
+        groups.setdefault(chash, []).append(r)
+
+    deduped = []
+    for chash, items in groups.items():
+        best = max(items, key=lambda x: (kind_priority(x), x.get("rrf_score", 0.0)))
+        max_rrf = max(x.get("rrf_score", 0.0) for x in items)
+        rep = dict(best)
+        rep["rrf_score"] = max_rrf
+        deduped.append(rep)
+
+    deduped.sort(key=lambda x: x.get("rrf_score", 0.0), reverse=True)
+    return deduped[:k] if k is not None else deduped
+
+
 class HybridSearcher:
     def __init__(self, conn: psycopg.Connection | None = None):
         self.conn = conn or get_connection(autocommit=True)
@@ -104,7 +141,7 @@ class HybridSearcher:
         with self.conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT chunk_id, citation_label, url, lang, text,
+                SELECT chunk_id, citation_label, url, lang, text, content_hash, kind, doc_type,
                        1 - (embedding <=> %s::vector) AS sim
                 FROM chunks
                 WHERE embedding IS NOT NULL
@@ -121,7 +158,10 @@ class HybridSearcher:
                     "url": row[2] or "",
                     "lang": row[3] or "",
                     "text": row[4],
-                    "score": row[5],
+                    "content_hash": row[5],
+                    "kind": row[6],
+                    "doc_type": row[7],
+                    "score": row[8],
                 })
 
         # 2. Full-text search (top-40)
@@ -132,7 +172,7 @@ class HybridSearcher:
                 try:
                     cur.execute(
                         """
-                        SELECT chunk_id, citation_label, url, lang, text,
+                        SELECT chunk_id, citation_label, url, lang, text, content_hash, kind, doc_type,
                                ts_rank_cd(tsv, to_tsquery('simple', immutable_unaccent(%s))) AS rank_score
                         FROM chunks
                         WHERE tsv @@ to_tsquery('simple', immutable_unaccent(%s))
@@ -149,7 +189,10 @@ class HybridSearcher:
                             "url": row[2] or "",
                             "lang": row[3] or "",
                             "text": row[4],
-                            "score": row[5],
+                            "content_hash": row[5],
+                            "kind": row[6],
+                            "doc_type": row[7],
+                            "score": row[8],
                         })
                 except Exception as e:
                     log.warning("FTS query failed for '%s' (fts_query='%s'): %s", query, fts_query, e)
@@ -183,10 +226,12 @@ class HybridSearcher:
                 "url": c["url"],
                 "lang": c["lang"],
                 "text": c["text"],
+                "content_hash": c.get("content_hash"),
+                "kind": c.get("kind"),
+                "doc_type": c.get("doc_type"),
             })
 
-        scored.sort(key=lambda x: x["rrf_score"], reverse=True)
-        return scored[:k]
+        return deduplicate_results(scored, k=k)
 
 
 def main() -> None:
