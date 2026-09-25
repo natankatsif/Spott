@@ -259,10 +259,159 @@ def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
     return merged
 
 
-def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[dict]:
-    """Merges chunks < 150 chars with neighbors in same section/article, and drops isolated tails < 30 chars."""
+SUB_ARTICLE_PAT = re.compile(
+    r"^(?:pct\.|п\.|alin\.|ч\.|lit\.|подп\.)(?:\s|$)",
+    re.IGNORECASE,
+)
+LEGAL_ITEM_PAT = re.compile(
+    r"^(.*?\b(?:pct\.|п\.|alin\.|ч\.|lit\.|подп\.)\s*)([\d]+(?:\.[\d]+)*|[a-zA-Zа-яА-Я])(\)?)",
+    re.IGNORECASE,
+)
+
+
+def make_range_label(first: str, last: str) -> str:
+    """Creates a range label from first and last legal item labels (e.g. 'pct. 2' and 'pct. 4' -> 'pct. 2–4')."""
+    m1 = LEGAL_ITEM_PAT.match(first)
+    m2 = LEGAL_ITEM_PAT.match(last)
+    if m1 and m2:
+        prefix1, val1, s1 = m1.group(1), m1.group(2), m1.group(3)
+        prefix2, val2, s2 = m2.group(1), m2.group(2), m2.group(3)
+        if s1 == ")" and s2 == ")":
+            return f"{prefix1}{val1})–{val2})"
+        return f"{prefix1}{val1}–{val2}{s2}"
+    return f"{first}–{last}"
+
+
+def are_compatible_legal_items(a_last: str, b_last: str) -> bool:
+    """Checks if two legal item identifiers belong to the same level/type (e.g. both are pct.)."""
+    if not (SUB_ARTICLE_PAT.match(a_last) and SUB_ARTICLE_PAT.match(b_last)):
+        return False
+    m1 = LEGAL_ITEM_PAT.match(a_last)
+    m2 = LEGAL_ITEM_PAT.match(b_last)
+    if not (m1 and m2):
+        return False
+    return m1.group(1).strip().lower() == m2.group(1).strip().lower()
+
+
+def merge_legal_group(group: list[dict], parser_version: str = "2") -> dict:
+    """Merges a sequence of short legal item chunks with the same parent."""
+    first = group[0]
+    last = group[-1]
+    merged_text = "\n".join(c["text"] for c in group)
+    parent = first.get("legal_path", [])[:-1]
+    first_last = first["legal_path"][-1]
+    final_last = last["legal_path"][-1]
+    range_last = make_range_label(first_last, final_last)
+    merged_legal_path = parent + [range_last]
+
+    meta = {
+        "title": first.get("title"),
+        "doc_type": first.get("doc_type"),
+        "number": first.get("number"),
+        "date": first.get("date"),
+        "category": first.get("category"),
+        "site": first.get("site"),
+        "url": first.get("url"),
+        "found_on": first.get("found_on"),
+    }
+    kind = first.get("kind", "file")
+    section = first.get("section", [])
+    citation_label = make_citation_label(meta, kind, merged_legal_path, section)
+    title = meta.get("title") or ""
+    embed_text = f"{title}\n{citation_label}\n{merged_text}"
+
+    block_ids = list(dict.fromkeys(b_id for c in group for b_id in c.get("block_ids", [])))
+    pages = sorted(set(p for c in group for p in c.get("pages", [])))
+    bboxes = [b for c in group for b in c.get("bboxes", [])]
+
+    first_b_id = block_ids[0] if block_ids else 0
+    last_b_id = block_ids[-1] if block_ids else 0
+    doc_id = first["doc_id"]
+    chunk_id_raw = f"{doc_id}:{first_b_id}:{last_b_id}:0:{parser_version}"
+    chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
+
+    merged = dict(first)
+    merged.update({
+        "chunk_id": chunk_id,
+        "text": merged_text,
+        "embed_text": embed_text,
+        "citation_label": citation_label,
+        "legal_path": merged_legal_path,
+        "block_ids": block_ids,
+        "pages": pages,
+        "bboxes": bboxes,
+        "char_count": len(merged_text),
+        "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
+        "has_contacts": any(c.get("has_contacts", False) for c in group) or check_contacts(merged_text),
+    })
+    return merged
+
+
+def merge_short_legal_items(chunks: list[dict], parser_version: str = "2") -> list[dict]:
+    """Merges consecutive short legal items (< 300 chars) with same parent in legal_path."""
     if not chunks:
         return []
+
+    result = []
+    i = 0
+    while i < len(chunks):
+        c = chunks[i]
+        c_lp = c.get("legal_path") or []
+        if (
+            not c.get("is_table")
+            and len(c.get("text", "")) < 300
+            and bool(c_lp)
+            and SUB_ARTICLE_PAT.match(c_lp[-1])
+        ):
+            group = [c]
+            cur_len = len(c.get("text", ""))
+            parent = c_lp[:-1]
+            last_elem = c_lp[-1]
+
+            j = i + 1
+            while j < len(chunks):
+                nxt = chunks[j]
+                nxt_lp = nxt.get("legal_path") or []
+                if (
+                    not nxt.get("is_table")
+                    and nxt.get("doc_id") == c.get("doc_id")
+                    and len(nxt.get("text", "")) < 300
+                    and bool(nxt_lp)
+                    and nxt_lp[:-1] == parent
+                    and are_compatible_legal_items(last_elem, nxt_lp[-1])
+                    and nxt.get("section") == c.get("section")
+                    and nxt.get("lang") == c.get("lang")
+                    and cur_len + 1 + len(nxt.get("text", "")) <= MAX_MERGE_CHARS
+                ):
+                    group.append(nxt)
+                    cur_len += 1 + len(nxt.get("text", ""))
+                    j += 1
+                else:
+                    break
+
+            if len(group) > 1:
+                result.append(merge_legal_group(group, parser_version))
+                i = j
+            else:
+                result.append(c)
+                i += 1
+        else:
+            result.append(c)
+            i += 1
+
+    return result
+
+
+def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[dict]:
+    """1. Merges adjacent short legal items (< 300 chars, same parent in legal_path).
+    2. Merges chunks < 150 chars with neighbors in same section/article.
+    3. Drops isolated tails < 30 chars.
+    """
+    if not chunks:
+        return []
+
+    # 1. Merge adjacent short legal items (< 300 chars, same parent in legal_path)
+    chunks = merge_short_legal_items(chunks, parser_version=parser_version)
 
     # 1. Merge chunks < 150 chars with neighbor in same section / legal_path / lang
     changed = True

@@ -238,3 +238,63 @@ def test_split_long_text_no_newlines_and_giant_word():
     # Overlap verification
     for i in range(len(parts_giant) - 1):
         assert parts_giant[i][-100:] in parts_giant[i + 1] or parts_giant[i + 1][:100] in parts_giant[i]
+
+
+def test_merge_three_short_puncts_into_range():
+    """3 consecutive short legal items (< 300 chars) with same parent merge into a single chunk with range."""
+    doc = {
+        "sha256": "short_pct_doc",
+        "metadata": {"title": "Decizia CMC nr. 10", "doc_type": "decizie", "number": "10", "date": "2023-05-12"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Anexa nr. 2", "section": ["Anexa 2"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "2. Achiziția de vehicule pentru transport public.", "section": ["Anexa 2"], "lang": "ro"},
+            {"id": 2, "type": "paragraph", "text": "3. Repararea căilor de acces către parcuri.", "section": ["Anexa 2"], "lang": "ro"},
+            {"id": 3, "type": "paragraph", "text": "4. Construcția unei stații noi de pompare.", "section": ["Anexa 2"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    # The 3 puncts (2, 3, 4) should merge into a single range chunk: pct. 2–4
+    assert len(chunks) == 1
+    c = chunks[0]
+    assert c["legal_path"] == ["Anexa nr. 2", "pct. 2–4"]
+    assert "2. Achiziția de vehicule" in c["text"]
+    assert "3. Repararea căilor" in c["text"]
+    assert "4. Construcția unei stații" in c["text"]
+    assert "\n" in c["text"]
+    assert "pct. 2–4" in c["citation_label"]
+
+
+def test_long_puncts_not_merged():
+    """Legal items >= 300 chars must not be merged with adjacent items."""
+    long_text_1 = "1. Punct lung cu detalii tehnice ample: " + ("descriere detaliată a lucrărilor de infrastructură urbană " * 6)  # > 350 chars
+    short_text_2 = "2. Punct scurt secundar de verificare operațională."
+    doc = {
+        "sha256": "long_pct_doc",
+        "metadata": {"title": "Decizia nr. 5", "doc_type": "decizie", "number": "5", "date": "2023-01-10"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": long_text_1, "section": ["S1"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": short_text_2, "section": ["S1"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 2
+    assert chunks[0]["legal_path"] == ["pct. 1"]
+    assert chunks[1]["legal_path"] == ["pct. 2"]
+
+
+def test_different_parents_not_merged():
+    """Short items with different parents in legal_path must NOT be merged together."""
+    doc = {
+        "sha256": "diff_parents_doc",
+        "metadata": {"title": "Decizia nr. 8", "doc_type": "decizie", "number": "8", "date": "2023-02-15"},
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Anexa nr. 1", "section": ["A1"], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "1. Punct în prima anexă scurt.", "section": ["A1"], "lang": "ro"},
+            {"id": 2, "type": "paragraph", "text": "Anexa nr. 2", "section": ["A2"], "lang": "ro"},
+            {"id": 3, "type": "paragraph", "text": "2. Punct în a doua anexă scurt.", "section": ["A2"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 2
+    assert chunks[0]["legal_path"] == ["Anexa nr. 1", "pct. 1"]
+    assert chunks[1]["legal_path"] == ["Anexa nr. 2", "pct. 2"]
