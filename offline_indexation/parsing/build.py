@@ -13,9 +13,19 @@ import sys
 from pathlib import Path
 
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import OcrMacOptions, PdfPipelineOptions, TesseractCliOcrOptions
+from docling.datamodel.pipeline_options import (
+    OcrMacOptions,
+    PdfPipelineOptions,
+    TesseractCliOcrOptions,
+)
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types.doc import DocItemLabel, DoclingDocument, SectionHeaderItem, TableItem, TextItem
+from docling_core.types.doc import (
+    DocItemLabel,
+    DoclingDocument,
+    SectionHeaderItem,
+    TableItem,
+    TextItem,
+)
 
 from . import metadata
 from .normalize import detect_lang, normalize_text

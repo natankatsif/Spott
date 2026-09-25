@@ -6,11 +6,11 @@ and length constraints.
 """
 
 import hashlib
-import json
 import re
-from pathlib import Path
-from common.text import check_contacts, format_table_markdown, has_contacts
+
+from common.text import check_contacts, format_table_markdown
 from parsing.normalize import normalize_lang
+
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
 
 MAX_MERGE_CHARS = 1500
@@ -282,7 +282,7 @@ def make_range_label(first: str, last: str) -> str:
     m2 = LEGAL_ITEM_PAT.match(last)
     if m1 and m2:
         prefix1, val1, s1 = m1.group(1), m1.group(2), m1.group(3)
-        prefix2, val2, s2 = m2.group(1), m2.group(2), m2.group(3)
+        val2, s2 = m2.group(2), m2.group(3)
         if s1 == ")" and s2 == ")":
             return f"{prefix1}{val1})–{val2})"
         return f"{prefix1}{val1}–{val2}{s2}"
@@ -477,6 +477,42 @@ def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[di
     return filtered
 
 
+HEADING_TYPES = ("heading", "title", "section_header")
+
+
+def is_heading(block: dict) -> bool:
+    return block.get("type") in HEADING_TYPES
+
+
+def starts_new_group(group: list[dict], group_len: int, block: dict) -> bool:
+    """Whether `block` must start a new chunk instead of joining `group`.
+
+    Headings attach to the content that follows them; a group closes when a new
+    heading follows content, or on a change of section, legal path or language,
+    or when the group would exceed MAX_MERGE_CHARS.
+    """
+    if not group:
+        return False
+    prev = group[-1]
+    has_content = any(not is_heading(b) for b in group)
+
+    if is_heading(block):
+        if has_content:
+            return True
+        # Only headings so far: keep nesting sub-headings, close on a sibling/parent heading.
+        parent = (*prev.get("section", []), prev.get("text", "").strip())
+        section = tuple(block.get("section", []))
+        return not (section and section[: len(parent)] == parent)
+
+    lang_changed = bool(prev.get("lang") and block.get("lang") and prev["lang"] != block["lang"])
+    too_long = group_len + len(block.get("text", "").strip()) + 2 > MAX_MERGE_CHARS
+    if not has_content:
+        return lang_changed or too_long
+    return (lang_changed or too_long
+            or tuple(prev.get("legal_path", [])) != tuple(block.get("legal_path", []))
+            or tuple(prev.get("section", [])) != tuple(block.get("section", [])))
+
+
 def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
     """Chunks either a parsed file document or a parsed page document."""
     kind = doc.get("kind", "file")
@@ -606,48 +642,8 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                 ))
             continue
 
-        is_heading = (b_type in ("heading", "title", "section_header"))
-        has_non_heading = any(b.get("type") not in ("heading", "title", "section_header") for b in cur_group)
-
-        if is_heading:
-            # If current group already has content (non-heading blocks), this new heading
-            # marks the start of a new section/group -> flush previous group.
-            if has_non_heading:
-                flush_group()
-            else:
-                # cur_group contains only headings.
-                # If the new heading is not a child of existing heading, flush previous.
-                if cur_group:
-                    prev_h = cur_group[-1]
-                    prev_sec_extended = tuple(prev_h.get("section", [])) + (prev_h.get("text", "").strip(),)
-                    curr_sec = tuple(block.get("section", []))
-                    if not (curr_sec and curr_sec[:len(prev_sec_extended)] == prev_sec_extended):
-                        flush_group()
-        else:
-            # Current block is a content block (paragraph, list_item, etc.)
-            if cur_group:
-                prev = cur_group[-1]
-                prev_lang = prev.get("lang")
-                curr_lang = block.get("lang")
-                lang_changed = bool(prev_lang and curr_lang and prev_lang != curr_lang)
-
-                prev_legal = tuple(prev.get("legal_path", []))
-                curr_legal = tuple(block.get("legal_path", []))
-                legal_changed = (prev_legal != curr_legal)
-
-                if has_non_heading:
-                    prev_sec = tuple(prev.get("section", []))
-                    curr_sec = tuple(block.get("section", []))
-                    sec_changed = (prev_sec != curr_sec)
-                    length_exceeded = (cur_len + len(b_text) + 2 > MAX_MERGE_CHARS)
-
-                    if legal_changed or sec_changed or lang_changed or length_exceeded:
-                        flush_group()
-                else:
-                    # cur_group contains only headings. Headings attach to this content.
-                    length_exceeded = (cur_len + len(b_text) + 2 > MAX_MERGE_CHARS)
-                    if lang_changed or length_exceeded:
-                        flush_group()
+        if starts_new_group(cur_group, cur_len, block):
+            flush_group()
 
         cur_group.append(block)
         cur_len += len(b_text) + 2

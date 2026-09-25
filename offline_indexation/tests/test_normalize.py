@@ -1,7 +1,8 @@
 """Tests for parsing/normalize.py: text normalization and language code normalization."""
 
 import pytest
-from parsing.normalize import detect_lang, normalize_lang, normalize_text
+
+from parsing.normalize import normalize_lang
 
 
 @pytest.mark.parametrize(

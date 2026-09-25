@@ -1,9 +1,9 @@
 """Database connection and schema initialization for pgvector."""
 
 import os
-from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
+
 import psycopg
+from dotenv import find_dotenv, load_dotenv
 from pgvector.psycopg import register_vector
 
 load_dotenv(find_dotenv())

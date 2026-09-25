@@ -41,7 +41,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
     if args.stats:
-        from scripts.corpus_stats import calculate_corpus_metrics, generate_markdown_table
+        from scripts.corpus_stats import (
+            calculate_corpus_metrics,
+            generate_markdown_table,
+        )
         m = calculate_corpus_metrics(args.data)
         print(f"Documents: {m['parsed_files']} files, {m['parsed_pages']} pages (Total: {m['total_docs']})")
         print(f"Chunks:    {m['total_chunks']} (file: {m['file_chunks']}, page: {m['page_chunks']})")

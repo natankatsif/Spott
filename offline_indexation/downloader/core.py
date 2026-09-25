@@ -57,9 +57,9 @@ def download_url(url: str) -> str:
 def file_extension(url_extension: str, resp: httpx.Response, ctype: str) -> str:
     if url_extension in DOC_EXTENSIONS:
         return url_extension
-    if m := FILENAME.search(resp.headers.get("content-disposition", "")):
-        if suffix := PurePosixPath(unquote(m.group(1))).suffix.lower():
-            return suffix
+    m = FILENAME.search(resp.headers.get("content-disposition", ""))
+    if m and (suffix := PurePosixPath(unquote(m.group(1))).suffix.lower()):
+        return suffix
     return mimetypes.guess_extension(ctype) or ""
 
 

@@ -7,19 +7,17 @@ Output: data/parsed/pages/<url_hash>.json
 import hashlib
 import json
 import logging
-import re
 import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
 import trafilatura
-from selectolax.parser import HTMLParser
 
 from common.registry import Registry
+from common.text import format_table_markdown, has_contacts
 from common.urls import url_key
 
-from common.text import format_table_markdown, has_contacts
-from .normalize import detect_lang, normalize_lang, normalize_text
+from .normalize import normalize_lang, normalize_text
 
 log = logging.getLogger("parsing.html")
 

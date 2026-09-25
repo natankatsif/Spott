@@ -14,7 +14,6 @@ Enforces hierarchical stack popping and prevents false positives (e.g. citations
 
 import re
 from enum import IntEnum
-from typing import Optional, Tuple
 
 
 class LegalLevel(IntEnum):
@@ -61,7 +60,7 @@ LIT_RE = re.compile(
 )
 
 
-def match_legal_item(text: str, marker: str = "") -> Optional[Tuple[int, str]]:
+def match_legal_item(text: str, marker: str = "") -> tuple[int, str] | None:
     """Inspects text (and optional marker) to find if it begins with a legal structural item."""
     candidate = text.strip()
     if not candidate:
@@ -137,7 +136,7 @@ def match_legal_item(text: str, marker: str = "") -> Optional[Tuple[int, str]]:
     return None
 
 
-def is_act_or_has_major_legal(meta: Optional[dict] = None, blocks: Optional[list[dict]] = None) -> bool:
+def is_act_or_has_major_legal(meta: dict | None = None, blocks: list[dict] | None = None) -> bool:
     """Checks if a document is an official act or contains major legal structural markers (Anexa, Capitol, Secțiune, Articol)."""
     if meta and meta.get("doc_type"):
         return True

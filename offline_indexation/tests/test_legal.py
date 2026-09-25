@@ -1,6 +1,7 @@
 """Tests for chunking/legal.py: legal hierarchy matching, stack popping, false positive rejection."""
 
 import pytest
+
 from chunking.legal import LegalHierarchyTracker, LegalLevel, match_legal_item
 
 

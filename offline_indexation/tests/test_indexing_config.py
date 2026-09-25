@@ -1,8 +1,7 @@
 """Tests for indexing/__main__.py argument parsing and stale file cleanup."""
 
 import json
-from pathlib import Path
-import pytest
+
 from indexing.__main__ import chunk_all, parse_args
 
 

@@ -21,7 +21,6 @@ import statistics
 from collections import Counter
 from pathlib import Path
 
-
 # Fixed baseline from Task 01 review
 BASELINE_01 = {
     "total_chunks": 3339,

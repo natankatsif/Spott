@@ -12,7 +12,7 @@ CHAR_FIXES = str.maketrans({
 })
 
 # Latin and Cyrillic letters that look the same; OCR and copy-paste mix them inside one word.
-LAT_TO_CYR = dict(zip("aceopxyABCEHKMOPTX", "асеорхуАВСЕНКМОРТХ"))
+LAT_TO_CYR = dict(zip("aceopxyABCEHKMOPTX", "асеорхуАВСЕНКМОРТХ", strict=True))
 CYR_TO_LAT = {v: k for k, v in LAT_TO_CYR.items()}
 
 WORD = re.compile(r"\w+")
@@ -38,8 +38,8 @@ def _fix_mixed_word(m: re.Match) -> str:
         return word
     table = LAT_TO_CYR if cyr > lat else CYR_TO_LAT
     minority = "lat" if cyr > lat else "cyr"
-    if all(ch in table for ch, s in zip(word, scripts) if s == minority):
-        return "".join(table.get(ch, ch) if s == minority else ch for ch, s in zip(word, scripts))
+    if all(ch in table for ch, s in zip(word, scripts, strict=True) if s == minority):
+        return "".join(table.get(ch, ch) if s == minority else ch for ch, s in zip(word, scripts, strict=True))
     return word
 
 

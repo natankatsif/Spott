@@ -1,6 +1,5 @@
 """Tests for chunking/chunker.py: merging, splitting, tables with repeating headers, boundary rules."""
 
-import pytest
 from chunking.chunker import chunk_document, chunk_table_block, split_long_text
 
 

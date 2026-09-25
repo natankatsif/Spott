@@ -7,9 +7,10 @@
     document_versions  history of contents seen at each document URL
 """
 
+import contextlib
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA = """
@@ -86,7 +87,7 @@ CREATE TABLE IF NOT EXISTS document_versions (
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 class Registry:
@@ -107,10 +108,8 @@ class Registry:
             ("parsed_at", "TEXT"),
             ("parse_error", "TEXT"),
         ]:
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 self.conn.execute(f"ALTER TABLE pages ADD COLUMN {col} {col_def}")
-            except sqlite3.OperationalError:
-                pass
 
     def close(self) -> None:
         self.conn.close()
@@ -218,7 +217,7 @@ class Registry:
             "WHERE d.sha256 = ? ORDER BY s.depth IS NULL, s.depth, s.discovered_at",
             (sha256,),
         ).fetchall()
-        return [{k: row[k] for k in row.keys() if row[k] not in (None, "")} for row in rows]
+        return [{k: row[k] for k in row if row[k] not in (None, "")} for row in rows]
 
     def mark_parsed(self, sha256: str, status: str, *, parser_version: str | None = None,
                     error: str | None = None) -> None:

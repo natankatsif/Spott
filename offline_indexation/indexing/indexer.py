@@ -1,373 +1,152 @@
-"""Incremental indexing of chunks and documents into PostgreSQL with pgvector."""
+"""Incremental indexing of chunks into PostgreSQL + pgvector.
+
+Flow (see __main__.py):
+    upsert_documents  -> documents rows exist before their chunks (FK)
+    embed_and_store   -> reuse embeddings by content_hash, embed the rest in
+                         length-sorted batches, write each batch immediately
+                         (an interrupted run resumes where it stopped)
+    delete_stale_chunks / clean_orphaned_documents
+"""
 
 import json
 import logging
 import time
-from typing import Any
 
 import numpy as np
 import psycopg
-from .db import get_connection, init_db
-from .embeddings import get_device, get_embedding_model
+
+from .db import get_connection
+from .embeddings import free_device_cache, get_device, get_embedding_model
 
 log = logging.getLogger("indexing.indexer")
 
-MODEL_NAME = "BAAI/bge-m3"
+WRITE_BATCH = 128  # chunks embedded and written per step
+
+DOCUMENT_COLUMNS = ("doc_id", "kind", "title", "doc_type", "number", "date", "category", "site",
+                    "url", "found_on", "lang", "page_sizes")
+CHUNK_COLUMNS = ("chunk_id", "doc_id", "kind", "text", "embed_text", "citation_label",
+                 "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes", "lang",
+                 "char_count", "content_hash", "has_contacts", "is_table",
+                 "title", "doc_type", "number", "date", "category", "site", "url", "found_on", "embedding")
+JSON_COLUMNS = {"page_sizes", "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes"}
+
+
+def upsert_sql(table: str, columns: tuple[str, ...], key: str, touch: str | None = None) -> str:
+    """INSERT … ON CONFLICT (key) DO UPDATE SET every other column (+ touch = NOW())."""
+    names = list(columns) + ([touch] if touch else [])
+    values = ["%s"] * len(columns) + (["NOW()"] if touch else [])
+    updates = [f"{c} = EXCLUDED.{c}" for c in names if c != key]
+    return (f"INSERT INTO {table} ({', '.join(names)}) VALUES ({', '.join(values)}) "
+            f"ON CONFLICT ({key}) DO UPDATE SET {', '.join(updates)}")
+
+
+UPSERT_DOCUMENT = upsert_sql("documents", DOCUMENT_COLUMNS, "doc_id", touch="indexed_at")
+UPSERT_CHUNK = upsert_sql("chunks", CHUNK_COLUMNS, "chunk_id")
+
+
+def row_values(record: dict, columns: tuple[str, ...]) -> list:
+    """Chunk/document dict -> SQL parameters in column order (JSON-encodes list fields)."""
+    values = []
+    for col in columns:
+        value = record.get(col)
+        if col in JSON_COLUMNS:
+            value = json.dumps(value or [], ensure_ascii=False)
+        elif col == "embedding" and value is not None:
+            value = np.asarray(value, dtype=np.float32)
+        elif col in ("has_contacts", "is_table"):
+            value = bool(value)
+        values.append(value)
+    return values
+
+
+def document_record(doc_id: str, first_chunk: dict) -> dict:
+    """Document metadata is copied onto every chunk by the chunker; take it from the first one."""
+    return {"kind": "file"} | {c: first_chunk.get(c) for c in DOCUMENT_COLUMNS if c in first_chunk} | {"doc_id": doc_id}
 
 
 class Indexer:
     def __init__(self, conn: psycopg.Connection | None = None, batch_size: int = 32):
         self.conn = conn or get_connection(autocommit=True)
         self.batch_size = batch_size
-        self._model = None
         self.device = get_device()
 
     @property
     def model(self):
-        if self._model is None:
-            self._model = get_embedding_model(self.device)
-        return self._model
+        return get_embedding_model(self.device)
+
+    # --- documents -----------------------------------------------------------
+
+    def upsert_documents(self, by_doc: dict[str, list[dict]]) -> None:
+        rows = [row_values(document_record(doc_id, chunks[0]), DOCUMENT_COLUMNS)
+                for doc_id, chunks in by_doc.items() if chunks]
+        with self.conn.cursor() as cur:
+            cur.executemany(UPSERT_DOCUMENT, rows)
+
+    # --- chunks --------------------------------------------------------------
 
     def find_cached_embeddings(self, content_hashes: list[str]) -> dict[str, list[float]]:
-        """Returns existing embeddings for matching content hashes."""
+        """Embeddings already in the index for these texts (keyed by content_hash)."""
         if not content_hashes:
             return {}
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT content_hash, embedding FROM chunks "
+                "SELECT DISTINCT ON (content_hash) content_hash, embedding FROM chunks "
                 "WHERE content_hash = ANY(%s) AND embedding IS NOT NULL",
                 (content_hashes,),
             )
-            rows = cur.fetchall()
-            cached = {}
-            for h, emb in rows:
-                if h not in cached and emb is not None:
-                    # emb from pgvector is numpy array or list
-                    cached[h] = emb.tolist() if hasattr(emb, "tolist") else list(emb)
-            return cached
+            return {h: emb for h, emb in cur.fetchall()}
 
-    def upsert_document_meta(self, doc_id: str, first: dict) -> None:
-        """Upserts document row into documents table."""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO documents (doc_id, kind, title, doc_type, number, date, category, site, url, found_on, lang, page_sizes, indexed_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (doc_id) DO UPDATE SET
-                  kind = EXCLUDED.kind,
-                  title = EXCLUDED.title,
-                  doc_type = EXCLUDED.doc_type,
-                  number = EXCLUDED.number,
-                  date = EXCLUDED.date,
-                  category = EXCLUDED.category,
-                  site = EXCLUDED.site,
-                  url = EXCLUDED.url,
-                  found_on = EXCLUDED.found_on,
-                  lang = EXCLUDED.lang,
-                  page_sizes = EXCLUDED.page_sizes,
-                  indexed_at = NOW();
-                """,
-                (
-                    doc_id,
-                    first.get("kind", "file"),
-                    first.get("title"),
-                    first.get("doc_type"),
-                    first.get("number"),
-                    first.get("date"),
-                    first.get("category"),
-                    first.get("site"),
-                    first.get("url"),
-                    first.get("found_on"),
-                    first.get("lang"),
-                    json.dumps(first.get("page_sizes", []), ensure_ascii=False),
-                ),
-            )
-        self.conn.commit()
-
-    def upsert_chunks_batch(self, chunks: list[dict]) -> None:
-        """Upserts a batch of chunks into the chunks table immediately."""
+    def write_chunks(self, chunks: list[dict]) -> None:
         if not chunks:
             return
         with self.conn.cursor() as cur:
-            for c in chunks:
-                parent_lp = c.get("parent_legal_path")
-                if parent_lp is None:
-                    parent_lp = c.get("legal_path", [])[:-1] if c.get("legal_path") else []
+            cur.executemany(UPSERT_CHUNK, [row_values(c, CHUNK_COLUMNS) for c in chunks])
 
-                emb = c.get("embedding")
-                emb_arr = np.array(emb, dtype=np.float32) if emb is not None else None
-
-                cur.execute(
-                    """
-                    INSERT INTO chunks (
-                      chunk_id, doc_id, kind, text, embed_text, citation_label,
-                      section, legal_path, parent_legal_path, block_ids, pages, bboxes, lang,
-                      char_count, content_hash, has_contacts, is_table,
-                      title, doc_type, number, date, category, site, url, found_on, embedding
-                    ) VALUES (
-                      %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    ) ON CONFLICT (chunk_id) DO UPDATE SET
-                      text = EXCLUDED.text,
-                      embed_text = EXCLUDED.embed_text,
-                      citation_label = EXCLUDED.citation_label,
-                      section = EXCLUDED.section,
-                      legal_path = EXCLUDED.legal_path,
-                      parent_legal_path = EXCLUDED.parent_legal_path,
-                      block_ids = EXCLUDED.block_ids,
-                      pages = EXCLUDED.pages,
-                      bboxes = EXCLUDED.bboxes,
-                      lang = EXCLUDED.lang,
-                      char_count = EXCLUDED.char_count,
-                      content_hash = EXCLUDED.content_hash,
-                      has_contacts = EXCLUDED.has_contacts,
-                      is_table = EXCLUDED.is_table,
-                      title = EXCLUDED.title,
-                      doc_type = EXCLUDED.doc_type,
-                      number = EXCLUDED.number,
-                      date = EXCLUDED.date,
-                      category = EXCLUDED.category,
-                      site = EXCLUDED.site,
-                      url = EXCLUDED.url,
-                      found_on = EXCLUDED.found_on,
-                      embedding = EXCLUDED.embedding;
-                    """,
-                    (
-                        c["chunk_id"],
-                        c["doc_id"],
-                        c.get("kind", "file"),
-                        c["text"],
-                        c["embed_text"],
-                        c["citation_label"],
-                        json.dumps(c.get("section", []), ensure_ascii=False) if isinstance(c.get("section"), list) else c.get("section", ""),
-                        json.dumps(c.get("legal_path", []), ensure_ascii=False),
-                        json.dumps(parent_lp, ensure_ascii=False),
-                        json.dumps(c.get("block_ids", []), ensure_ascii=False),
-                        json.dumps(c.get("pages", []), ensure_ascii=False),
-                        json.dumps(c.get("bboxes", []), ensure_ascii=False),
-                        c.get("lang"),
-                        c.get("char_count", len(c["text"])),
-                        c["content_hash"],
-                        c.get("has_contacts", False),
-                        c.get("is_table", False),
-                        c.get("title"),
-                        c.get("doc_type"),
-                        c.get("number"),
-                        c.get("date"),
-                        c.get("category"),
-                        c.get("site"),
-                        c.get("url"),
-                        c.get("found_on"),
-                        emb_arr,
-                    ),
-                )
-        self.conn.commit()
-
-    def compute_embeddings(self, chunks: list[dict]) -> tuple[int, int]:
-        """Assigns embeddings to chunks, reusing cached ones whenever possible.
-        Returns (reused_count, computed_count).
-        """
+    def embed_and_store(self, chunks: list[dict]) -> tuple[int, int]:
+        """Writes all chunks with embeddings. Returns (reused, computed)."""
         if not chunks:
             return 0, 0
+        cached = self.find_cached_embeddings(list({c["content_hash"] for c in chunks}))
 
-        hashes = list({c["content_hash"] for c in chunks})
-        cached = self.find_cached_embeddings(hashes)
+        reused = [c for c in chunks if c["content_hash"] in cached]
+        for c in reused:
+            c["embedding"] = cached[c["content_hash"]]
+        for start in range(0, len(reused), WRITE_BATCH):
+            self.write_chunks(reused[start:start + WRITE_BATCH])
 
-        to_embed = []
-        to_embed_indices = []
-        for i, c in enumerate(chunks):
-            chash = c["content_hash"]
-            if chash in cached:
-                c["embedding"] = cached[chash]
-            else:
-                to_embed.append(c["embed_text"])
-                to_embed_indices.append(i)
+        # Length-sorted batches waste less compute on padding.
+        todo = sorted((c for c in chunks if c["content_hash"] not in cached), key=lambda c: len(c["embed_text"]))
+        if todo:
+            log.info("Embedding %d chunks (reused %d) on %s", len(todo), len(reused), self.device)
+        started = time.monotonic()
+        for start in range(0, len(todo), WRITE_BATCH):
+            batch = todo[start:start + WRITE_BATCH]
+            vectors = self.model.encode([c["embed_text"] for c in batch], batch_size=self.batch_size,
+                                        normalize_embeddings=True, show_progress_bar=False)
+            for c, vec in zip(batch, vectors, strict=True):
+                c["embedding"] = vec
+            self.write_chunks(batch)
+            free_device_cache(self.device)
+            done = start + len(batch)
+            log.info("Embedded %d/%d (%.1f chunks/s)", done, len(todo), done / max(time.monotonic() - started, 1e-3))
+        return len(reused), len(todo)
 
-        reused_count = len(chunks) - len(to_embed)
-        computed_count = len(to_embed)
+    # --- cleanup -------------------------------------------------------------
 
-        if to_embed:
-            import torch
-
-            log.info("Computing embeddings for %d chunks (reused %d)...", computed_count, reused_count)
-            # Sort by text length to minimize padding overhead in batches
-            sorted_pairs = sorted(
-                zip(to_embed_indices, to_embed),
-                key=lambda p: len(p[1]),
-            )
-            sorted_indices = [p[0] for p in sorted_pairs]
-            sorted_texts = [p[1] for p in sorted_pairs]
-
-            slice_size = 128
-            t0 = time.time()
-            for start_idx in range(0, len(sorted_texts), slice_size):
-                sub_texts = sorted_texts[start_idx : start_idx + slice_size]
-                sub_indices = sorted_indices[start_idx : start_idx + slice_size]
-                sub_vectors = self.model.encode(
-                    sub_texts,
-                    batch_size=self.batch_size,
-                    normalize_embeddings=True,
-                    show_progress_bar=False,
-                )
-                for idx, vec in zip(sub_indices, sub_vectors):
-                    emb_list = vec.tolist() if hasattr(vec, "tolist") else list(vec)
-                    chunks[idx]["embedding"] = emb_list
-                    cached[chunks[idx]["content_hash"]] = emb_list
-
-                # Save batch to DB immediately so work is never lost
-                self.upsert_chunks_batch([chunks[idx] for idx in sub_indices])
-
-                if hasattr(torch, "mps") and torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-
-                done = min(start_idx + slice_size, len(sorted_texts))
-                rate = done / max(time.time() - t0, 0.001)
-                log.info(
-                    "Embedded & saved %d / %d chunks (%.1f%%) at %.1f chunks/s...",
-                    done,
-                    len(sorted_texts),
-                    done * 100.0 / len(sorted_texts),
-                    rate,
-                )
-
-        return reused_count, computed_count
-
-    def index_document(self, doc_id: str, chunks: list[dict]) -> None:
-        """Indexes all chunks for a single document, removing stale chunks."""
-        if not chunks:
-            # Delete document if it has no chunks
-            with self.conn.cursor() as cur:
-                cur.execute("DELETE FROM documents WHERE doc_id = %s", (doc_id,))
-            return
-
-        first = chunks[0]
+    def delete_stale_chunks(self, by_doc: dict[str, list[dict]]) -> int:
+        """Removes chunks of indexed documents that the chunker no longer produces."""
+        deleted = 0
         with self.conn.cursor() as cur:
-            # 1. Upsert document
-            cur.execute(
-                """
-                INSERT INTO documents (doc_id, kind, title, doc_type, number, date, category, site, url, found_on, lang, page_sizes, indexed_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                ON CONFLICT (doc_id) DO UPDATE SET
-                  kind = EXCLUDED.kind,
-                  title = EXCLUDED.title,
-                  doc_type = EXCLUDED.doc_type,
-                  number = EXCLUDED.number,
-                  date = EXCLUDED.date,
-                  category = EXCLUDED.category,
-                  site = EXCLUDED.site,
-                  url = EXCLUDED.url,
-                  found_on = EXCLUDED.found_on,
-                  lang = EXCLUDED.lang,
-                  page_sizes = EXCLUDED.page_sizes,
-                  indexed_at = NOW();
-                """,
-                (
-                    doc_id,
-                    first.get("kind", "file"),
-                    first.get("title"),
-                    first.get("doc_type"),
-                    first.get("number"),
-                    first.get("date"),
-                    first.get("category"),
-                    first.get("site"),
-                    first.get("url"),
-                    first.get("found_on"),
-                    first.get("lang"),
-                    json.dumps(first.get("page_sizes", []), ensure_ascii=False),
-                ),
-            )
-
-            # 2. Upsert chunks
-            chunk_ids = []
-            for c in chunks:
-                chunk_ids.append(c["chunk_id"])
-                parent_lp = c.get("parent_legal_path")
-                if parent_lp is None:
-                    parent_lp = c.get("legal_path", [])[:-1] if c.get("legal_path") else []
-
-                cur.execute(
-                    """
-                    INSERT INTO chunks (
-                      chunk_id, doc_id, kind, text, embed_text, citation_label,
-                      section, legal_path, parent_legal_path, block_ids, pages, bboxes, lang,
-                      char_count, content_hash, has_contacts, is_table,
-                      title, doc_type, number, date, category, site, url, found_on, embedding
-                    ) VALUES (
-                      %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s,
-                      %s, %s, %s, %s,
-                      %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    ) ON CONFLICT (chunk_id) DO UPDATE SET
-                      text = EXCLUDED.text,
-                      embed_text = EXCLUDED.embed_text,
-                      citation_label = EXCLUDED.citation_label,
-                      section = EXCLUDED.section,
-                      legal_path = EXCLUDED.legal_path,
-                      parent_legal_path = EXCLUDED.parent_legal_path,
-                      block_ids = EXCLUDED.block_ids,
-                      pages = EXCLUDED.pages,
-                      bboxes = EXCLUDED.bboxes,
-                      lang = EXCLUDED.lang,
-                      char_count = EXCLUDED.char_count,
-                      content_hash = EXCLUDED.content_hash,
-                      has_contacts = EXCLUDED.has_contacts,
-                      is_table = EXCLUDED.is_table,
-                      title = EXCLUDED.title,
-                      doc_type = EXCLUDED.doc_type,
-                      number = EXCLUDED.number,
-                      date = EXCLUDED.date,
-                      category = EXCLUDED.category,
-                      site = EXCLUDED.site,
-                      url = EXCLUDED.url,
-                      found_on = EXCLUDED.found_on,
-                      embedding = EXCLUDED.embedding;
-                    """,
-                    (
-                        c["chunk_id"],
-                        c["doc_id"],
-                        c["kind"],
-                        c["text"],
-                        c["embed_text"],
-                        c["citation_label"],
-                        json.dumps(c.get("section", []), ensure_ascii=False),
-                        json.dumps(c.get("legal_path", []), ensure_ascii=False),
-                        json.dumps(parent_lp, ensure_ascii=False),
-                        json.dumps(c.get("block_ids", []), ensure_ascii=False),
-                        json.dumps(c.get("pages", []), ensure_ascii=False),
-                        json.dumps(c.get("bboxes", []), ensure_ascii=False),
-                        c.get("lang"),
-                        c["char_count"],
-                        c["content_hash"],
-                        c.get("has_contacts", False),
-                        c.get("is_table", False),
-                        c.get("title"),
-                        c.get("doc_type"),
-                        c.get("number"),
-                        c.get("date"),
-                        c.get("category"),
-                        c.get("site"),
-                        c.get("url"),
-                        c.get("found_on"),
-                        np.array(c["embedding"], dtype=np.float32) if c.get("embedding") else None,
-                    ),
-                )
-
-            # 3. Delete stale chunks for this doc_id
-            cur.execute(
-                "DELETE FROM chunks WHERE doc_id = %s AND chunk_id != ALL(%s)",
-                (doc_id, chunk_ids),
-            )
+            for doc_id, chunks in by_doc.items():
+                cur.execute("DELETE FROM chunks WHERE doc_id = %s AND chunk_id <> ALL(%s)",
+                            (doc_id, [c["chunk_id"] for c in chunks]))
+                deleted += cur.rowcount
+        return deleted
 
     def clean_orphaned_documents(self, active_doc_ids: set[str]) -> int:
-        """Removes documents from Postgres that no longer exist in the chunker output."""
+        """Removes documents (and their chunks, via CASCADE) no longer in the chunker output."""
         if not active_doc_ids:
             return 0
         with self.conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM documents WHERE doc_id != ALL(%s) RETURNING doc_id",
-                (list(active_doc_ids),),
-            )
-            deleted = cur.fetchall()
-            return len(deleted)
+            cur.execute("DELETE FROM documents WHERE doc_id <> ALL(%s)", (list(active_doc_ids),))
+            return cur.rowcount

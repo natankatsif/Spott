@@ -1,7 +1,6 @@
 """Tests for indexing/search.py: FTS query building, sanitization, stop words, without database."""
 
-import pytest
-from indexing.search import build_fts_query, clean_tsquery_term
+from indexing.search import build_fts_query
 
 
 def test_build_fts_query_romanian_stop_words_and_or():
