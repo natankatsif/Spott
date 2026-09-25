@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .legal import LegalHierarchyTracker
+from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
 
 MAX_MERGE_CHARS = 1500
 MAX_BLOCK_CHARS = 2500
@@ -361,7 +361,13 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "found_on": doc.get("url") or "",
             "lang": doc.get("lang") or "ro",
         }
-        blocks = raw_blocks
+        allow_sub = is_act_or_has_major_legal(meta, raw_blocks)
+        tracker = LegalHierarchyTracker(allow_sub_articles=allow_sub)
+        blocks = []
+        for b in raw_blocks:
+            b_copy = dict(b)
+            tracker.process_block(b_copy)
+            blocks.append(b_copy)
     else:
         sha256 = doc.get("sha256") or ""
         doc_id = f"file:{sha256}"
@@ -381,7 +387,8 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
         }
 
         # Apply legal hierarchy tracker to assign legal_path to every block
-        tracker = LegalHierarchyTracker()
+        allow_sub = is_act_or_has_major_legal(doc_meta, raw_blocks)
+        tracker = LegalHierarchyTracker(allow_sub_articles=allow_sub)
         blocks = []
         for b in raw_blocks:
             b_copy = dict(b)

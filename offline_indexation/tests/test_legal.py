@@ -97,3 +97,69 @@ def test_hierarchy_stack_progression():
     # Anexa nr. 2 pops everything back to level 0
     assert paths[11] == ["Anexa nr. 2"]
     assert paths[12] == ["Anexa nr. 2", "pct. 1"]
+
+
+def test_heading_resets_punct_and_deeper():
+    """A new heading must reset PUNCT and deeper levels in tracker."""
+    tracker = LegalHierarchyTracker(allow_sub_articles=True)
+    blocks = [
+        {"type": "paragraph", "text": "Articolul 5. Procedura de examinare."},
+        {"type": "paragraph", "text": "pct. 1. Cererea se depune la sediul instituției."},
+        {"type": "paragraph", "text": "alin. (1) Solicitantul anexează actele necesare."},
+        # Heading that does not match an article or chapter resets punct and deeper
+        {"type": "heading", "text": "Secțiune nouă fără puncte"},
+        {"type": "paragraph", "text": "Acest paragraf nu trebuie să moștenească pct. 1 sau alin. (1)."},
+    ]
+    paths = [tracker.process_block(b) for b in blocks]
+    assert paths[0] == ["Articolul 5"]
+    assert paths[1] == ["Articolul 5", "pct. 1"]
+    assert paths[2] == ["Articolul 5", "pct. 1", "alin. (1)"]
+    assert paths[3] == ["Articolul 5"]
+    assert paths[4] == ["Articolul 5"]
+
+
+def test_numbered_report_without_doc_type():
+    """A report without doc_type and without Art/Cap/Anexa must NOT treat numbered lists as pct."""
+    from chunking.chunker import chunk_document
+
+    doc = {
+        "sha256": "report_123",
+        "metadata": {"title": "Raport de activitate privind gestionarea deșeurilor"},  # doc_type is None
+        "blocks": [
+            {"id": 0, "type": "heading", "text": "Raport anual", "section": [], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "1. În primul semestru au fost evacuate 500 tone de deșeuri solide.", "section": ["Raport anual"], "lang": "ro"},
+            {"id": 2, "type": "paragraph", "text": "Această activitate s-a desfășurat conform graficului aprobat de întreprindere.", "section": ["Raport anual"], "lang": "ro"},
+            {"id": 3, "type": "paragraph", "text": "2. Modernizarea parcului de autospeciale a continuat în trimestrul trei.", "section": ["Raport anual"], "lang": "ro"},
+            {"id": 4, "type": "paragraph", "text": "Au fost achiziționate cinci unități noi de transport specializat.", "section": ["Raport anual"], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) > 0
+    for chunk in chunks:
+        assert not any("pct." in p for p in chunk["legal_path"])
+        assert "pct." not in chunk["citation_label"]
+
+
+def test_decision_with_art_and_pct():
+    """A decision with doc_type and Art./pct. maintains legal paths as expected."""
+    from chunking.chunker import chunk_document
+
+    doc = {
+        "sha256": "decizie_456",
+        "metadata": {
+            "title": "Cu privire la aprobarea bugetului",
+            "doc_type": "decizie",
+            "number": "12/5",
+            "date": "2024-02-15",
+        },
+        "blocks": [
+            {"id": 0, "type": "paragraph", "text": "Articolul 1. Se aprobă bugetul municipal pe anul 2024.", "section": [], "lang": "ro"},
+            {"id": 1, "type": "paragraph", "text": "pct. 1. Veniturile se stabilesc în sumă de 7 miliarde lei.", "section": [], "lang": "ro"},
+            {"id": 2, "type": "paragraph", "text": "alin. (1) Impozitele directe constituie baza formării bugetului.", "section": [], "lang": "ro"},
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) > 0
+    # Legal path must be populated with Articolul 1
+    assert any("Articolul 1" in c["legal_path"] for c in chunks)
+    assert any("Decizie" in c["citation_label"] for c in chunks)

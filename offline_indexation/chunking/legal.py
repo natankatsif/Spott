@@ -137,26 +137,49 @@ def match_legal_item(text: str, marker: str = "") -> Optional[Tuple[int, str]]:
     return None
 
 
+def is_act_or_has_major_legal(meta: Optional[dict] = None, blocks: Optional[list[dict]] = None) -> bool:
+    """Checks if a document is an official act or contains major legal structural markers (Anexa, Capitol, Secțiune, Articol)."""
+    if meta and meta.get("doc_type"):
+        return True
+    if blocks:
+        for b in blocks:
+            text = b.get("text", "")
+            marker = b.get("marker", "")
+            match = match_legal_item(text, marker)
+            if match and match[0] <= LegalLevel.ARTICOL:
+                return True
+    return False
+
+
 class LegalHierarchyTracker:
     """Maintains a stack of legal hierarchy levels for a document."""
 
-    def __init__(self):
+    def __init__(self, allow_sub_articles: bool = True):
         self.stack: list[tuple[int, str]] = []
+        self.allow_sub_articles = allow_sub_articles
 
     def reset(self) -> None:
         self.stack.clear()
 
     def process_block(self, block: dict) -> list[str]:
+        b_type = block.get("type")
+        is_heading = b_type in ("heading", "title", "section_header")
+        if is_heading:
+            # New heading resets PUNCT and deeper levels
+            while self.stack and self.stack[-1][0] >= LegalLevel.PUNCT:
+                self.stack.pop()
+
         text = block.get("text", "")
         marker = block.get("marker", "")
 
         match = match_legal_item(text, marker)
         if match:
             level, label = match
-            # Pop deeper or equal levels
-            while self.stack and self.stack[-1][0] >= level:
-                self.stack.pop()
-            self.stack.append((level, label))
+            if level < LegalLevel.PUNCT or self.allow_sub_articles:
+                # Pop deeper or equal levels
+                while self.stack and self.stack[-1][0] >= level:
+                    self.stack.pop()
+                self.stack.append((level, label))
 
         path = [label for _, label in self.stack]
         block["legal_path"] = path
