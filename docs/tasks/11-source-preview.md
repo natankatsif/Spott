@@ -1,6 +1,6 @@
 # Task 11: source preview inside the answer: the page or PDF opens scrolled to the quote, highlighted
 
-> **For the backend dev, in short:** do Part A (`GET /api/preview/{doc_id}` + two new `Citation` fields + mocks + tests) and Part B (admin sources: auto-seed, add by URL only, one list call, admin mocks). The frontend (WebPreview, mobile chips, the single admin page) is ours; you only deliver the API, mocks and tests.
+> **For the backend dev, in short:** do Part A (`GET /api/preview/{doc_id}` + two new `Citation` fields + mocks + tests) and Part B (admin sources: auto-seed, add by URL only, one list call, admin mocks). The frontend (WebPreview, mobile chips, the single admin page) is ours; you only deliver the API, mocks, tests and **`docs/FRONTEND-11.md`** (how to wire it on the frontend, from your research; see the last section). Don't edit `frontend/src` beyond `lib/api.ts` types and the mock JSON files.
 >
 > **No paid AI in this task.** Nothing here may call OpenAI or any other paid API: not the code, not the tests, not the report, not the mock generation. Category detection is rules + keywords only (see B2.4). Tests that touch `/api/ask` use the existing fake/recorded LLM. If a pipeline stage started by a B2 job would call a paid model (e.g. lineage), skip that stage for jobs started from the admin, or put it behind a flag that is off by default. Embeddings (local bge-m3) are fine.
 >
@@ -190,3 +190,36 @@ Actions stay as they are: refresh (`POST /sources/{id}/jobs {kind:"refresh"}`), 
   - a PDF link from dgaurf.md;
   - `https://www.chisinau.md/` (blocked);
   - a dead URL.
+
+---
+
+# Part C: hand over the research to the frontend: `docs/FRONTEND-11.md`
+
+You will learn things while building A and B: which headers break the iframe, what timing works, which quirks show up in Safari or mobile. Write them down so the frontend doesn't have to research the same things again. Write it in English, concrete and short, with code the frontend can paste. No frontend implementation — only the guide.
+
+## What it must contain
+
+**1. Inline preview on desktop (AI Elements `WebPreview`)**
+- A minimal React snippet: `WebPreview` + `WebPreviewNavigation` + `WebPreviewBody src={resolvePreviewUrl(citation.preview_url)}`. Include the `resolvePreviewUrl` rule (`/api/…` → prefix API_URL; otherwise as is).
+- Which citation opens first (`focus_citation_id`, else the first one).
+- Switching citations: when the new citation has the same `doc_id`, send `postMessage({type:"src-preview:highlight", line_ids})` with no reload; otherwise change `src`.
+- Listening for `src-preview:ready`: check the origin, and map `found` to UI (e.g. `none` shows a small "page changed" badge).
+- The iframe attributes you tested with (`sandbox` values if any, `referrerpolicy`, `loading`), plus a height that works well.
+- Loading and error states: what the iframe does while pdf.js loads, and what the frontend shows on timeout (suggest a number of ms from your measurements).
+
+**2. Mobile**
+- The chip text format, and how to open the preview full-screen (`embed=0`): a new tab, a sheet with an iframe, or `window.open` — say which one you verified works on iOS Safari / Android Chrome, and how "back" returns to the chat.
+
+**3. Admin sources, one page**
+- The add flow: an input with a URL → `POST` → a toast from `detected.reason`. Map every response to UI: 200 new, 200 `merged_into`, 409, 422, blocked.
+- Polling: when to start and stop (any row `running`/`queued`), the 2 s interval, and how to show `progress.percent`/`stage`/`eta_s`.
+- A table column list mapped to fields, the `status` → badge colour/label (RO/RU) table, and row actions → endpoints.
+- How mock mode reads `lib/mocks/admin/*.json`.
+
+**4. Gotchas you actually hit**
+Things like CSP/`frame-ancestors` for localhost vs prod, the dev port list for `CORS_ORIGINS`, Safari without the Custom Highlight API, fonts/images blocked on some sites, big PDFs, what the preview looks like in dark mode. Only real findings, each with its fix.
+
+**5. Screenshots**
+- 3 preview screenshots (desktop inline, mobile full-screen, "not found" banner);
+- links to the Playwright test page — the frontend can copy its iframe setup.
+
