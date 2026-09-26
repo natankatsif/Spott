@@ -43,5 +43,6 @@
     "path": "agent",
     "latency_ms": 1810.0,
     "verified": true
-  }
+  },
+  "focus_citation_id": null
 }

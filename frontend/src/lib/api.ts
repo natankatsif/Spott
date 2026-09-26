@@ -137,6 +137,8 @@ export type AskResponse = {
   followups: string[];
   trace: TraceStep[];
   meta: AnswerMeta;
+  /** Citation to open right away in the source viewer ("where exactly is it written?"); null = on click. */
+  focus_citation_id: string | null;
 };
 
 // ─────────────── POST /api/ask/stream (SSE) ───────────────

@@ -137,6 +137,9 @@ class AskResponse(Strict):
     followups: list[str]
     trace: list[TraceStep]
     meta: AnswerMeta
+    # The citation the UI opens right away in the source viewer (the question asks where exactly something
+    # is written); null = only on click.
+    focus_citation_id: str | None = None
 
 
 # ─────────────── POST /api/feedback ───────────────

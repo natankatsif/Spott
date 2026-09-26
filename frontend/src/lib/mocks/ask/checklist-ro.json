@@ -199,5 +199,6 @@
     "path": "fast",
     "latency_ms": 1720.0,
     "verified": true
-  }
+  },
+  "focus_citation_id": null
 }

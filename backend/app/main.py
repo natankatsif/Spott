@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from psycopg_pool import ConnectionPool
 from retrieval import (
     RERANKER_ENABLED,
@@ -35,8 +35,8 @@ from starlette.concurrency import run_in_threadpool
 from . import errors
 from .answering import answer_events, answer_question
 from .errors import ApiException, RateLimiter
-from .files import raw_pdf
 from .llm import LLM, LLMUnavailable, OpenAILLM
+from .pdf_source import PdfSource, make_clients
 from .schemas import (
     AskRequest,
     AskResponse,
@@ -80,6 +80,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pool = get_pool(min_size=2, max_size=10)
     app.state.pool = pool
     app.state.store = PgStore(pool)
+    http_clients = make_clients()
+    app.state.pdf_source = PdfSource(*http_clients)
 
     log.info("Loading embedding model on %s...", device)
     await run_in_threadpool(get_embedding_model, device)
@@ -107,6 +109,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     log.info("Shutting down Municipal Assistant API...")
+    for client in http_clients:
+        await client.aclose()
     pool.close()
 
 
@@ -209,12 +213,15 @@ def feedback(req: FeedbackRequest) -> FeedbackResponse:
 
 
 @app.get("/api/documents/{doc_id:path}/file")
-async def document_file(doc_id: str) -> FileResponse:
-    doc = await run_in_threadpool(app.state.store.document, doc_id) if getattr(app.state, "store", None) else None
-    path = raw_pdf(doc_id, doc.get("sha256") if doc else None) if doc else None
-    if path is None:
-        raise ApiException(404, "not_found", f"No stored PDF for {doc_id}")
-    return FileResponse(path, media_type="application/pdf", content_disposition_type="inline")
+async def document_file(doc_id: str) -> Response:
+    """The PDF for the source viewer, fetched from the city hall site by the URL in our index."""
+    store = getattr(app.state, "store", None)
+    doc = await run_in_threadpool(store.document, doc_id) if store else None
+    if doc is None:
+        raise ApiException(404, "not_found", f"Unknown document {doc_id}")
+    data = await app.state.pdf_source.get(doc)
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": "inline", "Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/api/wall", response_model=WallResponse)

@@ -93,6 +93,7 @@ version = "0.1.0"
 source = { virtual = "backend" }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "openai" },
     { name = "retrieval" },
     { name = "uvicorn", extra = ["standard"] },
@@ -109,6 +110,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "openai", specifier = ">=3.19.2" },
     { name = "retrieval", editable = "packages/retrieval" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },

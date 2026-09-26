@@ -12,7 +12,7 @@
 | `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
 | `POST /api/ask/stream` | works: the answer is generated whole, then streamed sentence by sentence (word deltas) |
 | `POST /api/feedback` | works: stored in `data/feedback/<date>.jsonl` |
-| `GET /api/documents/{doc_id}/file` | works where the PDFs are on disk (`OFFLINE_DATA_DIR/raw`); otherwise 404 and `file_url` is `null` |
+| `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | `GET /api/wall` | works (in memory) |
 | `GET /api/corpus/stats` | works; without `registry.sqlite` on the machine, pages/documents come from the index |
 | Error body `ApiError`, CORS | works: `CORS_ORIGINS`, rate limit `ASK_RATE_LIMIT` per minute per client |
@@ -72,6 +72,7 @@ Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. The
 | `followups[]` | suggested next questions, in `lang` |
 | `trace[]` | agent steps `{tool, input, summary, ms}`: for the "how I searched" panel. `summary` is in `lang` |
 | `meta` | `{model, path: fast\|agent\|none, latency_ms, verified}`. `verified` = quotes re-read from the DB and claims checked against them |
+| `focus_citation_id` | citation to open right away in the source viewer, when the question asks where exactly something is written ("unde anume scrie…", "где именно написано…"). Prefers a PDF citation. `null` = open only on click |
 
 ### Citation
 
@@ -98,6 +99,7 @@ Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. The
 5. **checklist**: numbered steps, each with its source; documents to bring, fee, deadline.
 6. **refused**: short polite reply, no sources.
 7. **Loading / error**: backend down → error message; timeout 30 s.
+8. **Where exactly** (`focus_citation_id` set): open that citation in the source viewer inside the answer: PDF page rendered, `bboxes` highlighted, scrolled to them. Any citation with `file_url` can be opened the same way on click.
 
 ## `POST /api/ask/stream` (SSE)
 
@@ -141,8 +143,9 @@ Backend rules for task 09:
 → `{ "ok": true }`
 
 ## `GET /api/documents/{doc_id}/file`
-- Returns the stored original PDF (`application/pdf`) for the viewer: pdf.js + `bboxes` highlight. City hall sites don't send CORS headers, so the viewer can't load the originals directly.
-- `doc_id` is URL-encoded; use `citation.file_url` as is.
+- Returns the PDF (`application/pdf`) for the viewer: pdf.js + `bboxes` highlight. City hall sites don't send CORS headers, so the viewer can't load the originals directly: the backend fetches the document from its original `url` on request and passes it through (in-memory cache, nothing stored; a stored copy is used if the machine has one). Only documents in our index, only PDFs.
+- `doc_id` is URL-encoded; use `citation.file_url` as is. `file_url` is set for every PDF citation; `null` for web pages and non-PDF files (DOCX).
+- Errors: `404 not_found` (unknown document, not a PDF, the site answered 404) → open `deep_link` instead; `503 unavailable` (the city hall site didn't answer) → same fallback.
 
 ## `POST /api/search` (works now)
 ```json
