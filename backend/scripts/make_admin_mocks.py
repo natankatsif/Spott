@@ -58,7 +58,7 @@ def rows() -> tuple[list[dict], dict]:
                 "pages": c["pages"], "documents_found": c["documents_found"],
                 "documents_downloaded": c["documents_downloaded"], "files_parsed": c["documents_downloaded"],
                 "chunks": chunks, "lines": round(chunks * per_chunk), "errors": 0},
-                started=ts("09:%02d" % (i % 60)), finished=ts("10:%02d" % (i % 60)),
+                started=ts(f"09:{i % 60:02d}"), finished=ts(f"10:{i % 60:02d}"),
                 log=["Indexing finished:", f"  Chunks: {chunks}"])
         out.append({
             "id": i, "kind": "site", "url": s["start_urls"][0], "site_id": s["id"], "title": None,

@@ -8,10 +8,10 @@ import pytest
 
 from app.schemas import (
     AdminSession,
+    ApiError,
     AskResponse,
     CorpusStats,
     FeedbackList,
-    ApiError,
     FeedbackStats,
     GapList,
     GapRecheck,

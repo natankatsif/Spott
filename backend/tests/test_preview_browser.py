@@ -9,7 +9,6 @@ served from one local port and embedded from another, like the chat does.
 import http.server
 import json
 import threading
-from pathlib import Path
 
 import pytest
 
