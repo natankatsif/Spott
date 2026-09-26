@@ -1,6 +1,6 @@
 # Task 11: source preview inside the answer: the page or PDF opens scrolled to the quote, highlighted
 
-> **For the backend dev, in short:** do Part A (`GET /api/preview/{doc_id}` + two new `Citation` fields + mocks + tests) and Part B (admin sources: auto-seed, add by URL only, one list call, admin mocks). The frontend (WebPreview, mobile chips, the single admin page) is ours; you only deliver the API, mocks, tests and **`docs/FRONTEND-11.md`** (how to wire it on the frontend, from your research; see the last section). Don't edit `frontend/src` beyond `lib/api.ts` types and the mock JSON files.
+> **For the backend dev, in short:** do Part A (`GET /api/preview/{doc_id}` + two new `Citation` fields + mocks + tests) and Part B (admin sources: auto-seed, add by URL only, one list call, admin mocks) and Part D (admin API: questions the bot couldn't fully answer). The frontend (WebPreview, mobile chips, the single admin page) is ours; you only deliver the API, mocks, tests and **`docs/FRONTEND-11.md`** (how to wire it on the frontend, from your research; see the last section). Don't edit `frontend/src` beyond `lib/api.ts` types and the mock JSON files.
 >
 > **No paid AI in this task.** Nothing here may call OpenAI or any other paid API: not the code, not the tests, not the report, not the mock generation. Category detection is rules + keywords only (see B2.4). Tests that touch `/api/ask` use the existing fake/recorded LLM. If a pipeline stage started by a B2 job would call a paid model (e.g. lineage), skip that stage for jobs started from the admin, or put it behind a flag that is off by default. Embeddings (local bge-m3) are fine.
 >
@@ -223,3 +223,61 @@ Things like CSP/`frame-ancestors` for localhost vs prod, the dev port list for `
 - 3 preview screenshots (desktop inline, mobile full-screen, "not found" banner);
 - links to the Playwright test page — the frontend can copy its iframe setup.
 
+---
+
+# Part D: admin API: questions without an answer ("gaps")
+
+The admin needs to see which questions the bot couldn't answer (`not_found`) or answered only partly (`partial`), so the city hall knows which documents are missing. After a source is added, the admin re-checks those questions. **API only.** The frontend block on the same single admin page is ours. Document the endpoints in `docs/API.md` and in `docs/FRONTEND-11.md`.
+
+## Data
+The `answers` table already has `question, lang, status, verified, doc_ids, answer`. Add, in a migration:
+- `missing jsonb`: the missing parts of a `partial` answer (the same strings the backend appends to the answer);
+- `retrieved_sites jsonb`: sites of the chunks that were retrieved but not used in the answer (a hint about which department to ask);
+- `created_at` if it doesn't exist yet;
+- `gap_hidden boolean default false`.
+
+Fill them in `PgAnswers.record`. Old rows keep nulls.
+
+## `GET /api/admin/gaps?status=not_found,partial&lang=&days=30&limit=50`
+Groups similar questions:
+- the question embedding comes from local bge-m3, cosine ≥ 0.85 = one group;
+- **no LLM**;
+- the questions are already masked the same way as `/api/wall`.
+
+```json
+{ "items": [{
+    "id": "gap_…",
+    "example": "Cum obțin autorizație de construire pentru garaj?",
+    "questions": [{"answer_id": "…", "question": "…", "lang": "ro", "status": "not_found", "ts": "…"}],
+    "count": 12, "last_asked": "2026-09-26T10:17:00+00:00", "langs": ["ro", "ru"],
+    "status": "not_found",
+    "missing": ["termenul de eliberare"],
+    "hint_sites": [{"site": "dgaurf.md", "hits": 7}],
+    "rechecked": null
+  }],
+  "totals": {"not_found": 31, "partial": 14, "groups": 18} }
+```
+- `status` is the worst status in the group.
+- `hint_sites` is the top 3 from `retrieved_sites`.
+- Sort by `count` desc, then `last_asked`.
+- Hidden groups are excluded unless `hidden=1`.
+
+## Actions
+- `POST /api/admin/gaps/{id}/recheck`: asks the group's `example` again through the normal answer pipeline (one question = **one** GPT call; never automatic, never in a loop). It stores the new status and returns `rechecked: {status, verified, answer_id, ts}`. When the new status is `answered`, the group disappears from the default list.
+- `POST /api/admin/gaps/{id}/hide` / `unhide`.
+- A `gap_id` can't be stable when grouping is computed on the fly. Make it the `answer_id` of the group's first question; the actions apply to every question in the group.
+
+## Mocks and tests
+- `frontend/src/lib/mocks/admin/gaps.json`: 6 realistic groups (RO+RU, not_found + partial, with `missing` and `hint_sites`, one already `rechecked`). Also add the recheck and hide responses. The `api.ts` admin client reads them in mock mode.
+- Tests:
+  - grouping: 3 paraphrases → 1 group, an unrelated question → its own group;
+  - masking;
+  - `hidden` filtering;
+  - recheck with a **fake LLM**, which proves exactly one call;
+  - 401 without a token;
+  - contract/mock validation.
+
+  No real OpenAI calls in tests.
+
+## Report
+The `gaps` output on the current DB (how many groups, the top 5), and one recheck done by hand (a single real call is fine).
