@@ -25,7 +25,7 @@ import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { type ErrorCode, health, type Lang, suggestions as fetchSuggestions, visit } from "@/lib/api";
+import { type ErrorCode, health, suggestions as fetchSuggestions, visit } from "@/lib/api";
 import { loadChat, newChatId, saveChat } from "@/lib/chat-history";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
@@ -154,7 +154,6 @@ function useLockedViewport(): void {
 
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 /** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
-const langOfQuestion = (q: string | undefined, fallback: Lang): Lang => (q && /[а-яё]/i.test(q) ? "ru" : q ? "ro" : fallback);
 
 export default function Home() {
   const lang = useUILang();
@@ -302,19 +301,13 @@ export default function Home() {
                           <MessageContent>{textOf(m)}</MessageContent>
                         </Message>
                       ) : (
-                        (() => {
-                          const view = viewOf(m);
-                          const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
-                          return (
-                            <AssistantAnswer
-                              key={m.id}
-                              onFollowup={ask}
-                              streaming={busy && i === messages.length - 1}
-                              t={UI[answerLang]}
-                              view={view}
-                            />
-                          );
-                        })()
+                        <AssistantAnswer
+                          key={m.id}
+                          onFollowup={ask}
+                          streaming={busy && i === messages.length - 1}
+                          t={t}
+                          view={viewOf(m)}
+                        />
                       ),
                     )
                   )}
@@ -322,7 +315,7 @@ export default function Home() {
                     <AssistantAnswer
                       onFollowup={ask}
                       streaming
-                      t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
+                      t={t}
                       view={{ sentences: [], citations: [], trace: [], answer: null }}
                     />
                   )}
