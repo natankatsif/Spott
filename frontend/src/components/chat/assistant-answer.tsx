@@ -172,6 +172,11 @@ export function AssistantAnswer({
   const byId = new Map(view.citations.map((c) => [c.id, c]));
   const a = view.answer;
   const text = view.sentences.map((s) => s.text).join(" ");
+  // how it searched: under the finished answer, and only when the documents were involved (sources cited, or
+  // searched and not found); a greeting or an off-topic question shows none
+  const showSearch =
+    !streaming && view.trace.length > 0 && (view.citations.length > 0 || a?.status === "not_found" || a?.status === "partial");
+  const smallTalk = !!a && a.citations.length === 0 && a.trace.length === 0; // "привет": nothing to rate
 
   const rate = (v: "up" | "down") => {
     if (!a || vote) return;
@@ -182,23 +187,6 @@ export function AssistantAnswer({
   return (
     <Message from="assistant">
       <MessageContent className="w-full gap-4">
-        {view.trace.length > 0 && (
-          <ChainOfThought defaultOpen={false}>
-            <ChainOfThoughtHeader>{t.howSearched(view.trace.length)}</ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              {view.trace.map((step, i) => (
-                <ChainOfThoughtStep
-                  description={step.input}
-                  icon={TOOL_ICONS[step.tool] ?? FileSearchIcon}
-                  key={`${step.tool}-${i}`}
-                  label={`${t.tools[step.tool]} · ${step.summary}`}
-                  status={streaming && i === view.trace.length - 1 && !view.sentences.length ? "active" : "complete"}
-                />
-              ))}
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        )}
-
         {streaming && view.sentences.length === 0 && <Shimmer>{t.searching}</Shimmer>}
 
         <StatusNote t={t} view={view} />
@@ -237,7 +225,7 @@ export function AssistantAnswer({
           </Task>
         )}
 
-        {view.citations.length > 0 && (
+        {!streaming && view.citations.length > 0 && (
           <Sources className="hidden lg:block">
             <SourcesTrigger className="text-muted-foreground text-xs" count={view.citations.length}>
               <BookOpenIcon className="size-3.5" />
@@ -277,6 +265,23 @@ export function AssistantAnswer({
             ))}
           </div>
         )}
+
+        {showSearch && (
+          <ChainOfThought defaultOpen={false}>
+            <ChainOfThoughtHeader>{t.howSearched(view.trace.length)}</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              {view.trace.map((step, i) => (
+                <ChainOfThoughtStep
+                  description={step.input}
+                  icon={TOOL_ICONS[step.tool] ?? FileSearchIcon}
+                  key={`${step.tool}-${i}`}
+                  label={`${t.tools[step.tool]} · ${step.summary}`}
+                  status="complete"
+                />
+              ))}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        )}
       </MessageContent>
 
       {a && !streaming && (
@@ -292,13 +297,17 @@ export function AssistantAnswer({
             >
               {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
             </MessageAction>
-            <MessageAction disabled={!!vote} label={t.helpful} onClick={() => rate("up")} tooltip={t.helpful}>
-              <ThumbsUpIcon className={cn("size-3.5", vote === "up" && "fill-current")} />
-            </MessageAction>
-            <MessageAction disabled={!!vote} label={t.notHelpful} onClick={() => rate("down")} tooltip={t.notHelpful}>
-              <ThumbsDownIcon className={cn("size-3.5", vote === "down" && "fill-current")} />
-            </MessageAction>
-            {vote && <span className="text-muted-foreground text-xs">{t.thanks}</span>}
+            {!smallTalk && (
+              <>
+                <MessageAction disabled={!!vote} label={t.helpful} onClick={() => rate("up")} tooltip={t.helpful}>
+                  <ThumbsUpIcon className={cn("size-3.5", vote === "up" && "fill-current")} />
+                </MessageAction>
+                <MessageAction disabled={!!vote} label={t.notHelpful} onClick={() => rate("down")} tooltip={t.notHelpful}>
+                  <ThumbsDownIcon className={cn("size-3.5", vote === "down" && "fill-current")} />
+                </MessageAction>
+                {vote && <span className="text-muted-foreground text-xs">{t.thanks}</span>}
+              </>
+            )}
             {a.meta.verified && a.citations.length > 0 && (
               <span className="ml-2 flex items-center gap-1 text-success text-xs">
                 <ShieldCheckIcon className="size-3.5" /> {t.verified}

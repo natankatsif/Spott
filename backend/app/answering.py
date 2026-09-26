@@ -92,6 +92,21 @@ REFUSED = {
     "ro": "Pot răspunde doar la întrebări despre Primăria Chișinău, serviciile și documentele ei.",
     "ru": "Я отвечаю только на вопросы о Примэрии Кишинэу, её услугах и документах.",
 }
+# Greetings, thanks and "who are you": answered by code, without a search (nothing to cite, nothing to show searched).
+SMALL_TALK = re.compile(
+    r"^\W*(?:(?:salut\w*|bun[aă](?: ziua| seara| dimineața| dimineata)?|noroc|hei|hello|hi|hey|"
+    r"привет\w*|здравствуй\w*|добр\w+ (?:день|утро|вечер)|добрый|хай|"
+    r"mul[țt]umesc\w*|mersi|merci|спасибо|благодарю|thanks?(?: you)?|"
+    r"la revedere|pa|пока|до свидания|bye|"
+    r"ce faci|ce mai faci|как дела|как ты|"
+    r"cine e[șs]ti|cine sunte[țt]i|ce po[țt]i(?: face)?|кто ты|кто вы|что ты умеешь|что умеешь|что вы умеете)"
+    r"[\s!.,?)(]*)+$", re.I)
+SMALL_TALK_ANSWER = {
+    "ro": "Bună! Sunt asistentul Primăriei Chișinău. Întrebați-mă despre serviciile, deciziile și documentele "
+          "publice ale Primăriei, iar eu răspund cu trimitere la documentul și pasajul exact.",
+    "ru": "Здравствуйте! Я ассистент Примэрии Кишинэу. Спросите меня об услугах, решениях и публичных документах "
+          "Примэрии, и я отвечу со ссылкой на конкретный документ и фрагмент.",
+}
 SEARCH_SUMMARY = {
     "ro": "Găsite {chunks} fragmente în {docs} documente",
     "ru": "Найдено фрагментов: {chunks}, документов: {docs}",
@@ -1191,6 +1206,14 @@ def answer_events(
     lang = detect_lang(req.question, req.lang)
     fresh = FRESHNESS_PASS if freshness is None else freshness
     yield {"type": "start", "id": answer_id, "lang": lang}
+
+    if SMALL_TALK.match(req.question):
+        meta = AnswerMeta(model=None, path="none", latency_ms=round((time.perf_counter() - started) * 1000, 1),
+                          verified=False)
+        built = Built(ResponseBuilder([], {}, lang, answer_id).fixed("answered", SMALL_TALK_ANSWER[lang], [], meta, []))
+        yield from stream_sentences(built)
+        yield {"type": "done", "response": built.response.model_dump()}
+        return
 
     query = retrieval_query(req)
     t = time.perf_counter()

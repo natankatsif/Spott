@@ -112,6 +112,7 @@ class JobRunner:
         errors, finished_weight, status, error = 0, 0.0, "done", None
         numbers: dict[str, int] = {}
         started = self.clock()
+        eta_state: dict = {}  # the last estimate, kept across stages so it counts down instead of restarting
         with tempfile.TemporaryDirectory(prefix=f"job-{job_id}-") as tmp:
             progress_file, cancel_file = Path(tmp) / "progress.json", Path(tmp) / "cancel"
             for step in steps:
@@ -122,7 +123,7 @@ class JobRunner:
                 env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
                        "PROGRESS_FILE": str(progress_file), "CANCEL_FILE": str(cancel_file)}
                 code = self._run_step(job_id, step, env, tail, progress_file, cancel_file, finished_weight, started,
-                                      numbers)
+                                      numbers, eta_state)
                 errors += (read_progress(progress_file) or {}).get("errors", 0)
                 if cancel_file.exists():
                     status = "cancelled"
@@ -140,9 +141,25 @@ class JobRunner:
         self.store.update_job(job_id, **final)
         return status
 
+    def _eta(self, percent: float, job_started: float, state: dict) -> float | None:
+        """Seconds left. Re-estimated from the job's average rate only when the percent moves; while it stands still
+        (a slow item, a stage with no counters yet, the crawler finding more pages) the last estimate counts down,
+        so the time shown never climbs just because a report came with no new progress."""
+        now = self.clock()
+        if state.get("eta") is not None and percent <= state["percent"] + 1e-9:
+            eta = max(0.0, state["eta"] - (now - state["at"]))
+            state.update(eta=eta, at=now)
+            return eta
+        elapsed = now - job_started
+        eta = (100.0 - percent) * elapsed / percent if percent > 0 and elapsed > 0 else None
+        if eta is not None and state.get("eta") is not None:
+            # a new measurement moves the countdown part of the way, not all at once
+            eta = 0.5 * eta + 0.5 * max(0.0, state["eta"] - (now - state["at"]))
+        state.update(eta=eta, percent=percent, at=now)
+        return eta
+
     def _run_step(self, job_id: int, step: Step, env: dict, tail: deque, progress_file: Path, cancel_file: Path,
-                  finished_weight: float, job_started: float, numbers: dict) -> int:
-        stage_started = self.clock()
+                  finished_weight: float, job_started: float, numbers: dict, eta_state: dict) -> int:
         stop = threading.Event()
         state = {"percent": finished_weight}
 
@@ -155,10 +172,7 @@ class JobRunner:
             fraction = min(1.0, done / total) if total else 0.0
             percent = finished_weight + step.weight * fraction
             state["percent"] = percent
-            elapsed = self.clock() - stage_started
-            # ETA from the stage's rate: the time the rest of this stage and every later stage would take at it.
-            rate = step.weight * fraction / elapsed if elapsed > 0 else 0.0
-            eta = (100.0 - percent) / rate if rate > 0 else None
+            eta = self._eta(percent, job_started, eta_state)
             self.store.update_job(job_id, stage=step.stage, stage_done=done, stage_total=total,
                                   percent=round(percent, 1), eta_s=round(eta, 1) if eta is not None else None,
                                   log_tail=list(tail))

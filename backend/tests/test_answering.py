@@ -668,3 +668,15 @@ def test_partial_answer_ends_with_the_contact_and_answered_has_none(monkeypatch,
     _, r, _ = run("Cât costă?", [DECISION], model(sentences=[s("Taxa e 200 lei.", "S1.L1")]), monkeypatch, tmp_path,
                   store=store)
     assert r.status == "answered" and r.contacts == []
+
+
+def test_a_greeting_is_answered_without_a_search():
+    def no_search(*a, **kw):
+        raise AssertionError("a greeting must not search the documents")
+
+    for question, lang in (("привет!", "ru"), ("Bună ziua", "ro"), ("спасибо", "ru")):
+        events = list(answer_events(None, None, AskRequest(question=question), retrieve_fn=no_search))
+        done = AskResponse.model_validate(events[-1]["response"])
+        assert done.status == "answered" and done.lang == lang
+        assert done.trace == [] and done.citations == [] and done.answer == answering.SMALL_TALK_ANSWER[lang]
+    assert not answering.SMALL_TALK.match("Привет, как получить справку?")

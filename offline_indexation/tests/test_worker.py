@@ -151,3 +151,18 @@ def test_import_from_sites_toml_gives_40_sources():
     conn = FakeConn()
     assert import_sites(conn, SITES_TOML) == 40
     assert {row[1] for row in conn.rows if row[-1] == "blocked"} == {"chisinau.md"}  # robots.txt: Disallow: /
+
+
+def test_eta_counts_down_while_progress_stands_still():
+    now = [0.0]
+    runner, state = JobRunner(FakeJobs(), clock=lambda: now[0]), {}
+    now[0] = 10.0
+    first = runner._eta(10.0, 0.0, state)  # 10 % in 10 s: ~90 s left
+    assert first == pytest.approx(90.0)
+    etas = []
+    for _ in range(5):  # no new progress for 5 reports
+        now[0] += 2.0
+        etas.append(runner._eta(10.0, 0.0, state))
+    assert etas == sorted(etas, reverse=True) and etas[-1] == pytest.approx(80.0)
+    now[0] += 60.0
+    assert runner._eta(10.0, 0.0, state) == 20.0  # still counting down, not climbing
