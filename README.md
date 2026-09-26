@@ -12,6 +12,46 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 | [`backend/`](backend) | Python, uv, FastAPI | API ассистента: поиск по корпусу, ответ с цитатами |
 | [`frontend/`](frontend) | Node, Next.js | Веб-чат (RO / RU) |
 
+## Как запустить у друга за 5 минут
+
+1. **Клонировать репозиторий:**
+   ```bash
+   git clone <repo-url>
+   cd qwerty
+   ```
+
+2. **Создать `.env` со своим ключом OpenAI:**
+   ```bash
+   cp .env.example .env
+   # Укажите актуальный OPENAI_API_KEY в .env
+   ```
+
+3. **Синхронизировать зависимости:**
+   ```bash
+   uv sync
+   ```
+
+4. **Импортировать готовый дамп индекса (без повторного парсинга и расчета векторов!):**
+   ```bash
+   # Получите файл дампа (например, data/export/index-2026-09-26.dump)
+   ./scripts/import_index.sh data/export/index-2026-09-26.dump
+   ```
+   Скрипт поднимет `docker compose up -d`, создаст таблицы и индексы HNSW/GIN, загрузит 484 документа, 2 269 чанков и 9 906 строк с готовыми эмбеддингами.
+
+5. **Запустить API-сервер:**
+   ```bash
+   cd backend
+   uv run uvicorn app.main:app --port 8000
+   ```
+   API доступно по адресу `http://localhost:8000`, документация Swagger — `http://localhost:8000/docs`.
+
+### Создание дампа для переноса
+```bash
+./scripts/export_index.sh
+# Дамп сохраняется в data/export/index-<YYYY-MM-DD>.dump (в git не коммитится)
+```
+
+
 ## Запуск
 
 ### Offline Indexation Pipeline

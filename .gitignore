@@ -10,3 +10,8 @@ offline_indexation/data/*
 # Env / OS
 .env
 .DS_Store
+
+# Index dumps
+data/export/
+*.dump
+
