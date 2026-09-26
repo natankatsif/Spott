@@ -1,5 +1,7 @@
 """/api/ask logic against docs/API.md with a fake store, fake retrieval and a fake LLM: no database, no network."""
 
+import json
+
 from retrieval.pipeline import RetrievalResult
 
 from app import answering
@@ -56,7 +58,12 @@ class FakeStore:
 
     def later_acts(self, patterns, exclude_doc_ids, limit=20):
         self.grep_patterns += patterns
-        return [c["chunk_id"] for c in self.later]
+        return [{"chunk_id": c["chunk_id"], "line_id": f"{c['chunk_id']}-l1"} for c in self.later]
+
+    def grep_lines(self, keywords, limit=200):
+        return [{"chunk_id": cid, "line_id": line["line_id"], "text": line["text"]}
+                for cid, lines in LINES.items() for line in lines
+                if any(k.casefold() in line["text"].casefold() for k in keywords)]
 
     def relation_lines(self, doc_ids):
         return [link for link in self.links if link["to_doc_id"] in doc_ids or link["from_doc_id"] in doc_ids]
@@ -74,32 +81,50 @@ def model(verdict="answered", sentences=(), missing=(), conflict=None, checklist
 
 
 def s(text, *refs):
-    return {"text": text, "refs": list(refs)}
+    return {"refs": list(refs), "text": text}
 
 
 class FakeLLM:
-    """Answers with the given outputs in turn (the last one repeats); remembers every prompt."""
+    """Answers with the given outputs in turn (the last one repeats); remembers every prompt. The answer
+    streams as JSON in small pieces; `finished` tells whether the stream has ended."""
 
-    def __init__(self, *outputs):
-        self.outputs, self.prompts = list(outputs), []
+    def __init__(self, *outputs, rewrite=None, piece=7):
+        self.outputs, self.prompts, self.rewrite, self.piece = list(outputs), [], rewrite, piece
+        self.finished = False
 
     @property
     def user(self):
         return self.prompts[-1] if self.prompts else None
 
-    def complete_json(self, system, user, schema_name, schema):
+    def next_output(self, user):
         self.prompts.append(user)
-        data = self.outputs[min(len(self.prompts), len(self.outputs)) - 1]
+        return self.outputs[min(len(self.prompts), len(self.outputs)) - 1]
+
+    def complete_json(self, system, user, schema_name, schema, **kw):
+        if schema_name == "rewrite":
+            if self.rewrite is None:
+                raise answering.LLMUnavailable("no rewrite in this test")
+            return LLMResult(data=self.rewrite, model="fake-mini", prompt_tokens=50, completion_tokens=10)
+        return LLMResult(data=self.next_output(user), model="fake", prompt_tokens=100, completion_tokens=20)
+
+    def stream_json(self, system, user, schema_name, schema, **kw):
+        self.finished = False
+        data = self.next_output(user)
+        text = json.dumps(data, ensure_ascii=False)
+        for i in range(0, len(text), self.piece):
+            yield text[i:i + self.piece]
+        self.finished = True
         return LLMResult(data=data, model="fake", prompt_tokens=100, completion_tokens=20)
 
 
-def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, **req):
+def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, rewrite=False,
+        **req):
     monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
     llm = data if isinstance(data, FakeLLM) else FakeLLM(data)
     events = list(answer_events(
         store or FakeStore(), llm, AskRequest(question=question, **req),
         retrieve_fn=retrieve_fn or (lambda *a, **kw: RetrievalResult(items=chunks, not_found=not chunks)),
-        freshness=freshness,
+        freshness=freshness, rewrite=rewrite,
     ))
     return events, AskResponse.model_validate(events[-1]["response"]), llm
 
@@ -156,7 +181,8 @@ def test_stream_order_and_deltas_add_up_to_the_answer(monkeypatch, tmp_path):
     types = [e["type"] for e in events]
     assert types[0] == "start" and types[-1] == "done"
     assert types.index("trace") < types.index("citation") < types.index("delta")
-    assert "".join(e["text"] for e in events if e["type"] == "delta").strip() == r.answer
+    for i, sentence in enumerate(r.sentences):  # each sentence's deltas add up to it
+        assert "".join(e["text"] for e in events if e["type"] == "delta" and e["index"] == i).strip() == sentence.text
     sent = set()
     for e in events:
         if e["type"] == "citation":
@@ -286,7 +312,7 @@ def test_follow_up_is_searched_with_the_previous_question(monkeypatch, tmp_path)
     queries = []
     monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
     req = AskRequest(question="А сколько стоит?", history=[{"role": "user", "text": "Certificat de urbanism"}])
-    answer_question(FakeStore(), FakeLLM(model()), req,
+    answer_question(FakeStore(), FakeLLM(model()), req, freshness=False, rewrite=False,
                     retrieve_fn=lambda pool, q, **kw: queries.append(q) or RetrievalResult(items=[]))
     assert queries == ["Certificat de urbanism А сколько стоит?"]
 
@@ -315,52 +341,76 @@ for c in (OLD_ACT, MID_ACT, NEW_ACT):
     LINES[c["chunk_id"]] = [{"line_id": f"{c['chunk_id']}-l1", "idx": 0, "text": c["text"], "page": 1, "bboxes": []}]
 
 
-def test_freshness_pass_finds_the_newer_act_and_answers_again(monkeypatch, tmp_path):
+def test_newer_acts_are_in_the_first_prompt_newest_first(monkeypatch, tmp_path):
     calls = []
 
     def fake_retrieve(pool, query, **kw):
         calls.append(kw)
         return RetrievalResult(items=[NEW_ACT] if kw.get("date_after") else [OLD_ACT, MID_ACT])
 
-    first = model(sentences=[s("Asociația CCDD elaborează PUG.", "S1.L1"), s("DGAURF selectează elaboratorul.", "S2.L1")],
-                  conflict={"kind": "contradiction", "explanation": "Diferă.", "refs": ["S1.L1", "S2.L1"],
-                            "preferred_ref": None})
-    second = model(sentences=[s("PUG este elaborat de Consorțiul ARHICON.", "S1.L1")])
-    llm = FakeLLM(first, second)
+    llm = FakeLLM(model(sentences=[s("PUG este elaborat de Consorțiul ARHICON.", "S1.L1")]))
     _, r, _ = run("Cine elaborează PUG?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True,
                   store=FakeStore(meta={"n1": NEW_ACT}))
 
-    assert (r.status, r.meta.path, r.answer) == ("answered", "agent", "PUG este elaborat de Consorțiul ARHICON.")
+    assert (r.status, r.meta.path, len(llm.prompts)) == ("answered", "fast", 1)  # one LLM call
     assert r.citations[0].act_number == "366-d"
     assert {"date_after": "2021-07-27", "sites": ["dgaurf.md"]} in [
         {k: c[k] for k in ("date_after", "sites") if k in c} for c in calls]
-    assert llm.prompts[1].index("[S1] ") < llm.prompts[1].index("366-d") < llm.prompts[1].index("79")  # newest first
+    assert llm.user.index("[S1] ") < llm.user.index("366-d") < llm.user.index("79")  # newest first
     assert [t.tool for t in r.trace] == ["search", "search", "verify"]
     assert r.trace[1].summary == "Caut acte mai noi… găsite 1"
 
 
-def test_freshness_pass_keeps_the_first_answer_when_nothing_is_newer(monkeypatch, tmp_path):
-    llm = FakeLLM(model(sentences=[s("DGAURF selectează elaboratorul.", "S1.L1")]))
-    _, r, _ = run("Cine selectează elaboratorul?", [MID_ACT], llm, monkeypatch, tmp_path, freshness=True)
-    assert (r.meta.path, len(llm.prompts)) == ("fast", 1)
-    assert r.trace[1].summary == "Caut acte mai noi… găsite 0"
+def test_second_call_only_when_unsettled_and_something_new_turned_up(monkeypatch, tmp_path):
+    def fake_retrieve(pool, query, **kw):
+        return RetrievalResult(items=[NEW_ACT] if query == "elaboratorul PUG reactualizare" else [OLD_ACT, MID_ACT])
+
+    conflict = {"kind": "contradiction", "explanation": "Diferă.", "refs": ["S2.L1", "S1.L1"], "preferred_ref": None}
+    first = model(sentences=[s("Asociația CCDD elaborează PUG.", "S2.L1"), s("DGAURF selectează elaboratorul.", "S1.L1")],
+                  conflict=conflict, search_ro="elaboratorul PUG reactualizare")
+    second = model(sentences=[s("PUG este elaborat de Consorțiul ARHICON.", "S1.L1")])
+    llm = FakeLLM(first, second)
+    events, r, _ = run("Cine elaborează PUG?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve,
+                       freshness=True, store=FakeStore(meta={"n1": NEW_ACT}))
+
+    assert (r.status, r.meta.path, r.answer) == ("answered", "agent", "PUG este elaborat de Consorțiul ARHICON.")
+    assert llm.prompts[1].index("366-d") < llm.prompts[1].index("79")
+    # The first answer was already streamed; done replaces it, and no trace event follows the text.
+    types = [e["type"] for e in events]
+    assert "trace" not in types[types.index("delta"):]
+    assert [t.tool for t in r.trace] == ["search", "search", "search", "verify"]
+
+    settled = FakeLLM(model(sentences=[s("DGAURF selectează elaboratorul.", "S1.L1")],
+                            search_ro="elaboratorul PUG reactualizare"))
+    run("Cine selectează?", [], settled, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True,
+        store=FakeStore(meta={"n1": NEW_ACT}))
+    assert len(settled.prompts) == 1
 
 
-def test_freshness_pass_greps_later_acts_by_number(monkeypatch, tmp_path):
+def test_nothing_newer_found_keeps_the_first_answer(monkeypatch, tmp_path):
+    def fake_retrieve(pool, query, **kw):  # the model's query finds only a page and an older act
+        return RetrievalResult(items=[CONTACTS, OLD_ACT] if query == "taxa" else [MID_ACT])
+
+    llm = FakeLLM(model("partial", sentences=[s("DGAURF selectează elaboratorul.", "S1.L1")], search_ro="taxa"))
+    _, r, _ = run("Cine selectează?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True,
+                  store=FakeStore(meta={"c3": CONTACTS, "o1": OLD_ACT}))
+    assert (len(llm.prompts), r.meta.path, r.trace[2].summary) == (1, "fast", "Caut acte mai noi… găsite 0")
+
+
+def test_later_acts_are_grepped_by_number_before_the_answer(monkeypatch, tmp_path):
     store = FakeStore(later=[NEW_ACT], meta={"n1": NEW_ACT})
-    llm = FakeLLM(model(sentences=[s("Taxa e 200 lei.", "S1.L1")], conflict={
-        "kind": "outdated", "explanation": "x", "refs": ["S1.L1", "S1.L1"], "preferred_ref": None}))
+    llm = FakeLLM(model(sentences=[s("Taxa e 200 lei.", "S1.L1")]))
     run("Cât costă?", [MID_ACT], llm, monkeypatch, tmp_path, store=store, freshness=True)
     assert {"nr. 79", "79 din 27.07.2021"} <= set(store.grep_patterns)
-    assert len(llm.prompts) == 2
+    assert "Elaboratorul PUG este Consorțiul ARHICON." in llm.user
+    assert len(llm.prompts) == 1
 
 
-def test_no_freshness_pass_for_settled_answers():
-    assert not answering.needs_freshness(model(sentences=[s("x", "S1.L1")]), [MID_ACT], "Ce prevede decizia 79?")
-    assert answering.needs_freshness(model(), [MID_ACT], "Cine elaborează PUG?")
-    assert answering.needs_freshness(model(), [OLD_ACT, MID_ACT], "Ce prevede?")
-    assert answering.needs_freshness(model("partial"), [MID_ACT], "Ce prevede?")
-    assert not answering.needs_freshness(model("refused"), [OLD_ACT, MID_ACT], "Cine ești?")
+def test_second_pass_only_for_unsettled_answers():
+    assert not answering.needs_second_pass(model(sentences=[s("x", "S1.L1")]))
+    assert answering.needs_second_pass(model("partial"))
+    assert answering.needs_second_pass(model(conflict={"kind": "outdated"}))
+    assert not answering.needs_second_pass(model("refused"))
 
 
 def test_newest_candidate_joins_the_top_chunks():
@@ -400,18 +450,163 @@ def test_own_repeal_line_is_noted_even_when_the_target_is_not_in_the_corpus(monk
     assert "note: this act repeals Dispoziția 185-d din 23.04.2020 (line S2.L1)" in llm.user
 
 
-def test_freshness_searches_with_the_models_romanian_query(monkeypatch, tmp_path):
+def test_second_pass_searches_with_the_models_romanian_query(monkeypatch, tmp_path):
     queries = []
 
     def fake_retrieve(pool, query, **kw):
         queries.append(query)
         return RetrievalResult(items=[MID_ACT])
 
-    llm = FakeLLM(model(sentences=[s("DGAURF selectează.", "S1.L1")], search_ro="reactualizare PUG elaborator"))
+    llm = FakeLLM(model("partial", sentences=[s("DGAURF selectează.", "S1.L1")], search_ro="reactualizare PUG elaborator"))
     run("Кто разрабатывает генплан?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True)
-    assert "reactualizare PUG elaborator" in queries[1:]
+    assert "reactualizare PUG elaborator" in queries
 
 
 def test_copies_of_a_document_are_one_source():
     copy = OLD_ACT | {"chunk_id": "o1-copy", "content_hash": "h"}
     assert [c["chunk_id"] for c in answering.distinct([OLD_ACT | {"content_hash": "h"}, copy, MID_ACT])] == ["o1", "o2"]
+
+
+# ─────────────── task 10: streaming, smaller prompt, query rewrite ───────────────
+
+
+def test_deltas_arrive_while_the_model_is_still_writing(monkeypatch, tmp_path):
+    monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
+    data = model(sentences=[s("Taxa este de 200 lei.", "S1.L1"), s("Termenul este de 10 zile.", "S1.L2")],
+                 followups=["Unde se plătește taxa?"] * 3)
+    llm = FakeLLM(data, piece=3)
+    seen = []
+    for event in answer_events(FakeStore(), llm, AskRequest(question="Cât costă?"), freshness=False, rewrite=False,
+                               retrieve_fn=lambda *a, **kw: RetrievalResult(items=[DECISION])):
+        seen.append((event["type"], llm.finished))
+    # Both sentences are shown and checked before the model has written the rest of its JSON (followups…).
+    assert [done for t, done in seen if t in ("delta", "sentence")] == [False] * sum(
+        t in ("delta", "sentence") for t, _ in seen)
+    assert seen[-1] == ("done", True)
+
+
+def test_unbacked_sentence_is_never_streamed(monkeypatch, tmp_path):
+    data = model(sentences=[s("Inventat.", "S9.L9"), s("Taxa este de 200 lei.", "S1.L1")])
+    events, r, _ = run("Cât costă?", [DECISION], data, monkeypatch, tmp_path)
+    deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "Inventat" not in deltas and deltas.strip() == "Taxa este de 200 lei."
+    assert [e["index"] for e in events if e["type"] == "sentence"] == [0]
+    assert r.answer == "Taxa este de 200 lei."
+
+
+def test_streamed_citations_get_their_translation_in_done(monkeypatch, tmp_path):
+    data = model(sentences=[s("Пошлина — 200 леев.", "S1.L1")],
+                 translations=[{"ref": "S1.L1", "text": "5. Пошлина составляет 200 леев."}])
+    events, r, _ = run("Сколько стоит?", [DECISION], data, monkeypatch, tmp_path)
+    assert [e["citation"]["translation"] for e in events if e["type"] == "citation"] == [None]
+    assert r.citations[0].translation == "5. Пошлина составляет 200 леев."
+
+
+def test_prompt_shows_matched_lines_with_context(monkeypatch, tmp_path):
+    long = DECISION | {"chunk_id": "big", "text": ""}
+    lines = [{"line_id": f"b{i}", "idx": i, "text": f"Punctul {i} despre altceva.", "page": 1, "bboxes": []}
+             for i in range(30)]
+    lines[20]["text"] = "Taxa pentru certificat este de 200 lei."
+    lines[3]["text"] = "| 12 | 34 |"
+    monkeypatch.setitem(LINES, "big", lines)
+    match = long | {"matched_lines": [{"line_id": "b20", "idx": 20, "text": lines[20]["text"]}]}
+    _, _, llm = run("Cât costă certificatul?", [match], model("not_found"), monkeypatch, tmp_path)
+
+    shown = [line.split(":")[0] for line in llm.user.split("\n") if line.startswith("S1.L")]
+    assert shown == [f"S1.L{n}" for n in range(16, 27)]  # line 21 (idx 20) ± 5, numbered by place in the chunk
+
+    _, _, llm = run("Cât costă?", [long], model("not_found"), monkeypatch, tmp_path)
+    shown = [line.split(":")[0] for line in llm.user.split("\n") if line.startswith("S1.L")]
+    assert shown == ["S1.L1", "S1.L2", "S1.L3", "S1.L5", "S1.L6"]  # nothing matched: the start; no-letter row dropped
+
+
+def test_line_repeated_in_another_source_is_shown_once(monkeypatch, tmp_path):
+    copy = CONTACTS | {"chunk_id": "p9", "doc_id": "page:dgaurf.md/p9", "url": "https://dgaurf.md/p9"}
+    monkeypatch.setitem(LINES, "c3", [{"line_id": "t1", "idx": 0, "text": "Tel: 022 000 000", "page": None, "bboxes": []}])
+    monkeypatch.setitem(LINES, "p9", [{"line_id": "t2", "idx": 0, "text": "Tel:  022 000 000", "page": None, "bboxes": []},
+                                      {"line_id": "t3", "idx": 1, "text": "Program: 8-17", "page": None, "bboxes": []}])
+    _, _, llm = run("Telefon?", [CONTACTS, copy], model("not_found"), monkeypatch, tmp_path)
+    assert llm.user.count("022 000 000") == 1 and "S2.L2: Program: 8-17" in llm.user
+
+
+def test_russian_question_is_also_searched_in_romanian_with_keywords(monkeypatch, tmp_path):
+    queries = []
+
+    def fake_retrieve(pool, query, **kw):
+        queries.append(query)
+        return RetrievalResult(items=[DECISION] if query.startswith("Cine") else [CONTACTS])
+
+    rewrite = {"ro": "Cine elaborează Planul Urbanistic General", "ru": "Кто разрабатывает генплан",
+               "keywords": ["ARHICON", "PUG"]}
+    llm = FakeLLM(model(sentences=[s("PUG разрабатывает консорциум ARHICON.", "S1.L1")]), rewrite=rewrite)
+    _, r, _ = run("Кто разрабатывает генплан Кишинёва?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve,
+                  rewrite=True, store=FakeStore(meta={"n1": NEW_ACT}))
+
+    # The Russian rewrite would repeat the Russian question: only the Romanian one is searched.
+    assert queries[1:] == ["Cine elaborează Planul Urbanistic General"]
+    assert "Elaboratorul PUG este Consorțiul ARHICON." in llm.user  # the keyword's line (grep)
+    assert "5. Taxa este de 200 lei." in llm.user  # the Romanian query's result
+    assert r.trace[0].input.startswith("Кто разрабатывает генплан Кишинёва? · Cine elaborează")
+
+
+def test_rewrite_failure_falls_back_to_the_question(monkeypatch, tmp_path):
+    llm = FakeLLM(model(sentences=[s("Пошлина 200 леев.", "S1.L1")]))  # no rewrite output: the call fails
+    _, r, _ = run("Сколько стоит?", [DECISION], llm, monkeypatch, tmp_path, rewrite=True)
+    assert r.status == "answered" and r.trace[0].input == "Сколько стоит?"
+
+
+def test_romanian_question_skips_the_rewrite_but_greps_act_numbers(monkeypatch, tmp_path):
+    llm = FakeLLM(model("not_found"), rewrite={"ro": "x", "ru": "x", "keywords": []})
+    calls = []
+    llm.complete_json = lambda *a, **kw: calls.append(a[2]) or FakeLLM.complete_json(llm, *a, **kw)
+    line = "Conform dispoziției nr. 366-d, elaboratorul este ARHICON."
+    monkeypatch.setitem(LINES, "n1", [{"line_id": "n1-l1", "idx": 0, "text": line, "page": 1, "bboxes": []}])
+    _, _, _ = run("Ce prevede dispoziția 366-d?", [DECISION], llm, monkeypatch, tmp_path, rewrite=True,
+                  store=FakeStore(meta={"n1": NEW_ACT}))
+    assert "rewrite" not in calls
+    assert line in llm.user  # found by the number
+    assert answering.ACT_NUMBER.findall("decizia nr. 4/1 și 6/19-15, dispoziția 251-d din 2026") == [
+        "4/1", "6/19-15", "251-d"]
+
+
+def test_answer_leaving_out_a_repeal_gets_it_quoted(monkeypatch, tmp_path):
+    ended = NEW_ACT | {"chunk_id": "g6", "text": "6. Grupul aprobat prin Dispoziția 185-d își încetează activitatea."}
+    monkeypatch.setitem(LINES, "g6", [{"line_id": "g6-l1", "idx": 0, "text": ended["text"], "page": 1, "bboxes": []}])
+    link = {"from_doc_id": NEW_ACT["doc_id"], "to_doc_id": None, "to_ref_text": "Dispoziția 185-d din 23.04.2020",
+            "relation": "repeals", "line_id": "g6-l1", "chunk_id": "g6"}
+    store = FakeStore(links=[link], meta={"g6": ended})
+    data = model(sentences=[s("Elaboratorul PUG este Consorțiul ARHICON.", "S1.L1")])
+    events, r, _ = run("Ce grup supraveghează PUG?", [NEW_ACT], data, monkeypatch, tmp_path, store=store)
+
+    note = r.sentences[-1]
+    assert note.text == ("De reținut: Dispoziția nr. 366-d din 09.10.2025 cu privire la taxe prevede: „6. Grupul aprobat "
+                         "prin Dispoziția 185-d își încetează activitatea.”")
+    assert [c.line_ids for c in r.citations if c.id in note.cites] == [["g6-l1"]]
+    assert r.meta.verified and [e["index"] for e in events if e["type"] == "sentence"] == [0, 1]
+
+    cited = model(sentences=[s("Grupul 185-d și-a încetat activitatea.", "S2.L1")])
+    _, r, _ = run("Ce grup?", [NEW_ACT], cited, monkeypatch, tmp_path, store=store)
+    assert len(r.sentences) == 1  # already said: no note
+
+
+def test_members_question_prefers_the_list_of_people(monkeypatch, tmp_path):
+    regulation = DECISION | {"chunk_id": "reg", "doc_type": "regulament", "number": None,
+                             "text": "Grupul de supraveghere are un președinte și membri."}
+    roster = NEW_ACT | {"chunk_id": "list", "text": "\n".join(
+        f"| {i} | Nume{i} Prenume{i} | funcția {i} | Membru |" for i in range(1, 5))}
+    candidates = [regulation] + [DECISION | {"chunk_id": f"x{i}"} for i in range(12)] + [roster]
+    _, _, llm = run("Кто входит в группу по надзору?", candidates, model("not_found"), monkeypatch, tmp_path)
+    assert llm.user.index("Nume1 Prenume1") < llm.user.index("are un președinte")
+    assert answering.is_roster(roster) and not answering.is_roster(regulation)
+
+
+def test_fuse_rewards_chunks_found_by_several_searches():
+    a, b, c = ({"chunk_id": x} for x in "abc")
+    assert [x["chunk_id"] for x in answering.fuse([[a, b], [c, b], [b]])] == ["b", "a", "c"]
+
+
+def test_common_keywords_are_ignored():
+    rows = [{"chunk_id": f"c{i}", "line_id": f"l{i}", "text": "Chișinău"} for i in range(40)]
+    rows.append({"chunk_id": "c7", "line_id": "x", "text": "Consorțiul ARHICON, Chișinău"})
+    ranked, lines = answering.keyword_ranking(rows, ["Chișinău", "ARHICON"])
+    assert ranked == [{"chunk_id": "c7"}] and [r["line_id"] for r in lines] == ["x"]

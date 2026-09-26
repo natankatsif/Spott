@@ -14,6 +14,10 @@ CHUNK_COLUMNS = (
 POSITION = "(c.block_ids->>0)::int"
 
 
+def like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class PgStore:
     def __init__(self, pool: ConnectionPool):
         self.pool = pool
@@ -65,15 +69,21 @@ class PgStore:
                           "WHERE doc_id = %s", (doc_id,))
         return rows[0] if rows else None
 
-    def later_acts(self, patterns: list[str], exclude_doc_ids: list[str], limit: int = 20) -> list[str]:
-        """Chunks whose lines mention an act by number ("nr. 4/1", "4/1 din 05.03.2020"), outside given docs:
-        later acts that amend, repeal or build on it."""
-        rows = self._rows(
-            "SELECT DISTINCT l.chunk_id FROM lines l WHERE l.text ILIKE ANY(%s) AND NOT (l.doc_id = ANY(%s)) "
-            "LIMIT %s",
-            ([f"%{p}%" for p in patterns], exclude_doc_ids, limit),
+    def later_acts(self, patterns: list[str], exclude_doc_ids: list[str], limit: int = 20) -> list[dict]:
+        """Lines mentioning an act by number ("nr. 4/1", "4/1 din 05.03.2020"), outside given docs: later acts
+        that amend, repeal or build on it. One line per chunk: {chunk_id, line_id}."""
+        return self._rows(
+            "SELECT DISTINCT ON (l.chunk_id) l.chunk_id, l.line_id FROM lines l "
+            "WHERE l.text ILIKE ANY(%s) AND NOT (l.doc_id = ANY(%s)) ORDER BY l.chunk_id, l.idx LIMIT %s",
+            ([f"%{like_escape(p)}%" for p in patterns], exclude_doc_ids, limit),
         )
-        return [r["chunk_id"] for r in rows]
+
+    def grep_lines(self, keywords: list[str], limit: int = 200) -> list[dict]:
+        """Lines containing any of the keywords verbatim (act numbers, names): {chunk_id, line_id, text}."""
+        return self._rows(
+            "SELECT chunk_id, line_id, text FROM lines WHERE text ILIKE ANY(%s) LIMIT %s",
+            ([f"%{like_escape(k)}%" for k in keywords], limit),
+        )
 
     def relation_lines(self, doc_ids: list[str]) -> list[dict]:
         """Amend/repeal lines touching these acts (act_relations, built by `python -m lineage`): lines of later

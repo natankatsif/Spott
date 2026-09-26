@@ -10,7 +10,7 @@
 |---|---|
 | `POST /api/search`, `/api/tools/*`, `GET /health` | work |
 | `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
-| `POST /api/ask/stream` | works: the answer is generated whole, then streamed sentence by sentence (word deltas) |
+| `POST /api/ask/stream` | works: real token streaming; each sentence is checked when the model closes it |
 | `POST /api/feedback` | works: stored in `data/feedback/<date>.jsonl` |
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | `GET /api/wall` | works (in memory) |
@@ -127,14 +127,13 @@ Client: `frontend/src/lib/stream.ts`:
 - `applyStreamEvent` is a pure reducer;
 - with `NEXT_PUBLIC_API_MOCK=1`, `mockStream` replays a mock with realistic delays.
 
-Backend rules for task 09:
-- The LLM writes citation markers inline (`… achiziții publice [c1].`). The backend:
-  - cuts each sentence at `.`/`!`/`?`;
-  - strips the markers from the text and emits `delta` without them;
-  - emits `sentence` with the collected `cites`.
-- A citation's `quote` is filled from the DB by `line_id` **before** it is emitted, never from model output.
-- Verification of the sentence against its quotes happens after the sentence is complete (`sentence.verified`). The final `done.meta.verified` covers the whole answer.
-- The concatenated `delta` texts (trimmed) must equal `done.response.answer`.
+How the backend streams (task 10):
+- The model writes JSON; each sentence is `{refs, text}` with the line ids **before** the text. A sentence's `delta`s start only once its refs point at real source lines, so an unbacked sentence is never shown; the `sentence` event comes when the model closes the sentence, with `verified` checked against its quotes right then.
+- `citation` events are built from the DB (`quote` by `line_id`), never from model output. Their `translation` may be `null` in the stream: the model writes translations after the sentences, so they come in `done`.
+- The `delta`s of sentence `i`, concatenated and trimmed, equal `sentences[i].text`; `answer` is the sentences joined with spaces.
+- Sentences the backend adds after the model's (a quoted repeal note, the `missing` parts of a `partial` answer, the `not_found` / `refused` texts) come after the model's sentences, same event order.
+- `trace` events only come before the first text. Steps after it (a second search, `verify`) are only in `done.response.trace`.
+- A second answer (≤ 20% of questions: the first one is `partial` or has a conflict, **and** newer acts turned up) is not streamed again: `done` replaces what was shown. `done` is always authoritative.
 
 ## `POST /api/feedback`
 ```json
