@@ -106,3 +106,80 @@ Generate static preview HTMLs **with your endpoint** for the citations used in `
 - Don't execute the site's own JS.
 - Don't store new copies of PDFs; reuse `/api/documents/{doc_id}/file`.
 - Don't change existing contract fields; only add the two `Citation` fields.
+
+---
+
+# Part B (same task): admin sources: just paste a link
+
+Problems reported by the team after task 09:
+1. **Admin "Surse" is empty.** `sources` is filled only by `tools.sources import`, which nobody ran on a fresh DB. The admin must never be empty on a machine that has an index.
+2. **Adding a source is too manual.** The form asks for site/document, category, depth, max pages. Needed: **one field, a URL**. The server decides everything else and starts indexing by itself. No file uploads, only links (a site/page link or a link to a PDF/DOC/DOCX).
+3. **The admin is one page, no sub-pages**, so one API call must give everything the table needs.
+
+## B1. Seed automatically
+- On backend startup (and in `tools.index_io import`): if `sources` is empty, import `sites.toml` (same code as `tools.sources import`, idempotent).
+- Then link what is already indexed. For every site with chunks in the index, fill the counters from the index + `registry.sqlite` when present: pages, documents found/downloaded, last crawl.
+- Result on the current data: 40 rows, 5 of them `indexed` with real numbers, chisinau.md `blocked`.
+
+## B2. `POST /api/admin/sources` = `{ "url": "…" }`
+The body is only `url`. Keep the old optional fields accepted for compatibility, but the UI won't send them. The server:
+1. Normalizes the URL (scheme, `www.`, trailing slash) and fetches it: HEAD, then GET if needed, 8 s timeout, follow redirects.
+   - Unreachable / not http(s) → 422 with a clear message ("Сайт не отвечает" / "Site-ul nu răspunde" is on the UI side; the backend sends the English message + code).
+2. **Kind**: content-type or extension PDF/DOC/DOCX → `document`, otherwise `site`.
+3. **Same domain already a source:**
+   - a site URL with a deeper path → add it to that source's `start_urls`, queue a crawl, return **200** with `merged_into: <id>`;
+   - the same document again → 409 "already indexed";
+   - never create a second row for the same domain.
+4. **Category**, automatically, in this order:
+   - domain rules (`dets|educ|scoal|gradinit|extrascolar` → education, `amt|sanat|spital` → healthcare, `pretura|botanica|ciocana|rascani|buiucani|centru` → district, `mobil|transport|autourban|rtec` → mobility, `salubr|apa|lift|termo` → urban_utilities, `chisinau.md` → city_hall);
+   - else one small-model call on `<title>` + meta description + domain, answer limited to the category list;
+   - else `other`.
+
+   Store `category_source: "rule" | "llm" | "default"`.
+5. **Crawl settings**, automatically:
+   - domain root → depth 4, max 2000 pages (sites.toml defaults);
+   - a deeper path → depth 2, restricted to that path prefix;
+   - document → just download + parse it.
+6. **robots.txt** forbids crawling → the row is saved with `robots=blocked`, no job, and the response says so.
+7. Otherwise **queue the job immediately**: crawl for a site, download → parse → index for a document.
+8. Response: the full `SourceRow` + `detected: {kind, category, category_source, title, crawl_depth, max_pages, reason}`. `reason` is one short English sentence for the toast, e.g. "Detected a website (education, by domain rule); crawling up to depth 4.".
+
+## B3. One list for the single admin page
+`GET /api/admin/sources` → every row has everything the table shows:
+- identity and settings: `id, kind, url, site_id, title, category, category_source, enabled, robots`;
+- `status`: `indexed | pending | running | queued | failed | blocked | disabled`;
+- counters: `pages, documents_found, documents_downloaded, chunks, lines, last_crawled`;
+- `progress`: `{job_id, stage, percent, eta_s}` or null. The UI polls every 2 s while any row is `running`/`queued`;
+- `last_error`: the last job's error, short.
+
+Plus `totals` (same as `/api/corpus/stats` totals), so the page header needs no second call.
+
+Actions stay as they are: refresh (`POST /sources/{id}/jobs {kind:"refresh"}`), enable/disable (PATCH), delete (`?purge=true`), cancel job.
+
+## B4. Demo data for the admin UI
+- `frontend/src/lib/mocks/admin/sources.json` — a real `GET /api/admin/sources` response from the current DB after B1:
+  - 40 rows;
+  - 1 row edited to `running` at 63% with `stage: "parse"`;
+  - 1 row `failed` with a real-looking error;
+  - 1 `document` row (a PDF link added through B2).
+- `frontend/src/lib/mocks/admin/add-source-*.json` — B2 responses: a site, a document, a merged path, a blocked site, and an unreachable 422.
+- `api.ts` admin client: mock mode reads these.
+
+## B tests
+- Empty DB + startup → 40 sources; restart → still 40 (idempotent).
+- B2 with a mocked HTTP layer:
+  - PDF by content-type; PDF by extension with wrong content-type;
+  - site root; deeper path merged into an existing domain (200 + `merged_into`);
+  - duplicate document 409; robots blocked; unreachable 422;
+  - category by rule and by LLM (fake LLM) and default.
+- B3 list contains `status` and `progress` for a running job (fake worker progress).
+- Contract/mocks validate.
+
+## B report
+- Output of the seed on the current DB (40 / indexed 5).
+- 5 real `POST {url}` responses:
+  - `https://acc.md/`;
+  - a deeper dgaurf.md page (merged);
+  - a PDF link from dgaurf.md;
+  - `https://www.chisinau.md/` (blocked);
+  - a dead URL.
