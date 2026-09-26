@@ -9,6 +9,7 @@ import json
 import logging
 import mimetypes
 import os
+import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -217,13 +218,33 @@ def prepare_ask(request: Request) -> tuple[ConnectionPool, LLM]:
     return pool, llm
 
 
+HEALTH_COUNT_TTL_S = 10.0
+_chunk_count_at = 0.0
+
+
+def current_chunk_count() -> int:
+    """Chunks with embeddings, read from the database at most every 10 s: /health follows a reindex in progress
+    (the index grows while the API keeps serving) instead of the count at startup."""
+    global _chunk_count_at
+    pool = getattr(app.state, "pool", None)
+    if pool is not None and time.monotonic() - _chunk_count_at >= HEALTH_COUNT_TTL_S:
+        try:
+            with pool.connection() as conn, conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM chunks WHERE embedding IS NOT NULL")
+                app.state.chunk_count = cur.fetchone()[0]
+            _chunk_count_at = time.monotonic()
+        except Exception as e:
+            log.warning("chunk count not read: %s", e)
+    return getattr(app.state, "chunk_count", 0)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         device=getattr(app.state, "device", "unknown"),
         models_loaded=getattr(app.state, "models_loaded", False),
-        chunk_count=getattr(app.state, "chunk_count", 0),
+        chunk_count=current_chunk_count(),
     )
 
 
