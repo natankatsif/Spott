@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 // Android / "Add to home screen". Browser tab icons are app/favicon.ico, app/icon.png, app/apple-icon.png.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Asistentul Primăriei Chișinău",
-    short_name: "Asistent",
+    name: "Spott",
+    short_name: "Spott",
     start_url: "/",
     display: "standalone",
     background_color: "#f5f6f8",

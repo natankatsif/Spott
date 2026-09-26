@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AdminShell } from "@/components/admin/admin-shell";
 
 export const metadata: Metadata = {
-  title: "Administrare · Asistentul Primăriei Chișinău",
+  title: "Administrare · Spott",
   robots: { index: false, follow: false },
 };
 

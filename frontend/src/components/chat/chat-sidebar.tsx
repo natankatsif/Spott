@@ -35,6 +35,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { type ChatMeta, clearChats, deleteChat, useChatHistory } from "@/lib/chat-history";
+import { cn } from "@/lib/utils";
 import type { UIText } from "@/lib/i18n";
 
 // ─────────────── open / collapsed, remembered in this browser ───────────────
@@ -43,9 +44,9 @@ const OPEN_KEY = "chatSidebarOpen";
 const openListeners = new Set<() => void>();
 const readOpen = () => {
   try {
-    return window.localStorage.getItem(OPEN_KEY) !== "0";
+    return window.localStorage.getItem(OPEN_KEY) === "1"; // collapsed until the user opens it
   } catch {
-    return true;
+    return false;
   }
 };
 const writeOpen = (open: boolean) => {
@@ -65,7 +66,7 @@ export function ChatSidebarProvider({ children }: { children: React.ReactNode })
       return () => openListeners.delete(l);
     },
     readOpen,
-    () => true,
+    () => false,
   );
   return (
     <SidebarProvider
@@ -104,6 +105,8 @@ export function ChatSidebar({
 
   const needle = q.trim().toLowerCase();
   const shown = needle ? chats.filter((c) => c.title.toLowerCase().includes(needle)) : chats;
+  // phones: bigger text and taller rows, like Gemini's menu
+  const navClass = isMobile ? "h-12 gap-3 rounded-xl px-3 text-base [&>svg]:size-5" : undefined;
   // phones: the menu is a slide-over, close it after picking something
   const done = () => isMobile && setOpenMobile(false);
 
@@ -115,14 +118,30 @@ export function ChatSidebar({
 
   return (
     <>
-      <Sidebar collapsible="icon">
+      {/* phones: a wide slide-over like Gemini's, the chat stays visible (no dimming; a tap on it closes the menu) */}
+      <Sidebar
+        collapsible="icon"
+        mobileClassName="w-[85vw] max-w-[22rem] border-r-0 shadow-2xl sm:max-w-[22rem]"
+        mobileOverlayClassName="bg-transparent"
+      >
         <SidebarHeader className="gap-3 p-3">
           <div className="flex items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center">
             <Link className="flex min-w-0 items-center gap-2.5 group-data-[collapsible=icon]:hidden" href="/" onClick={onNew}>
-              <LogoMark className="h-7 w-auto shrink-0 drop-shadow-none" />
-              <span className="truncate font-semibold text-[17px] tracking-tight">Asistent</span>
+              <LogoMark className={cn("w-auto shrink-0 drop-shadow-none", isMobile ? "h-8" : "h-7")} />
+              <span className={cn("truncate font-semibold tracking-tight", isMobile ? "text-xl" : "text-[17px]")}>Spott</span>
             </Link>
-            <SidebarTrigger aria-label={h.toggle} className="shrink-0" />
+            {isMobile ? (
+              <button
+                aria-label={t.preview.close}
+                className="flex size-10 shrink-0 items-center justify-center rounded-full text-foreground/80 hover:bg-sidebar-accent"
+                onClick={() => setOpenMobile(false)}
+                type="button"
+              >
+                <XIcon className="size-6" />
+              </button>
+            ) : (
+              <SidebarTrigger aria-label={h.toggle} className="shrink-0" />
+            )}
           </div>
         </SidebarHeader>
 
@@ -131,6 +150,7 @@ export function ChatSidebar({
             <SidebarMenu className="gap-0.5">
               <SidebarMenuItem>
                 <SidebarMenuButton
+                  className={navClass}
                   onClick={() => {
                     onNew();
                     done();
@@ -141,12 +161,12 @@ export function ChatSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton isActive={searching} onClick={startSearch} tooltip={h.search}>
+                <SidebarMenuButton className={navClass} isActive={searching} onClick={startSearch} tooltip={h.search}>
                   <SearchIcon /> <span>{h.search}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={h.sources}>
+                <SidebarMenuButton asChild className={navClass} tooltip={h.sources}>
                   <Link href="/sources">
                     <LibraryBigIcon /> <span>{h.sources}</span>
                   </Link>
@@ -158,7 +178,7 @@ export function ChatSidebar({
                 <SidebarInput
                   aria-label={h.search}
                   autoFocus
-                  className="h-9 rounded-lg pr-8"
+                  className={cn("rounded-lg pr-8", isMobile ? "h-11 text-base" : "h-9")}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder={h.searchPlaceholder}
                   value={q}
@@ -179,16 +199,16 @@ export function ChatSidebar({
           </SidebarGroup>
 
           <SidebarGroup className="min-h-0 flex-1 group-data-[collapsible=icon]:hidden">
-            <SidebarGroupLabel>{h.recent}</SidebarGroupLabel>
+            <SidebarGroupLabel className={cn(isMobile && "h-10 px-3 text-sm")}>{h.recent}</SidebarGroupLabel>
             <SidebarGroupContent>
               {shown.length === 0 ? (
-                <p className="px-2 py-3 text-muted-foreground text-sm">{needle ? h.noMatch : h.empty}</p>
+                <p className={cn("py-3 text-muted-foreground", isMobile ? "px-3 text-base" : "px-2 text-sm")}>{needle ? h.noMatch : h.empty}</p>
               ) : (
                 <SidebarMenu className="gap-0.5">
                   {shown.map((c: ChatMeta) => (
                     <SidebarMenuItem key={c.id}>
                       <SidebarMenuButton
-                        className="h-9"
+                        className={cn(isMobile ? "h-12 rounded-xl px-3 pr-12 text-base" : "h-9")}
                         isActive={c.id === activeId}
                         onClick={() => {
                           onSelect(c.id);
@@ -200,7 +220,7 @@ export function ChatSidebar({
                       </SidebarMenuButton>
                       <SidebarMenuAction
                         aria-label={h.delete}
-                        className="hover:text-destructive"
+                        className={cn("hover:text-destructive", isMobile && "top-1/2! right-2 size-9 -translate-y-1/2 [&>svg]:size-[18px]")}
                         onClick={() => {
                           deleteChat(c.id);
                           if (c.id === activeId) onDeleted(c.id);
@@ -219,12 +239,15 @@ export function ChatSidebar({
         </SidebarContent>
 
         <SidebarFooter className="gap-1 border-t p-3 group-data-[collapsible=icon]:hidden">
-          <p className="flex items-center gap-1.5 px-1 text-muted-foreground text-xs">
+          <p className={cn("flex items-center gap-1.5 px-1 text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
             <LockIcon className="size-3 shrink-0" /> {h.local}
           </p>
           {chats.length > 0 && (
             <button
-              className="flex items-center gap-1.5 rounded-md px-1 py-1 text-left text-muted-foreground text-xs transition-colors hover:text-destructive"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-1 py-1 text-left text-muted-foreground transition-colors hover:text-destructive",
+                isMobile ? "text-sm" : "text-xs",
+              )}
               onClick={() => setConfirmClear(true)}
               type="button"
             >

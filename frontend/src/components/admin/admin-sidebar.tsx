@@ -52,7 +52,7 @@ export function AdminSidebar() {
                   <LogoMark className="h-5 w-auto drop-shadow-none" />
                 </span>
                 <span className="flex min-w-0 flex-col leading-tight">
-                  <span className="truncate font-semibold">Asistent</span>
+                  <span className="truncate font-semibold">Spott</span>
                   <span className="truncate text-muted-foreground text-xs">{t.title}</span>
                 </span>
               </Link>

@@ -202,11 +202,17 @@ export function SourcesView() {
   const lang = useUILang();
   const ready = useLogosReady();
   const tx = TEXT[lang];
+
+  // phones: the document doesn't scroll or bounce here (globals.css html.page-locked), only the columns move
+  useEffect(() => {
+    document.documentElement.classList.add("page-locked");
+    return () => document.documentElement.classList.remove("page-locked");
+  }, []);
   const cards = (keep: (i: number) => boolean) =>
     sources.filter((_, i) => keep(i)).map((source) => <SourceCard key={source.url} lang={lang} ready={ready} {...source} />);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-8">
+    <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col gap-4 overflow-hidden px-4 py-6 md:h-auto md:min-h-dvh md:gap-6 md:overflow-visible md:py-8">
       <header className="flex flex-col gap-2">
         <Link className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground" href="/">
           <ArrowLeftIcon className="size-3.5" /> {tx.back}
@@ -216,8 +222,9 @@ export function SourcesView() {
       </header>
 
       {/* the scrolling columns sit centred in the space between the header and the language footer */}
-      <div className="flex flex-1 items-center">
-        <div className="relative flex h-125 w-full flex-row items-center justify-center overflow-hidden">
+      {/* phones: the columns fill the screen between the header and the languages (the page itself never scrolls) */}
+      <div className="flex min-h-0 flex-1 items-center">
+        <div className="relative flex h-full w-full md:h-125 flex-row items-center justify-center overflow-hidden">
           <div className="flex flex-row items-center justify-center w-full gap-4 px-4 h-full">
             <Marquee pauseOnHover vertical className={cn("[--duration:20s] h-full sm:flex hidden flex-1", !ready && "[&>div]:[animation-play-state:paused]")}>
               {cards((i) => i % 3 === 0)}

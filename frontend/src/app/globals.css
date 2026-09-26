@@ -184,6 +184,16 @@ html.chat-locked body {
   overscroll-behavior: none;
 }
 
+/* /sources on phones: the page fits the screen and never scrolls (the logo columns scroll by themselves). */
+@media (max-width: 767px) {
+  html.page-locked,
+  html.page-locked body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
 /* …and it doesn't zoom: panning only, no pinch or double-tap zoom (the page adds maximum-scale=1 for Android). */
 html.chat-locked body {
   touch-action: pan-x pan-y;
