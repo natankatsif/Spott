@@ -297,3 +297,90 @@ def test_different_parents_not_merged():
     assert len(chunks) == 2
     assert chunks[0]["legal_path"] == ["Anexa nr. 1", "pct. 1"]
     assert chunks[1]["legal_path"] == ["Anexa nr. 2", "pct. 2"]
+
+
+def test_chunk_lines_verbatim_concatenation():
+    """Concatenation of line texts must match chunk.text verbatim (up to whitespace)."""
+    import re
+    doc = {
+        "sha256": "doc_verbatim",
+        "metadata": {"title": "Decizia nr. 12", "doc_type": "decizie", "number": "12", "date": "2024-01-01"},
+        "blocks": [
+            {
+                "id": 0,
+                "type": "paragraph",
+                "text": "1.\nSe aprobă regulamentul de funcționare a comitetului consultativ.\na)\nComitetul are rolul de coordonare.\nb)\nDeciziile comitetului sunt recomandative.",
+                "section": ["Sec1"],
+                "lang": "ro",
+            }
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    c = chunks[0]
+    assert "lines" in c
+    lines = c["lines"]
+    assert len(lines) >= 3
+
+    # Verbatim check: words in lines concatenated must exactly equal words in chunk text
+    orig_words = re.findall(r"\S+", c["text"])
+    lines_words = re.findall(r"\S+", " ".join(l["text"] for l in lines))
+    assert lines_words == orig_words
+
+    # Check line structure
+    for idx, l in enumerate(lines):
+        assert l["idx"] == idx
+        assert l["chunk_id"] == c["chunk_id"]
+        assert l["doc_id"] == c["doc_id"]
+        assert len(l["text"]) >= 20 or idx == len(lines) - 1
+        assert "embed_text" in l
+
+
+def test_chunk_lines_short_line_merged():
+    """Short lines < 25 chars (like 'a)' or '1.') must be merged with next line."""
+    doc = {
+        "sha256": "doc_short_lines",
+        "metadata": {"title": "Test", "doc_type": "decizie"},
+        "blocks": [
+            {
+                "id": 0,
+                "type": "paragraph",
+                "text": "1.\nAceasta este o linie completă de text oficial.\na)\nSubpunctul aferent cu explicații detaliate.",
+                "lang": "ro",
+            }
+        ],
+    }
+    chunks = chunk_document(doc)
+    lines = chunks[0]["lines"]
+    assert len(lines) == 2
+    assert lines[0]["text"].startswith("1. Aceasta este")
+    assert lines[1]["text"].startswith("a) Subpunctul aferent")
+
+
+def test_chunk_lines_table_embed_text_has_headers():
+    """Table data rows should include column headers in embed_text."""
+    doc = {
+        "sha256": "doc_table_lines",
+        "metadata": {"title": "Tarife servicii", "doc_type": "decizie"},
+        "blocks": [
+            {
+                "id": 0,
+                "type": "table",
+                "header": ["Serviciu", "Taxa", "Termen"],
+                "rows": [
+                    ["Certificat urbanism", "50 MDL", "10 zile"],
+                    ["Autorizatie construire", "100 MDL", "30 zile"],
+                ],
+                "lang": "ro",
+            }
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    lines = chunks[0]["lines"]
+    assert len(lines) >= 2
+    # First data line embed_text should contain column headers
+    assert "Serviciu:" in lines[0]["embed_text"]
+    assert "Taxa:" in lines[0]["embed_text"]
+    assert "Termen:" in lines[0]["embed_text"]
+

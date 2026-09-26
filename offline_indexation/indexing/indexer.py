@@ -26,7 +26,9 @@ DOCUMENT_COLUMNS = ("doc_id", "kind", "title", "doc_type", "number", "date", "ca
 CHUNK_COLUMNS = ("chunk_id", "doc_id", "kind", "text", "embed_text", "citation_label",
                  "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes", "lang",
                  "char_count", "content_hash", "has_contacts", "is_table",
-                 "title", "doc_type", "number", "date", "category", "site", "url", "found_on", "embedding")
+                 "title", "doc_type", "number", "date", "category", "site", "url", "found_on", "ord", "embedding")
+LINE_COLUMNS = ("line_id", "chunk_id", "doc_id", "idx", "text", "embed_text",
+                "lang", "block_id", "page", "bboxes", "content_hash", "embedding")
 JSON_COLUMNS = {"page_sizes", "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes"}
 
 
@@ -41,10 +43,11 @@ def upsert_sql(table: str, columns: tuple[str, ...], key: str, touch: str | None
 
 UPSERT_DOCUMENT = upsert_sql("documents", DOCUMENT_COLUMNS, "doc_id", touch="indexed_at")
 UPSERT_CHUNK = upsert_sql("chunks", CHUNK_COLUMNS, "chunk_id")
+UPSERT_LINE = upsert_sql("lines", LINE_COLUMNS, "line_id")
 
 
 def row_values(record: dict, columns: tuple[str, ...]) -> list:
-    """Chunk/document dict -> SQL parameters in column order (JSON-encodes list fields)."""
+    """Chunk/document/line dict -> SQL parameters in column order (JSON-encodes list fields)."""
     values = []
     for col in columns:
         value = record.get(col)
@@ -54,6 +57,8 @@ def row_values(record: dict, columns: tuple[str, ...]) -> list:
             value = value.to_numpy() if hasattr(value, "to_numpy") else np.asarray(value, dtype=np.float32)
         elif col in ("has_contacts", "is_table"):
             value = bool(value)
+        elif col in ("ord", "idx") and value is None:
+            value = 0
         values.append(value)
     return values
 
@@ -129,6 +134,68 @@ class Indexer:
             done = start + len(batch)
             log.info("Embedded %d/%d (%.1f chunks/s)", done, len(todo), done / max(time.monotonic() - started, 1e-3))
         return len(reused), len(todo)
+
+    # --- lines ---------------------------------------------------------------
+
+    def find_cached_line_embeddings(self, content_hashes: list[str]) -> dict[str, list[float]]:
+        """Embeddings already in lines table for these texts (keyed by content_hash)."""
+        if not content_hashes:
+            return {}
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ON (content_hash) content_hash, embedding FROM lines "
+                "WHERE content_hash = ANY(%s) AND embedding IS NOT NULL",
+                (content_hashes,),
+            )
+            return {h: emb for h, emb in cur.fetchall()}
+
+    def write_lines(self, lines: list[dict]) -> None:
+        if not lines:
+            return
+        with self.conn.cursor() as cur:
+            cur.executemany(UPSERT_LINE, [row_values(l, LINE_COLUMNS) for l in lines])
+
+    def embed_and_store_lines(self, lines: list[dict]) -> tuple[int, int]:
+        """Writes all lines with embeddings. Returns (reused, computed)."""
+        if not lines:
+            return 0, 0
+        cached = self.find_cached_line_embeddings(list({l["content_hash"] for l in lines}))
+
+        # Deduplicate texts to encode by content_hash
+        to_encode_hashes: dict[str, str] = {}
+        for l in lines:
+            h = l["content_hash"]
+            if h not in cached and h not in to_encode_hashes:
+                to_encode_hashes[h] = l["embed_text"]
+
+        todo_items = sorted(to_encode_hashes.items(), key=lambda item: len(item[1]))
+        if todo_items:
+            log.info("Embedding %d unique lines (reused %d) on %s", len(todo_items), len(cached), self.device)
+        started = time.monotonic()
+        for start in range(0, len(todo_items), WRITE_BATCH):
+            batch = todo_items[start : start + WRITE_BATCH]
+            vectors = self.model.encode(
+                [text for _, text in batch],
+                batch_size=self.batch_size,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            for (h, _), vec in zip(batch, vectors, strict=True):
+                cached[h] = vec
+            free_device_cache(self.device)
+            done = start + len(batch)
+            elapsed = max(time.monotonic() - started, 1e-3)
+            log.info("Embedded %d/%d unique lines (%.1f lines/s)", done, len(todo_items), done / elapsed)
+
+        # Assign cached embeddings to all lines and write in batches
+        for l in lines:
+            l["embedding"] = cached[l["content_hash"]]
+
+        for start in range(0, len(lines), WRITE_BATCH):
+            self.write_lines(lines[start : start + WRITE_BATCH])
+
+        reused_count = len(lines) - len(todo_items)
+        return reused_count, len(todo_items)
 
     # --- cleanup -------------------------------------------------------------
 

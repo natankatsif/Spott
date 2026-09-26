@@ -18,7 +18,7 @@ from pathlib import Path
 
 from retrieval.db import get_connection, init_db
 
-from chunking.chunker import chunk_document
+from chunking.chunker import chunk_document, extract_chunk_lines
 
 from .indexer import Indexer
 
@@ -136,6 +136,18 @@ def main() -> None:
 
     indexer.upsert_documents(by_doc)  # before chunks: chunks.doc_id references documents
     reused, computed = indexer.embed_and_store(all_chunks)
+
+    # Collect and index lines
+    all_lines = []
+    for c in all_chunks:
+        c_lines = c.get("lines")
+        if not c_lines:
+            c_lines = extract_chunk_lines(c)
+            c["lines"] = c_lines
+        all_lines.extend(c_lines)
+    log.info("Indexing %d lines from %d chunks", len(all_lines), len(all_chunks))
+    reused_lines, computed_lines = indexer.embed_and_store_lines(all_lines)
+
     stale = indexer.delete_stale_chunks(by_doc)
 
     # Orphans are only knowable when the whole corpus was chunked in this run.
@@ -149,8 +161,11 @@ def main() -> None:
     print(f"\nIndexing finished in {time.monotonic() - started:.1f}s:")
     print(f"  Documents indexed:   {len(by_doc)}")
     print(f"  Chunks:              {len(all_chunks)}")
-    print(f"  Embeddings reused:   {reused}")
-    print(f"  Embeddings computed: {computed}")
+    print(f"  Chunk emb reused:    {reused}")
+    print(f"  Chunk emb computed:  {computed}")
+    print(f"  Lines indexed:       {len(all_lines)}")
+    print(f"  Line emb reused:     {reused_lines}")
+    print(f"  Line emb computed:   {computed_lines}")
     print(f"  Stale chunks removed:{stale:>4}")
     print(f"  Orphans removed:     {orphans_removed}")
 
