@@ -15,3 +15,8 @@ offline_indexation/data/*
 data/export/
 *.dump
 
+# Tester logs
+data/test_logs/
+
+# Build metadata
+*.egg-info/

@@ -39,9 +39,9 @@ def evaluate_mode(
     queries: list[dict[str, Any]],
     *,
     mode_name: str,
-    w_vector: float,
-    w_line: float,
-    w_fts: float,
+    w_vector: float | None,
+    w_line: float | None,
+    w_fts: float | None,
     k: int = 10,
 ) -> dict[str, Any]:
     positives = [q for q in queries if not q.get("is_negative") and not q.get("exclude_from_metric")]
@@ -53,6 +53,8 @@ def evaluate_mode(
     line_rr_list: list[float] = []
     chunk_rr_list: list[float] = []
     latencies: list[float] = []
+    # line hit@5 per language pair "query_lang→line_lang" (RU question → RO document, etc.)
+    by_lang: dict[str, list[int]] = {}
 
     for q in positives:
         t0 = time.perf_counter()
@@ -99,6 +101,10 @@ def evaluate_mode(
             line_hits_1 += 1
         if 1 <= line_rank <= 5:
             line_hits_5 += 1
+        pair = by_lang.setdefault(f"{q.get('query_lang', '?')}→{q.get('line_lang', '?')}", [0, 0, 0])
+        pair[0] += int(1 <= line_rank <= 5)
+        pair[1] += int(1 <= chunk_rank <= 5)
+        pair[2] += 1
         line_rr_list.append(1.0 / line_rank if line_rank > 0 else 0.0)
 
     # Negatives top score distribution
@@ -132,6 +138,7 @@ def evaluate_mode(
         "avg_ms": round(statistics.mean(latencies), 1),
         "neg_score_p50": round(statistics.median(neg_top_scores) if neg_top_scores else 0.0, 5),
         "neg_score_max": round(max(neg_top_scores) if neg_top_scores else 0.0, 5),
+        "by_lang": by_lang,
     }
 
 
@@ -158,6 +165,7 @@ def main() -> None:
         ("4. Hybrid (w_fts=0.2)", 1.0, 1.0, 0.2),
         ("5. Hybrid (w_fts=0.5)", 1.0, 1.0, 0.5),
         ("6. Hybrid (w_fts=1.0)", 1.0, 1.0, 1.0),
+        ("7. Default (config.py)", None, None, None),
     ]
 
     conn = get_connection()
@@ -188,6 +196,12 @@ def main() -> None:
             f"{r['neg_score_max']:.5f}"
         )
     print("=" * 105)
+
+    default = results[-1]
+    print("\nBY LANGUAGE PAIR (question → gold line), default weights:")
+    print(f"{'Pair':<8} | {'N':>3} | {'Line Hit@5':<10} | {'Chunk Hit@5'}")
+    for pair, (line_hits, chunk_hits, n) in sorted(default["by_lang"].items()):
+        print(f"{pair:<8} | {n:>3} | {line_hits / n:<10.2%} | {chunk_hits / n:.2%}")
 
 
 if __name__ == "__main__":

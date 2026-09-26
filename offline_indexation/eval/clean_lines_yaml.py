@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 eval_path = Path("eval/lines.yaml")
-with open(eval_path) as f:
+with open(eval_path, encoding="utf-8") as f:
     data = yaml.safe_load(f)
 
 # IDs to remove entirely
@@ -52,7 +52,7 @@ for entry in data:
     
     cleaned.append(entry)
 
-with open(eval_path, "w") as f:
+with open(eval_path, "w", encoding="utf-8") as f:
     yaml.dump(cleaned, f, allow_unicode=True, default_flow_style=False, sort_keys=False, width=120)
 
 pos = [e for e in cleaned if not e.get("is_negative")]

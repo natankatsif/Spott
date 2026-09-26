@@ -9,6 +9,7 @@ Output schema (data/parsed/<sha>.json):
         section: headings above the block, outermost first — used in citations
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from docling_core.types.doc import (
     TableItem,
     TextItem,
 )
+from dotenv import find_dotenv, load_dotenv
 
 from . import metadata
 from .normalize import detect_lang, normalize_text
@@ -51,7 +53,9 @@ def make_converter() -> DocumentConverter:
     if sys.platform == "darwin":
         ocr = OcrMacOptions(lang=["ro-RO", "ru-RU"])  # Apple Vision
     else:
-        ocr = TesseractCliOcrOptions(lang=["ron", "rus"])
+        load_dotenv(find_dotenv())
+        # Windows: tesseract.exe is often not on PATH -> TESSERACT_CMD in .env (see docs/TESTER.md)
+        ocr = TesseractCliOcrOptions(lang=["ron", "rus"], tesseract_cmd=os.getenv("TESSERACT_CMD") or "tesseract")
     pdf = PdfPipelineOptions(do_ocr=True, do_table_structure=True, ocr_options=ocr,
                              document_timeout=DOCUMENT_TIMEOUT)
     pdf.heading_hierarchy_options.enabled = True

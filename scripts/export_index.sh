@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
+# Thin Mac/Linux wrapper. The logic lives in offline_indexation/tools/ (works on Windows too):
+#   uv run python -m tools.index_io export
 set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EXPORT_DIR="$ROOT_DIR/data/export"
-DATE_STR="$(date +%Y-%m-%d)"
-DUMP_FILE="$EXPORT_DIR/index-${DATE_STR}.dump"
-
-mkdir -p "$EXPORT_DIR"
-
-echo "Exporting documents, chunks, and lines tables from PostgreSQL..."
-docker exec qwerty-pgvector pg_dump -U qwerty -d qwerty -Fc -t documents -t chunks -t lines > "$DUMP_FILE"
-
-FILE_SIZE=$(du -h "$DUMP_FILE" | cut -f1)
-echo "Index exported successfully to: $DUMP_FILE"
-echo "Dump file size: $FILE_SIZE"
+cd "$(dirname "$0")/../offline_indexation"
+exec uv run python -m tools.index_io export "$@"

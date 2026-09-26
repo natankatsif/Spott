@@ -1,0 +1,36 @@
+# Lint + unit tests on Linux and Windows. Windows runs without PYTHONUTF8 on purpose:
+# the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install (lockfile must be up to date)
+        run: uv sync --all-packages --all-groups --frozen
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Unit tests (no database)
+        run: uv run pytest -q -m "not db"
+      - name: Doctor (CI mode)
+        working-directory: offline_indexation
+        run: uv run python -m tools.doctor --ci
+      - name: Commands start
+        run: |
+          uv run qsearch --help
+          uv run qsearch --report
+          cd offline_indexation
+          uv run python -m tools.pipeline update --dry-run
+          uv run python -m tools.index_io --help

@@ -12,45 +12,33 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 | [`backend/`](backend) | Python, uv, FastAPI | API ассистента: поиск по корпусу, ответ с цитатами |
 | [`frontend/`](frontend) | Node, Next.js | Веб-чат (RO / RU) |
 
-## Как запустить у друга за 5 минут
+## Как запустить (Mac и Windows)
 
-1. **Клонировать репозиторий:**
-   ```bash
-   git clone <repo-url>
-   cd qwerty
-   ```
+Пошаговая инструкция для тестировщика и для всех, кто ставит проект впервые: **[docs/TESTER.md](docs/TESTER.md)**. Там же: что реализовано, как устроен Docker, консольный поиск `qsearch` и решение типичных проблем.
 
-2. **Создать `.env` со своим ключом OpenAI:**
-   ```bash
-   cp .env.example .env
-   # Укажите актуальный OPENAI_API_KEY в .env
-   ```
+Коротко:
 
-3. **Синхронизировать зависимости:**
-   ```bash
-   uv sync
-   ```
-
-4. **Импортировать готовый дамп индекса (без повторного парсинга и расчета векторов!):**
-   ```bash
-   # Получите файл дампа (например, data/export/index-2026-09-26.dump)
-   ./scripts/import_index.sh data/export/index-2026-09-26.dump
-   ```
-   Скрипт поднимет `docker compose up -d`, создаст таблицы и индексы HNSW/GIN, загрузит 484 документа, 2 269 чанков и 9 906 строк с готовыми эмбеддингами.
-
-5. **Запустить API-сервер:**
-   ```bash
-   cd backend
-   uv run uvicorn app.main:app --port 8000
-   ```
-   API доступно по адресу `http://localhost:8000`, документация Swagger — `http://localhost:8000/docs`.
-
-### Создание дампа для переноса
 ```bash
-./scripts/export_index.sh
-# Дамп сохраняется в data/export/index-<YYYY-MM-DD>.dump (в git не коммитится)
+git clone <repo-url> qwerty && cd qwerty
+cp .env.example .env                  # Windows: copy .env.example .env
+uv sync --all-packages
+cd offline_indexation
+uv run python -m tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # поднимет Docker-базу и загрузит индекс
+uv run python -m tools.doctor         # проверка окружения
+cd .. && uv run qsearch               # консольный поиск
 ```
 
+API-сервер: `cd backend && uv run uvicorn app.main:app --port 8000` → `http://localhost:8000/docs`.
+
+Служебные команды (одинаково на Mac и Windows, из `offline_indexation/`):
+
+| Команда | Что делает |
+|---|---|
+| `uv run python -m tools.index_io export` | дамп индекса в `data/export/index-<дата>.dump` (в git не коммитится) |
+| `uv run python -m tools.pipeline update` | обновить уже обойдённые сайты: замена изменённых документов, удаление пропавших |
+| `uv run python -m tools.pipeline full [--only crawler downloader]` | полный обход всех разрешённых сайтов (без chisinau.md — robots.txt) |
+
+`scripts/*.sh` — тонкие обёртки над этими командами для Mac/Linux.
 
 ## Запуск
 

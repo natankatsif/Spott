@@ -16,6 +16,8 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from common.paths import safe_filename
+
 from .chunker import chunk_document
 
 log = logging.getLogger("chunking")
@@ -33,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def safe_id(doc_id: str) -> str:
-    return doc_id.replace(":", "_").replace("/", "_").replace("?", "_").replace("&", "_")
+    return safe_filename(doc_id)
 
 
 def main() -> None:
