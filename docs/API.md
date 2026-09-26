@@ -8,14 +8,14 @@
 
 | Endpoint | State |
 |---|---|
-| `POST /api/search`, `/api/tools/*`, `GET /health` | work now |
-| `POST /api/ask` | backend: currently a stub in the old shape; implement this contract (task 09) |
-| `POST /api/ask/stream` | backend: implement (the UI uses this one) |
-| `POST /api/feedback` | backend: implement |
-| `GET /api/documents/{doc_id}/file` | backend: implement |
-| `GET /api/wall` | backend: implement |
-| `GET /api/corpus/stats` | backend: implement |
-| Error body `ApiError`, CORS | backend: implement |
+| `POST /api/search`, `/api/tools/*`, `GET /health` | work |
+| `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
+| `POST /api/ask/stream` | works: the answer is generated whole, then streamed sentence by sentence (word deltas) |
+| `POST /api/feedback` | works: stored in `data/feedback/<date>.jsonl` |
+| `GET /api/documents/{doc_id}/file` | works where the PDFs are on disk (`OFFLINE_DATA_DIR/raw`); otherwise 404 and `file_url` is `null` |
+| `GET /api/wall` | works (in memory) |
+| `GET /api/corpus/stats` | works; without `registry.sqlite` on the machine, pages/documents come from the index |
+| Error body `ApiError`, CORS | works: `CORS_ORIGINS`, rate limit `ASK_RATE_LIMIT` per minute per client |
 
 Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. Then `ask()` picks a mock by keywords in the question:
 

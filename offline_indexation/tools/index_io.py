@@ -81,7 +81,8 @@ def import_dump(dump: Path) -> None:
         )
     if r.returncode != 0:  # pg_restore warns about objects that init_db already created — show, don't fail
         print("pg_restore предупреждения:\n" + "\n".join(r.stderr.splitlines()[-10:]))
-    print("5/5 порядок фрагментов в документах (chunks.ord)")
+    print("5/5 схема поверх дампа (колонки старых дампов) и порядок фрагментов (chunks.ord)")
+    init_db()  # pg_restore --clean recreated the tables as they were in the dump
     r = docker("exec", CONTAINER, "psql", "-U", env["user"], "-d", env["db"], "-c", ORD_BACKFILL,
                capture_output=True, text=True, encoding="utf-8")
     print("   " + r.stdout.strip())

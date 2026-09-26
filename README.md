@@ -20,19 +20,19 @@ Mapped one-to-one to the challenge brief.
 
 | Requirement | How we meet it | Status |
 |---|---|---|
-| **Answer questions from a defined corpus** | The corpus is built only from the Annex 1 websites. Answers are generated only from passages retrieved from it, never from the model's general knowledge. | ✅ corpus pipeline<br>⏳ answering |
-| **Romanian and Russian** | Questions in either language, answer in the same language. Retrieval works across languages, so a Russian question can be answered from a Romanian-only document. | ✅ cross-lingual retrieval<br>⏳ answering |
-| **Cite the exact document and passage** | Every answer cites the act (type, number, date), the passage quoted verbatim, the page and point (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*), and links to the original on the City Hall website. Parsing already keeps page, section and point number for every block. | ✅ provenance in corpus<br>⏳ in answers |
-| **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing. | ⏳ |
-| **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. The registry already keeps document versions, and parsing extracts act numbers and dates. | ⏳ |
-| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. | ✅ page index<br>⏳ routing |
+| **Answer questions from a defined corpus** | The corpus is built only from the Annex 1 websites. Answers are generated only from passages retrieved from it, never from the model's general knowledge. | ✅ |
+| **Romanian and Russian** | Questions in either language, answer in the same language. Retrieval works across languages, so a Russian question can be answered from a Romanian-only document. | ✅ |
+| **Cite the exact document and passage** | Every answer cites the act (type, number, date), the passage quoted verbatim, the page and point (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*), and links to the original on the City Hall website. Quotes come from the index, with PDF page boxes for highlighting. | ✅ |
+| **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing; `partial` says which part is missing. | ✅ |
+| **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. `outdated` (a newer act replaces the older) is told apart from a real `contradiction`. | ✅ in answers<br>⏳ corpus-wide scan |
+| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. | ✅ links in answers<br>⏳ widget routing |
 | **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ⏳ |
 
 ### Bonus
 
 | Requirement | How | Status |
 |---|---|---|
-| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ⏳ |
+| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ✅ API (`/api/feedback`) |
 | **Innovative solution** | See [What's innovative](#whats-innovative). | partly ✅ |
 
 ## What's innovative
@@ -83,7 +83,7 @@ Each stage is a separate command. The stages share one SQLite registry (`data/re
 
 ### Online
 
-- **Backend** (FastAPI; search and agent tools ✅, cited answers ⏳). Retrieves the most relevant passages, asks an LLM to answer only from them, verifies that quotes appear verbatim in the sources, and returns a structured answer.
+- **Backend** (FastAPI, contract in [docs/API.md](docs/API.md)). Retrieves the most relevant passages and gives the LLM their lines, numbered. The model answers only from them and marks which lines back each sentence; the quotes are then taken from the index (never written by the model), sentences without a backing line are dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. Answers stream over SSE (`/api/ask/stream`).
 - **Frontend** (Next.js). Chat interface with a Romanian / Russian switch. It shows each answer with its sources and navigation links.
 
 ## Parsed document format
@@ -230,10 +230,10 @@ The cost will be split into indexing (one-off plus incremental) and answering (p
 | Chunking, line index, hybrid search (Postgres + pgvector) | ✅ 5 of 40 sites indexed so far, ~0.1–0.2 s per query |
 | Document updates (replace, not duplicate; removal of vanished documents) | ✅ |
 | Agent tools `search / grep / toc / open`, console `qsearch` for testers | ✅ |
-| Backend cited answers (`/api/ask` with GPT) | ⏳ next; search endpoints work, answering is a stub |
+| Cited answers `/api/ask` + `/api/ask/stream` (docs/API.md): answered / partial / not_found / conflict / refused, checklists, translations of quotes | ✅ fast path; agent path (`mode=deep`) ⏳ |
 | Mac / Windows setup, CI on Linux + Windows | ✅ |
 | Contradiction detection, navigation routing | ⏳ planned (the registry already tracks document versions and source pages) |
 | Chat UI | ✅ skeleton connected to the API |
-| Feedback on answers | ⏳ planned |
+| Feedback, live wall, corpus stats endpoints | ✅ |
 | Legacy `.doc` files | ⏳ need LibreOffice for conversion |
 | Monthly maintenance budget | ⏳ to be written |

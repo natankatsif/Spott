@@ -18,6 +18,7 @@ data/export/
 # Tester logs and /api/ask query logs
 data/test_logs/
 data/query_logs/
+data/feedback/
 
 # Build metadata
 *.egg-info/
