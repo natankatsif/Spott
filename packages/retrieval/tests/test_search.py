@@ -160,3 +160,58 @@ def test_retrieve_disabled_reranker_raises():
 
     with pytest.raises(ValueError, match="Reranker is disabled"):
         retrieve(None, "test query", rerank=True)
+
+
+def test_make_deep_link_pdf():
+    from retrieval.links import make_deep_link
+
+    url = "https://site.md/doc.pdf"
+    assert make_deep_link(url, "some line text", page=5) == "https://site.md/doc.pdf#page=5"
+    assert make_deep_link(url, "some line text", page=None) == "https://site.md/doc.pdf#page=1"
+
+
+def test_make_deep_link_html():
+    from retrieval.links import make_deep_link
+
+    url = "https://site.md/page/about"
+    text = "Regulamentul privind acordarea autorizațiilor de construire în municipiul Chișinău"
+    link = make_deep_link(url, text)
+    assert link.startswith("https://site.md/page/about#:~:text=")
+    assert "Regulamentul" in link
+    assert "municipiul" in link
+    assert "autoriza%C8%9B" in link
+
+
+def test_all_lines_in_db_have_url_and_deep_link():
+    import pytest
+
+    from retrieval.db import get_connection
+    from retrieval.links import make_deep_link
+
+    try:
+        conn = get_connection()
+    except Exception as e:
+        pytest.skip(f"Database not available: {e}")
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT l.line_id, l.text, l.page, c.url, c.found_on, c.kind
+                FROM lines l
+                JOIN chunks c ON l.chunk_id = c.chunk_id
+                LIMIT 1000
+                """
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    assert len(rows) > 0, "No lines found in database"
+    for line_id, text, page, url, found_on, kind in rows:
+        assert url, f"Line {line_id} missing url"
+        dl = make_deep_link(url, text, page)
+        assert dl, f"Line {line_id} missing deep_link"
+        if kind == "file":
+            assert page is not None, f"File line {line_id} missing page"
+            assert found_on is not None, f"File line {line_id} missing found_on"

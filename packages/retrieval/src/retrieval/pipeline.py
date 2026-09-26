@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import psycopg
+from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from .config import (
@@ -23,6 +24,7 @@ from .config import (
     W_VECTOR,
 )
 from .embeddings import get_device, get_embedding_model
+from .links import make_deep_link
 from .rerank import rerank_candidates
 from .search import (
     build_fts_query,
@@ -219,10 +221,43 @@ def retrieve(
             if meta:
                 item.update(meta)
 
-    # Attach top 1-3 matched lines to each chunk
+    # Backfill matched_lines for chunks found only via chunk vector or chunk FTS
+    missing_line_cids = [item["chunk_id"] for item in fused if not matched_lines_by_chunk.get(item["chunk_id"])]
+    if missing_line_cids:
+        with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT line_id, chunk_id, idx, text, page, bboxes
+                FROM lines
+                WHERE chunk_id = ANY(%s) AND idx < 3
+                ORDER BY chunk_id, idx ASC
+                """,
+                (missing_line_cids,),
+            )
+            for row in cur.fetchall():
+                matched_lines_by_chunk.setdefault(row["chunk_id"], []).append({
+                    "line_id": row["line_id"],
+                    "idx": row["idx"],
+                    "text": row["text"],
+                    "page": row.get("page"),
+                    "bboxes": row.get("bboxes") or [],
+                    "score": 0.0,
+                })
+
+    # Attach top 1-3 matched lines to each chunk with full links and metadata
     for item in fused:
         cid = item["chunk_id"]
-        item["matched_lines"] = matched_lines_by_chunk.get(cid, [])[:3]
+        c_lines = matched_lines_by_chunk.get(cid, [])[:3]
+        for cl in c_lines:
+            cl["url"] = item.get("url") or ""
+            cl["found_on"] = item.get("found_on")
+            cl["citation_label"] = item.get("citation_label") or ""
+            if cl.get("page") is None and item.get("pages"):
+                cl["page"] = item["pages"][0]
+            if not cl.get("bboxes") and item.get("bboxes"):
+                cl["bboxes"] = item["bboxes"]
+            cl["deep_link"] = make_deep_link(cl["url"], cl["text"], cl.get("page"))
+        item["matched_lines"] = c_lines
 
     # 5. Deduplicate results
     candidates = deduplicate_results(fused, k=top_candidates)
