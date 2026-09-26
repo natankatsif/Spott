@@ -7,15 +7,19 @@ import asyncio
 import functools
 import json
 import logging
+import mimetypes
 import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
+from urllib.parse import quote as url_quote
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from retrieval import (
     RERANKER_ENABLED,
@@ -26,6 +30,7 @@ from retrieval import (
     retrieve,
 )
 from retrieval.db import init_app_db
+from retrieval.sources import seed_sources
 from retrieval.tools import (
     TOOL_SCHEMAS,
     grep_tool,
@@ -35,11 +40,13 @@ from retrieval.tools import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from . import admin, errors
+from . import admin, errors, preview
 from .admin import PgAdminStore
-from .answering import answer_events, answer_question, replay_events
+from .answering import answer_events, answer_question, replay_events, to_top_left
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter
+from .files import DATA_DIR
+from .gaps import PgGaps
 from .llm import LLM, LLMUnavailable, OpenAILLM
 from .pdf_source import PdfSource, make_clients
 from .schemas import (
@@ -90,17 +97,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pool = get_pool(min_size=2, max_size=10)
     app.state.pool = pool
     app.state.store = PgStore(pool)
-    try:  # app-state tables (sources, jobs, answers, feedback, suggestions, contacts)
+    try:  # app-state tables (sources, jobs, answers, feedback, suggestions, contacts), sources seeded
         with pool.connection() as conn:
             init_app_db(conn)
+            added = seed_sources(conn, DATA_DIR / "sources" / "sites.toml")
+        if added:
+            log.info("Sources seeded: %d added", added)
     except Exception as e:
         log.warning("App tables not created: %s", e)
     app.state.admin = PgAdminStore(pool)
     app.state.answers = PgAnswers(pool)
     app.state.suggestions = PgSuggestions(pool)
+    app.state.gaps = PgGaps(pool)
+    # The admin's gap re-check: one question, one model call (no rewrite call, no second pass).
+    app.state.ask_once = lambda req: answer_question(app.state.store, get_llm(), req, pool=pool, freshness=False,
+                                                     rewrite=False, on_done=answered)
     http_clients = make_clients()
     app.state.http = http_clients[0]
     app.state.pdf_source = PdfSource(*http_clients)
+    app.state.pages = preview.PageSource(http_clients[0])
 
     log.info("Loading embedding model on %s...", device)
     await run_in_threadpool(get_embedding_model, device)
@@ -154,6 +169,8 @@ async def recheck_suggestions() -> None:
 
 app = FastAPI(title="Chișinău Municipal Assistant", lifespan=lifespan)
 errors.install(app)
+mimetypes.add_type("text/javascript", ".mjs")  # pdf.js is ES modules: a module script needs a JS type
+app.mount(preview.STATIC_PREFIX, StaticFiles(directory=preview.STATIC), name="preview-static")
 app.include_router(admin.auth_router)
 app.include_router(admin.router)
 app.add_middleware(
@@ -233,12 +250,12 @@ async def ask(req: AskRequest, request: Request) -> AskResponse:
         raise ApiException(503, "unavailable", "LLM unavailable, try again") from e
 
 
-def answered(req: AskRequest, resp: AskResponse) -> None:
-    """Every answer: onto the question wall, and into `answers` for ratings and quick questions."""
+def answered(req: AskRequest, resp: AskResponse, info: dict | None = None) -> None:
+    """Every answer: onto the question wall, and into `answers` for ratings, quick questions and the admin's gaps."""
     app.state.wall.add(req, resp)
     answers = getattr(app.state, "answers", None)
     if answers is not None:
-        answers.record(req, resp)
+        answers.record(req, resp, info or {})
 
 
 def sse(event: dict) -> str:
@@ -293,6 +310,38 @@ async def document_file(doc_id: str) -> Response:
     data = await app.state.pdf_source.get(doc)
     return Response(data, media_type="application/pdf",
                     headers={"Content-Disposition": "inline", "Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/api/preview/{doc_id:path}")
+async def source_preview(doc_id: str, line: Annotated[list[str] | None, Query()] = None,
+                         lang: str = Query("ro", pattern="^(ro|ru)$"), embed: int = Query(1, ge=0, le=1)) -> Response:
+    """The cited source for the chat's iframe: the page (our sanitized copy) or the PDF (pdf.js), scrolled to the
+    quoted lines and highlighted; DOCX and unreachable pages as our text view. See app/preview.py."""
+    store = getattr(app.state, "store", None)
+    doc = await run_in_threadpool(store.preview_document, doc_id) if store else None
+    if doc is None:
+        raise ApiException(404, "not_found", f"Unknown document {doc_id}")
+    raw = await run_in_threadpool(store.doc_lines, doc_id)
+    lines = [preview_line(r, doc.get("page_sizes") or []) for r in raw]
+    known = {ln["line_id"] for ln in lines}
+    selected = [lid for lid in dict.fromkeys(line or []) if lid in known][:preview.MAX_LINES]
+    kind = preview.preview_kind(doc["kind"], doc["url"], doc["has_file"])
+    deep = preview.deep_link_for(doc, lines, selected, kind)
+    common = {"doc": doc, "lines": lines, "selected": selected, "lang": lang, "embed": bool(embed),
+              "allowed": CORS_ORIGINS}
+    if kind == "pdf":
+        view = preview.pdf_view(**common, file_url=f"/api/documents/{url_quote(doc_id, safe='')}/file", deep_link=deep)
+    elif kind == "page" and (got := await app.state.pages.get(doc["url"])):
+        view = preview.page_view(**common, page_html=got[0], how=got[1], date=got[2], deep_link=deep)
+    else:
+        view = preview.text_view(**common, deep_link=deep, unavailable=kind == "page")
+    return Response(view.body, media_type="text/html; charset=utf-8", headers=preview.headers(view, CORS_ORIGINS))
+
+
+def preview_line(row: dict, page_sizes: list[dict]) -> dict:
+    boxes = row.get("bboxes") or [b for b in row.get("chunk_bboxes") or [] if b.get("page") == row.get("page")]
+    return {"line_id": row["line_id"], "text": row["text"], "page": row.get("page") or (row.get("pages") or [None])[0],
+            "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
 
 
 @app.get("/api/wall", response_model=WallResponse)

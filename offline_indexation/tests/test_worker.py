@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from crawler.config import load_sites
 from tools.sources import SITES_TOML, import_sites
 from worker import core
 from worker.core import JobRunner, plan
@@ -71,6 +70,15 @@ def test_plans_for_site_document_and_refresh():
     assert [s.args[1] for s in doc] == ["worker.register", "downloader", "parsing", "indexing"]
 
 
+def test_a_link_merged_into_a_source_is_the_only_thing_its_job_does():
+    deeper = plan({"kind": "crawl", "url": "https://acc.md/ro/servicii"}, SITE)
+    assert deeper[0].args == ["-m", "crawler", "--sites", "acc.md", "--start-urls", "https://acc.md/ro/servicii",
+                              "--path-prefix", "/ro/servicii", "--max-depth", "2"]
+    doc = plan({"kind": "crawl", "url": "https://acc.md/files/tarife.pdf"}, SITE)
+    assert doc[0].args == ["-m", "worker.register", "--url", "https://acc.md/files/tarife.pdf", "--site", "acc.md"]
+    assert sum(s.weight for s in doc) == 100 and "pages_parsing" not in [s.args[1] for s in doc]
+
+
 def test_percent_goes_from_0_to_100():
     jobs, ran = FakeJobs(), []
     status = JobRunner(jobs, run_step=stub_stages(ran)).run({"id": 1, "kind": "crawl"}, SITE)
@@ -122,9 +130,13 @@ class FakeCursor:
     def __exit__(self, *a):
         return False
 
-    def execute(self, sql, params):
-        self.rows.append(params)
+    def execute(self, sql, params=None):
+        if params is not None:
+            self.rows.append(params)
         self.rowcount = 1
+
+    def fetchone(self):
+        return (None,)  # to_regclass('public.chunks'): no index in this fake database
 
 
 class FakeConn:
@@ -137,5 +149,5 @@ class FakeConn:
 
 def test_import_from_sites_toml_gives_40_sources():
     conn = FakeConn()
-    assert import_sites(conn, load_sites(SITES_TOML)) == 40
+    assert import_sites(conn, SITES_TOML) == 40
     assert {row[1] for row in conn.rows if row[-1] == "blocked"} == {"chisinau.md"}  # robots.txt: Disallow: /

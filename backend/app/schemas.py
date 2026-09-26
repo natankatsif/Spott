@@ -77,6 +77,10 @@ class Citation(Strict):
     site: str | None
     file_url: str | None  # our PDF copy for the viewer, relative to the API; null for web pages
     bboxes: list[BBox]
+    # The source preview (GET /api/preview/{doc_id}): the page or PDF scrolled to this quote, highlighted. Relative
+    # to API_URL when it starts with /api/; mocks use a frontend path (/mocks/preview/…).
+    preview_url: str
+    preview_kind: Literal["page", "pdf", "text"]
 
 
 class AnswerSentence(Strict):
@@ -251,6 +255,54 @@ class SuggestionCreate(Strict):
     pinned: bool = True
 
 
+# ─────────────── admin: gaps (questions without a full answer) ───────────────
+
+
+class GapQuestion(Strict):
+    answer_id: str
+    question: str  # masked like the public wall
+    lang: Lang
+    status: Literal["not_found", "partial"]
+    ts: str
+
+
+class GapSite(Strict):
+    site: str
+    hits: int  # how many of the group's answers found chunks of this site but didn't use them
+
+
+class GapRecheck(Strict):
+    status: AskStatus
+    verified: bool
+    answer_id: str
+    ts: str
+
+
+class Gap(Strict):
+    id: str  # the answer_id of the group's first question
+    example: str
+    questions: list[GapQuestion]  # the latest 20
+    count: int
+    last_asked: str
+    langs: list[Lang]
+    status: Literal["not_found", "partial"]  # the worst in the group
+    missing: list[str]  # what the partial answers said is missing
+    hint_sites: list[GapSite]  # top 3: which department to ask
+    rechecked: GapRecheck | None
+    hidden: bool
+
+
+class GapTotals(Strict):
+    not_found: int
+    partial: int
+    groups: int
+
+
+class GapList(Strict):
+    items: list[Gap]
+    totals: GapTotals
+
+
 # ─────────────── admin: login ───────────────
 
 
@@ -299,33 +351,75 @@ class JobCreate(Strict):
     kind: Literal["crawl", "refresh"]
 
 
+SourceStatus = Literal["indexed", "pending", "running", "queued", "failed", "blocked", "disabled"]
+
+
+class SourceProgress(Strict):
+    job_id: int
+    stage: Literal["crawl", "download", "parse", "index"] | None
+    percent: float
+    eta_s: float | None
+
+
 class SourceRow(Strict):
+    """One row of the admin's single sources table: everything it shows, from one call."""
+
     id: int
     kind: Literal["site", "document"]
     url: str
     site_id: str  # domain
+    title: str | None
     category: str | None
+    category_source: str | None  # rule | keywords | default | toml | index | manual
     start_urls: list[str]
     max_depth: int | None
     max_pages: int | None
     enabled: bool
     robots: Literal["allowed", "blocked"]  # blocked: robots.txt forbids crawling, no crawl from the UI
+    # disabled > blocked > running > queued > failed (last job) > indexed (has chunks) > pending
+    status: SourceStatus
+    pages: int
+    documents_found: int
+    documents_downloaded: int
+    chunks: int  # in the index
+    lines: int
+    last_crawled: str | None
+    progress: SourceProgress | None  # while a job is queued or running: poll every 2 s
+    last_error: str | None  # the last job's error, short
     created_at: str
     last_job: Job | None
-    chunks: int  # in the index
 
 
 class SourceList(Strict):
     sources: list[SourceRow]
+    totals: CorpusTotals  # the same as /api/corpus/stats totals: the page header needs no second call
 
 
 class SourceCreate(Strict):
-    kind: Literal["site", "document"]
-    url: str = Field(min_length=8, max_length=2000)
+    """Only `url` is needed: the server decides the kind, category and crawl settings. The other fields are
+    accepted for older clients and override what the server would decide."""
+
+    url: str = Field(min_length=4, max_length=2000)
+    kind: Literal["site", "document"] | None = None
     category: str | None = Field(default=None, max_length=50)
     max_depth: int | None = Field(default=None, ge=0, le=10)
     max_pages: int | None = Field(default=None, ge=1, le=20000)
-    start: bool = False  # queue a crawl right away
+    start: bool = True  # queue the crawl / download right away
+
+
+class SourceDetected(Strict):
+    kind: Literal["site", "document"]
+    category: str
+    category_source: str  # rule | keywords | default | manual (sent by the client) | existing (merged)
+    title: str | None
+    crawl_depth: int | None
+    max_pages: int | None
+    reason: str  # one short English sentence for the toast
+
+
+class SourceAdded(SourceRow):
+    detected: SourceDetected
+    merged_into: int | None  # a deeper path or a document of a domain that is already a source: that source's id
 
 
 class SourcePatch(Strict):

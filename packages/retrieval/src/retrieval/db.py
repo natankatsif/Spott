@@ -270,6 +270,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
+-- Task 11: sources added by URL (title, how the category was decided), a job for one URL of a source
+-- (a deeper path or a document merged into an existing domain).
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS category_source TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS url TEXT;
+
 CREATE TABLE IF NOT EXISTS answers (
     answer_id TEXT PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -284,6 +290,11 @@ CREATE TABLE IF NOT EXISTS answers (
     answer TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_answers_created ON answers(created_at);
+-- Task 11 (gaps): what a partial answer lacked, sites found but not used, hidden by the admin, the last re-check.
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS missing JSONB;
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS retrieved_sites JSONB;
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_hidden BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS recheck JSONB;
 
 CREATE TABLE IF NOT EXISTS feedback (
     answer_id TEXT NOT NULL,

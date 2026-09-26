@@ -45,7 +45,7 @@ def test_checked_answer_is_replayed_as_a_stream():
     cached = AskResponse.model_validate(json.loads((MOCKS / "ask" / "answered-ro.json").read_text(encoding="utf-8")))
     assert good_answer(cached)
     done = []
-    events = list(replay_events(cached, AskRequest(question="x"), on_done=lambda req, r: done.append(r)))
+    events = list(replay_events(cached, AskRequest(question="x"), on_done=lambda req, r, info: done.append(r)))
     types = [e["type"] for e in events]
     assert types[0] == "start" and types[-1] == "done" and "delta" in types
     r = AskResponse.model_validate(events[-1]["response"])

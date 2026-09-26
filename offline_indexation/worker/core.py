@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from common.progress import read_progress
 
@@ -42,13 +43,24 @@ class JobStore(Protocol):
     def site_stats(self, site_id: str) -> dict[str, int]: ...
 
 
+DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
+
+
 def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> list[Step]:
     """The stages of a job. A site source is crawled; a document source is registered and fetched as a document;
-    `refresh` re-checks what was crawled before (tools.pipeline update)."""
+    `refresh` re-checks what was crawled before (tools.pipeline update). A job with a `url` (a link added into an
+    existing source) does only that link: a document is registered and fetched, a deeper path is crawled
+    under its prefix, 2 levels deep."""
     refresh = job["kind"] == "refresh"
+    url = job.get("url")
     sites = [source["site_id"]] if source is not None else list(all_sites or [])
-    if source is not None and source["kind"] == "document":
-        crawl = ["-m", "worker.register", "--url", source["url"], "--site", source["site_id"]]
+    document = source is not None and (source["kind"] == "document" or
+                                       (url is not None and urlsplit(url).path.lower().endswith(DOCUMENT_EXTENSIONS)))
+    if document:
+        crawl = ["-m", "worker.register", "--url", url or source["url"], "--site", source["site_id"]]
+    elif url:
+        prefix = urlsplit(url).path.rstrip("/") or "/"
+        crawl = ["-m", "crawler", "--sites", *sites, "--start-urls", url, "--path-prefix", prefix, "--max-depth", "2"]
     else:
         crawl = ["-m", "crawler", "--sites", *sites] + (["--resume"] if refresh else [])
         if source is not None and source.get("max_depth") is not None:
@@ -63,7 +75,7 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
         Step("parse", ["-m", "pages_parsing", "--sites", *sites], WEIGHTS["parse"] / 2),
         Step("index", ["-m", "indexing", "--sites", *sites], WEIGHTS["index"]),
     ]
-    if source is not None and source["kind"] == "document":
+    if document:
         steps = [s for s in steps if s.args[1] != "pages_parsing"]
         steps[2].weight = WEIGHTS["parse"]  # files only
     return steps

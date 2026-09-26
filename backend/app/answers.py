@@ -17,7 +17,7 @@ log = logging.getLogger("backend.answers")
 
 
 class Answers(Protocol):
-    def record(self, req: AskRequest, resp: AskResponse) -> None: ...
+    def record(self, req: AskRequest, resp: AskResponse, info: dict | None = None) -> None: ...
     def rate(self, req: FeedbackRequest) -> bool: ...
 
 
@@ -32,15 +32,19 @@ class PgAnswers:
     def __init__(self, pool: ConnectionPool):
         self.pool = pool
 
-    def record(self, req: AskRequest, resp: AskResponse) -> None:
+    def record(self, req: AskRequest, resp: AskResponse, info: dict | None = None) -> None:
+        """info: the missing parts of a partial answer, the sites found but not used (answering.answer_events)."""
+        info = info or {}
         row = answer_row(req, resp)
         try:
             with self.pool.connection() as conn:
                 conn.execute(
                     "INSERT INTO answers (answer_id, session_id, question, lang, status, verified, path, citations, "
-                    "doc_ids, answer) VALUES (%(answer_id)s, %(session_id)s, %(question)s, %(lang)s, %(status)s, "
-                    "%(verified)s, %(path)s, %(citations)s, %(doc_ids)s, %(answer)s) ON CONFLICT DO NOTHING",
-                    row | {"doc_ids": Jsonb(row["doc_ids"])})
+                    "doc_ids, answer, missing, retrieved_sites) VALUES (%(answer_id)s, %(session_id)s, %(question)s, "
+                    "%(lang)s, %(status)s, %(verified)s, %(path)s, %(citations)s, %(doc_ids)s, %(answer)s, "
+                    "%(missing)s, %(retrieved_sites)s) ON CONFLICT DO NOTHING",
+                    row | {"doc_ids": Jsonb(row["doc_ids"]), "missing": Jsonb(info.get("missing") or []),
+                           "retrieved_sites": Jsonb(info.get("retrieved_sites") or [])})
         except Exception as e:  # recording must never break an answer
             log.warning("answer not recorded: %s", e)
 

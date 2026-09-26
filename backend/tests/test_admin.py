@@ -1,5 +1,5 @@
-"""Admin API (docs/tasks/09): login, sources with robots.txt and document checks, jobs, ratings — no database,
-no network (in-memory store, fake city hall sites)."""
+"""Admin API (docs/tasks/09, 11): login, sources added by URL (robots.txt, kind, category by rules, merge into a
+domain), the one-call list, jobs, ratings — no database, no network (in-memory store, fake city hall sites)."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -16,15 +16,30 @@ ROBOTS = {
     "acc.md": "User-agent: *\nAllow: /\n",
     "chisinau.md": "User-agent: *\nDisallow: /\n",
 }
+PAGES = {  # <title> of fake home pages
+    "acc.md": "Apă-Canal Chișinău",
+    "scoala-noua.md": "Liceul Teoretic nr. 5",
+    "exemplu.md": "Buna ziua",
+    "spital-nou.md": "Spitalul Municipal",
+}
+FETCHED: list[str] = []
 
 
 def fake_site(request: httpx.Request) -> httpx.Response:
+    FETCHED.append(str(request.url))
     host = request.url.host.removeprefix("www.")
-    if request.url.path == "/robots.txt":
+    path = request.url.path
+    if host == "mort.md":
+        raise httpx.ConnectError("no route")
+    if path == "/robots.txt":
         return httpx.Response(200, text=ROBOTS[host]) if host in ROBOTS else httpx.Response(404)
-    if request.url.path.endswith(".pdf"):
+    if path.endswith(".pdf") or path == "/download/act":
         return httpx.Response(200, headers={"content-type": "application/pdf"})
-    return httpx.Response(200, headers={"content-type": "text/html"})
+    if path.endswith(".docx"):  # a document served with a wrong content type
+        return httpx.Response(200, headers={"content-type": "application/octet-stream"})
+    title = PAGES.get(host, "Pagina")
+    return httpx.Response(200, headers={"content-type": "text/html; charset=utf-8"},
+                          text=f"<html><head><title>{title}</title></head><body>…</body></html>")
 
 
 class MemoryAdmin:
@@ -40,16 +55,29 @@ class MemoryAdmin:
         s = self.sources.get(source_id)
         if s is None:
             return None
-        return s | {"chunks": 0, "last_job": self.jobs.get(s.get("last_job_id"))}
+        return s | {"chunks": s.get("chunks", 0), "lines": 0, "pages": 0, "documents_found": 0,
+                    "documents_downloaded": 0, "last_crawled": None, "last_job": self.jobs.get(s.get("last_job_id"))}
+
+    def find_by_site(self, site_id):
+        return next((self.get_source(i) for i, s in self.sources.items() if s["site_id"] == site_id), None)
 
     def add_source(self, row):
-        key = (row["kind"], row["site_id"] if row["kind"] == "site" else row["url"])
-        if any((s["kind"], s["site_id"] if s["kind"] == "site" else s["url"]) == key for s in self.sources.values()):
+        if self.find_by_site(row["site_id"]):
             raise Duplicate
         sid = len(self.sources) + 1
         self.sources[sid] = row | {"id": sid, "enabled": True, "created_at": "2026-09-26T17:00:00+03:00",
                                    "last_job_id": None}
         return self.get_source(sid)
+
+    def merge_url(self, source_id, url):
+        urls = self.sources[source_id]["start_urls"]
+        if url not in urls:
+            urls.append(url)
+        return self.get_source(source_id)
+
+    def totals(self):
+        return {"sites_total": len(self.sources), "sites_indexed": 0, "pages": 0, "documents_found": 0,
+                "documents_downloaded": 0, "chunks": 0, "lines": 0, "documents_replaced": 0, "documents_removed": 0}
 
     def patch_source(self, source_id, fields):
         if source_id not in self.sources:
@@ -60,11 +88,11 @@ class MemoryAdmin:
     def delete_source(self, source_id, purge):
         return self.sources.pop(source_id, None) is not None
 
-    def create_job(self, source_id, kind):
+    def create_job(self, source_id, kind, url=None):
         jid = len(self.jobs) + 1
-        self.jobs[jid] = {"id": jid, "source_id": source_id, "kind": kind, "status": "queued", "stage": None,
-                          "stage_done": 0, "stage_total": 0, "percent": 0.0, "eta_s": None, "started_at": None,
-                          "finished_at": None, "stats": {}, "log_tail": [], "error": None}
+        self.jobs[jid] = {"id": jid, "source_id": source_id, "kind": kind, "url": url, "status": "queued",
+                          "stage": None, "stage_done": 0, "stage_total": 0, "percent": 0.0, "eta_s": None,
+                          "started_at": None, "finished_at": None, "stats": {}, "log_tail": [], "error": None}
         if source_id is not None:
             self.sources[source_id]["last_job_id"] = jid
         return self.jobs[jid]
@@ -89,6 +117,10 @@ class MemoryAdmin:
                 "top_tags": [], "by_day": []}
 
 
+def no_llm(*a, **kw):
+    raise AssertionError("adding a source must not create an LLM client")
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("ADMIN_LOGIN", LOGIN["login"])
@@ -96,6 +128,8 @@ def client(monkeypatch):
     monkeypatch.delenv("ADMIN_SECRET", raising=False)
     admin.login_limiter.hits.clear()
     main.app.state.admin = MemoryAdmin()
+    FETCHED.clear()
+    monkeypatch.setattr(main, "OpenAILLM", no_llm)
     main.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(fake_site))
     c = TestClient(main.app)
     TOKEN["Authorization"] = "Bearer " + c.post("/api/admin/login", json=LOGIN).json()["token"]
@@ -131,49 +165,110 @@ def test_login_attempts_are_limited(client):
     assert codes[-1] == 429  # the fixture's login + 4 wrong ones use up 5 a minute
 
 
-def test_add_a_site_and_start_its_crawl(client):
-    r = client.post("/api/admin/sources", headers=TOKEN,
-                    json={"kind": "site", "url": "https://www.acc.md/ro/", "category": "agency", "start": True})
-    assert r.status_code == 201
-    source = r.json()
-    assert (source["site_id"], source["robots"], source["start_urls"]) == ("acc.md", "allowed", ["https://www.acc.md/ro/"])
-    assert source["last_job"]["status"] == "queued"
-
-    r = client.post(f"/api/admin/sources/{source['id']}/jobs", headers=TOKEN, json={"kind": "refresh"})
-    assert r.status_code == 409  # the first job is still queued
-
-    job_id = source["last_job"]["id"]
-    assert client.post(f"/api/admin/jobs/{job_id}/cancel", headers=TOKEN).json()["status"] == "cancelled"
-    assert client.get("/api/admin/jobs", headers=TOKEN, params={"status": "cancelled"}).json()["jobs"][0]["id"] == job_id
+def add(client, url, **extra):
+    return client.post("/api/admin/sources", headers=TOKEN, json={"url": url} | extra)
 
 
-def test_duplicate_domain_is_rejected(client):
-    client.post("/api/admin/sources", headers=TOKEN, json={"kind": "site", "url": "https://acc.md/"})
-    r = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "site", "url": "https://www.acc.md/despre"})
-    assert r.status_code == 409 and r.json()["error"] == "conflict"
+def test_site_root_gets_a_category_and_a_crawl(client):
+    r = add(client, "www.acc.md/")
+    body = r.json()
+    assert r.status_code == 201 and body["merged_into"] is None
+    assert (body["kind"], body["site_id"], body["url"], body["title"]) == ("site", "acc.md", "https://www.acc.md/",
+                                                                           "Apă-Canal Chișinău")
+    # No domain rule matches acc.md; "Apă" in its title does.
+    assert (body["category"], body["category_source"], body["max_depth"]) == ("urban_utilities", "keywords", 4)
+    assert body["status"] == "queued" and body["progress"]["percent"] == 0
+    assert body["detected"]["reason"] == ("Detected a website (urban_utilities, by title keywords); "
+                                          "crawling up to depth 4.")
+    assert add(client, "https://acc.md").status_code == 409  # the same site root again
 
 
-def test_robots_blocked_site_is_kept_but_never_crawled(client):
-    r = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "site", "url": "https://chisinau.md/", "start": True})
-    source = r.json()
-    assert (r.status_code, source["robots"], source["last_job"]) == (201, "blocked", None)
-    r = client.post(f"/api/admin/sources/{source['id']}/jobs", headers=TOKEN, json={"kind": "crawl"})
+def test_category_by_title_keywords_and_default(client):
+    body = add(client, "https://scoala-noua.md/").json()
+    assert (body["category"], body["category_source"]) == ("education", "rule")  # "scoal" in the domain
+    body = add(client, "https://spital-nou.md/").json()
+    assert (body["category"], body["category_source"]) == ("healthcare", "rule")
+    PAGES["exemplu2.md"] = "Liceul Teoretic nr. 5"
+    body = add(client, "https://exemplu2.md/").json()
+    assert (body["category"], body["category_source"]) == ("education", "keywords")
+    body = add(client, "https://exemplu.md/").json()
+    assert (body["category"], body["category_source"]) == ("other", "default")
+
+
+def test_documents_by_content_type_or_extension(client):
+    by_type = add(client, "https://docs-a.md/download/act").json()
+    assert (by_type["kind"], by_type["start_urls"], by_type["max_depth"]) == ("document", [], None)
+    assert by_type["detected"]["reason"].endswith("downloading, parsing and indexing it.")
+    by_extension = add(client, "https://docs-b.md/files/regulament.docx").json()
+    assert by_extension["kind"] == "document"  # served as octet-stream, the extension decides
+    assert add(client, "https://docs-a.md/download/act").status_code == 409  # the same document again
+
+
+def test_deeper_path_and_documents_go_into_the_domains_source(client):
+    root = add(client, "https://acc.md/").json()
+    r = add(client, "https://acc.md/ro/servicii/")
+    body = r.json()
+    assert r.status_code == 200 and body["merged_into"] == root["id"]
+    assert body["start_urls"] == ["https://acc.md/", "https://acc.md/ro/servicii"]
+    assert body["detected"]["crawl_depth"] == 2 and "/ro/servicii" in body["detected"]["reason"]
+    job = main.app.state.admin.jobs[body["last_job"]["id"]]
+    assert job["url"] == "https://acc.md/ro/servicii"  # only that path is crawled
+    doc = add(client, "https://acc.md/files/tarife.pdf")
+    assert doc.status_code == 200 and doc.json()["merged_into"] == root["id"]
+    assert len(main.app.state.admin.sources) == 1  # never a second row for a domain
+    assert add(client, "https://acc.md/ro/servicii").status_code == 409
+
+
+def test_robots_blocked_site_is_saved_without_fetching_or_crawling(client):
+    r = add(client, "https://www.chisinau.md/")
+    body = r.json()
+    assert r.status_code == 201 and (body["robots"], body["status"], body["last_job"]) == ("blocked", "blocked", None)
+    assert "forbids crawling" in body["detected"]["reason"]
+    assert FETCHED == []  # chisinau.md is on the excluded list: not even robots.txt is fetched
+    ROBOTS["private.md"] = "User-agent: *\nDisallow: /\n"
+    body = add(client, "https://private.md/").json()
+    assert body["robots"] == "blocked" and FETCHED == ["https://private.md/robots.txt"]  # the page itself never
+    deeper = add(client, "https://private.md/ro/acte")
+    assert deeper.status_code == 200 and deeper.json()["last_job"] is None  # saved into it, still no crawl
+    r = client.post(f"/api/admin/sources/{body['id']}/jobs", headers=TOKEN, json={"kind": "crawl"})
     assert r.status_code == 409 and "robots.txt" in r.json()["message"]
 
 
-def test_document_source_must_be_a_document(client):
-    ok = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "document", "url": "https://acc.md/files/a.pdf"})
-    assert ok.status_code == 201 and ok.json()["start_urls"] == []
-    page = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "document", "url": "https://acc.md/despre"})
-    assert page.status_code == 422
-    ftp = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "site", "url": "ftp://acc.md/"})
-    assert ftp.status_code == 422
+def test_unreachable_or_bad_links_are_422(client):
+    assert add(client, "https://mort.md/").status_code == 422
+    assert add(client, "ftp://acc.md/").status_code == 422
+    assert add(client, "not a link").status_code == 422
+
+
+def test_one_list_call_has_status_progress_and_totals(client):
+    body = add(client, "https://acc.md/").json()
+    job = main.app.state.admin.jobs[body["last_job"]["id"]]
+    job |= {"status": "running", "stage": "parse", "percent": 63.0, "eta_s": 120.0}
+    listed = client.get("/api/admin/sources", headers=TOKEN).json()
+    row = listed["sources"][0]
+    assert row["status"] == "running" and row["progress"] == {"job_id": job["id"], "stage": "parse",
+                                                              "percent": 63.0, "eta_s": 120.0}
+    assert listed["totals"]["sites_total"] == 1
+    job |= {"status": "failed", "error": "downloader exited with code 1"}
+    row = client.get("/api/admin/sources", headers=TOKEN).json()["sources"][0]
+    assert (row["status"], row["progress"], row["last_error"]) == ("failed", None, "downloader exited with code 1")
+
+
+def test_status_precedence():
+    base = {"enabled": True, "robots": "allowed", "chunks": 5, "last_job": None}
+    assert admin.status_of(base) == "indexed"
+    assert admin.status_of(base | {"chunks": 0}) == "pending"
+    assert admin.status_of(base | {"last_job": {"status": "failed"}}) == "failed"
+    assert admin.status_of(base | {"last_job": {"status": "queued"}}) == "queued"
+    assert admin.status_of(base | {"robots": "blocked", "last_job": {"status": "running"}}) == "blocked"
+    assert admin.status_of(base | {"enabled": False, "robots": "blocked"}) == "disabled"
 
 
 def test_patch_and_delete(client):
-    source = client.post("/api/admin/sources", headers=TOKEN, json={"kind": "site", "url": "https://acc.md/"}).json()
+    source = add(client, "https://acc.md/", start=False).json()
+    assert source["status"] == "pending"
     r = client.patch(f"/api/admin/sources/{source['id']}", headers=TOKEN, json={"enabled": False, "max_pages": 100})
-    assert (r.json()["enabled"], r.json()["max_pages"]) == (False, 100)
+    assert (r.json()["enabled"], r.json()["max_pages"], r.json()["status"]) == (False, 100, "disabled")
     assert client.post(f"/api/admin/sources/{source['id']}/jobs", headers=TOKEN, json={"kind": "crawl"}).status_code == 409
     assert client.delete(f"/api/admin/sources/{source['id']}", headers=TOKEN, params={"purge": True}).json() == {"ok": True}
     assert client.delete(f"/api/admin/sources/{source['id']}", headers=TOKEN).status_code == 404

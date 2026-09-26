@@ -12,17 +12,21 @@ import hashlib
 import hmac
 import json
 import os
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
 import psycopg
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
+from retrieval.sources import DEFAULTS, EXCLUDED_SITES, categorize
+from selectolax.parser import HTMLParser
 from starlette.concurrency import run_in_threadpool
 
 from .errors import ApiException, RateLimiter
@@ -30,19 +34,26 @@ from .schemas import (
     AdminLogin,
     AdminMe,
     AdminSession,
+    CorpusTotals,
     FeedbackItem,
     FeedbackList,
     FeedbackStats,
+    GapList,
+    GapRecheck,
     Job,
     JobCreate,
     JobList,
+    SourceAdded,
     SourceCreate,
+    SourceDetected,
     SourceList,
     SourcePatch,
+    SourceProgress,
     SourceRow,
     Suggestion,
     SuggestionCreate,
 )
+from .stats import REGISTRY, corpus_stats, registry_counts
 
 # The crawler's User-Agent (offline_indexation/common/http.py): robots.txt is checked for the bot that will crawl.
 CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
@@ -134,7 +145,11 @@ def me(login: str = Depends(require_admin)) -> AdminMe:
     return AdminMe(login=login)
 
 
-# ─────────────── checks when a source is added ───────────────
+# ─────────────── what a URL is: robots.txt, kind, title, category (no LLM) ───────────────
+
+DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
+PROBE_TIMEOUT_S = 8.0
+MAX_HEAD_BYTES = 300_000  # enough of a page for its <title> and meta description
 
 
 def site_of(url: str) -> str:
@@ -142,19 +157,36 @@ def site_of(url: str) -> str:
     return host.removeprefix("www.")
 
 
-def check_url(url: str) -> str:
+def normalize_url(url: str) -> str:
+    """Scheme added when missing, host lowercased, a trailing slash dropped (except the root)."""
+    url = url.strip()
+    if not re.match(r"^[a-z][a-z0-9+.-]*://", url, re.I):
+        url = "https://" + url
     parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise ApiException(422, "validation_error", "url: only http(s) URLs with a host")
-    return site_of(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname or "." not in parts.hostname:
+        raise ApiException(422, "validation_error", "url: only http(s) links to a website or a document")
+    path = parts.path.rstrip("/") if parts.path not in ("", "/") else "/"
+    return urlunsplit((parts.scheme, parts.netloc.lower(), path, parts.query, ""))
+
+
+def check_url(url: str) -> str:
+    return site_of(normalize_url(url))
+
+
+def is_root(url: str) -> bool:
+    return urlsplit(url).path in ("", "/")
+
+
+def document_extension(url: str) -> bool:
+    return urlsplit(url).path.lower().endswith(DOCUMENT_EXTENSIONS)
 
 
 async def robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
     """Whether robots.txt lets the crawler fetch this URL. No robots.txt (4xx) allows; a site that can't be reached
-    at all counts as allowed here — the crawler checks robots.txt again before every crawl."""
+    at all counts as allowed here — the page fetch that follows reports it."""
     parts = urlsplit(url)
     try:
-        resp = await client.get(f"{parts.scheme}://{parts.netloc}/robots.txt", timeout=10.0)
+        resp = await client.get(f"{parts.scheme}://{parts.netloc}/robots.txt", timeout=PROBE_TIMEOUT_S)
     except httpx.HTTPError:
         return True
     if resp.status_code >= 400:
@@ -164,18 +196,48 @@ async def robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
     return parser.can_fetch(CRAWLER_AGENT, url)
 
 
-async def document_type(client: httpx.AsyncClient, url: str) -> str | None:
-    """The extension of a PDF / DOC / DOCX answer to this URL, None for anything else."""
+@dataclass
+class Probe:
+    content_type: str
+    final_url: str
+    title: str | None
+    description: str | None
+
+
+async def probe(client: httpx.AsyncClient, url: str) -> Probe:
+    """HEAD, then GET if the server doesn't answer HEAD or it's a page (for its title), 8 s, redirects followed.
+    Unreachable or an error status → 422."""
     try:
-        resp = await client.head(url, timeout=15.0)
-        if resp.status_code >= 400:  # some servers don't answer HEAD: read only the headers of a GET
-            async with client.stream("GET", url, timeout=15.0) as resp:
-                pass
+        resp = await client.head(url, timeout=PROBE_TIMEOUT_S)
+        ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+        body = b""
+        if resp.status_code >= 400 or ctype not in DOCUMENT_TYPES:
+            async with client.stream("GET", url, timeout=PROBE_TIMEOUT_S) as resp:
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if resp.status_code < 400 and ctype not in DOCUMENT_TYPES:
+                    async for chunk in resp.aiter_bytes():
+                        body += chunk
+                        if len(body) >= MAX_HEAD_BYTES:
+                            break
     except httpx.HTTPError as e:
-        raise ApiException(422, "validation_error", f"url: can't be fetched ({type(e).__name__})") from e
+        raise ApiException(422, "validation_error", f"The site doesn't answer ({type(e).__name__})") from e
     if resp.status_code >= 400:
-        raise ApiException(422, "validation_error", f"url: the site answered {resp.status_code}")
-    return DOCUMENT_TYPES.get(resp.headers.get("content-type", "").split(";")[0].strip().lower())
+        raise ApiException(422, "validation_error", f"The site answered {resp.status_code} for this link")
+    title = description = None
+    if body:
+        tree = HTMLParser(body.decode(resp.encoding or "utf-8", errors="replace"))
+        node = tree.css_first("title")
+        title = " ".join(node.text().split())[:200] if node else None
+        meta = tree.css_first('meta[name="description"]') or tree.css_first('meta[property="og:description"]')
+        description = (meta.attributes.get("content") or "").strip()[:500] if meta else None
+    return Probe(ctype, str(resp.url), title or None, description or None)
+
+
+def crawl_settings(url: str, kind: str) -> tuple[int | None, int | None]:
+    """(depth, max pages): a site root like sites.toml's defaults; a deeper path a shallow crawl of that path."""
+    if kind == "document":
+        return None, None
+    return (DEFAULTS["max_depth"], DEFAULTS["max_pages"]) if is_root(url) else (2, DEFAULTS["max_pages"])
 
 
 # ─────────────── storage ───────────────
@@ -188,10 +250,13 @@ class Duplicate(Exception):
 class AdminStore(Protocol):
     def list_sources(self) -> list[dict]: ...
     def get_source(self, source_id: int) -> dict | None: ...
+    def find_by_site(self, site_id: str) -> dict | None: ...
     def add_source(self, row: dict) -> dict: ...
+    def merge_url(self, source_id: int, url: str) -> dict | None: ...
+    def totals(self) -> dict: ...
     def patch_source(self, source_id: int, fields: dict) -> dict | None: ...
     def delete_source(self, source_id: int, purge: bool) -> bool: ...
-    def create_job(self, source_id: int | None, kind: str) -> dict: ...
+    def create_job(self, source_id: int | None, kind: str, url: str | None = None) -> dict: ...
     def list_jobs(self, status: str | None) -> list[dict]: ...
     def get_job(self, job_id: int) -> dict | None: ...
     def cancel_job(self, job_id: int) -> dict | None: ...
@@ -213,29 +278,55 @@ class PgAdminStore:
             return cur.fetchall() if cur.description else []
 
     def list_sources(self) -> list[dict]:
+        """Every source with its index counters (chunks, lines), the registry's (pages, documents, last crawl)
+        and its last job."""
         rows = self._rows(
             f"""
-            SELECT s.*, COALESCE(n.chunks, 0) AS chunks, to_jsonb(j) AS last_job
+            SELECT s.*, to_jsonb(j) AS last_job,
+                   CASE WHEN s.kind = 'site' THEN COALESCE(n.chunks, 0) ELSE COALESCE(d.chunks, 0) END AS chunks,
+                   CASE WHEN s.kind = 'site' THEN COALESCE(n.lines, 0) ELSE COALESCE(d.lines, 0) END AS lines
             FROM sources s
-            LEFT JOIN (SELECT site, COUNT(*) AS chunks FROM chunks GROUP BY site) n ON n.site = s.site_id
+            LEFT JOIN (SELECT c.site, COUNT(*) AS chunks, SUM(l.n) AS lines FROM chunks c
+                       LEFT JOIN (SELECT chunk_id, COUNT(*) AS n FROM lines GROUP BY chunk_id) l USING (chunk_id)
+                       GROUP BY c.site) n ON n.site = s.site_id
+            LEFT JOIN LATERAL (SELECT COUNT(*) AS chunks,
+                                      (SELECT COUNT(*) FROM lines l JOIN chunks c2 USING (chunk_id)
+                                       WHERE c2.url = s.url) AS lines
+                               FROM chunks c WHERE s.kind = 'document' AND c.url = s.url) d ON TRUE
             LEFT JOIN LATERAL (SELECT {JOB_COLUMNS} FROM jobs WHERE jobs.id = s.last_job_id) j ON TRUE
             ORDER BY s.id
             """)
-        return [with_job(r) for r in rows]
+        registry = registry_counts(REGISTRY)
+        return [with_job(r) | registry_fields(r, registry) for r in rows]
 
     def get_source(self, source_id: int) -> dict | None:
         return next((r for r in self.list_sources() if r["id"] == source_id), None)
 
+    def find_by_site(self, site_id: str) -> dict | None:
+        rows = self._rows("SELECT id FROM sources WHERE site_id = %s ORDER BY (kind = 'site') DESC, id LIMIT 1",
+                          (site_id,))
+        return self.get_source(rows[0]["id"]) if rows else None
+
     def add_source(self, row: dict) -> dict:
         try:
             [created] = self._rows(
-                "INSERT INTO sources (kind, url, site_id, category, start_urls, max_depth, max_pages, robots) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-                (row["kind"], row["url"], row["site_id"], row.get("category"), Jsonb(row["start_urls"]),
-                 row.get("max_depth"), row.get("max_pages"), row["robots"]))
+                "INSERT INTO sources (kind, url, site_id, title, category, category_source, start_urls, max_depth, "
+                "max_pages, robots) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (row["kind"], row["url"], row["site_id"], row.get("title"), row.get("category"),
+                 row.get("category_source"), Jsonb(row["start_urls"]), row.get("max_depth"), row.get("max_pages"),
+                 row["robots"]))
         except psycopg.errors.UniqueViolation as e:
             raise Duplicate from e
         return self.get_source(created["id"])
+
+    def merge_url(self, source_id: int, url: str) -> dict | None:
+        """A deeper path or a document of the source's domain: into its start URLs (crawled from then on)."""
+        self._rows("UPDATE sources SET start_urls = start_urls || %s WHERE id = %s AND NOT start_urls ? %s",
+                   (Jsonb([url]), source_id, url))
+        return self.get_source(source_id)
+
+    def totals(self) -> dict:
+        return corpus_stats(self.pool).totals.model_dump()
 
     def patch_source(self, source_id: int, fields: dict) -> dict | None:
         if fields:
@@ -260,10 +351,11 @@ class PgAdminStore:
             cur.execute("DELETE FROM sources WHERE id = %s", (source_id,))
         return True
 
-    def create_job(self, source_id: int | None, kind: str) -> dict:
+    def create_job(self, source_id: int | None, kind: str, url: str | None = None) -> dict:
+        """url: only this link of the source (a deeper path crawled under its prefix, or one document)."""
         with self.pool.connection() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(f"INSERT INTO jobs (source_id, kind) VALUES (%s, %s) RETURNING {JOB_COLUMNS}",
-                        (source_id, kind))
+            cur.execute(f"INSERT INTO jobs (source_id, kind, url) VALUES (%s, %s, %s) RETURNING {JOB_COLUMNS}",
+                        (source_id, kind, url))
             job = cur.fetchone()
             if source_id is not None:
                 cur.execute("UPDATE sources SET last_job_id = %s WHERE id = %s", (job["id"], source_id))
@@ -318,13 +410,43 @@ def job_model(row: dict) -> Job:
                log_tail=list(row.get("log_tail") or []))
 
 
+def registry_fields(row: dict, registry: dict[str, dict]) -> dict:
+    """Pages, documents and last crawl of a site source from registry.sqlite (when this machine has it)."""
+    reg = registry.get(row["site_id"], {}) if row["kind"] == "site" else {}
+    return {"pages": reg.get("pages", 0), "documents_found": reg.get("documents_found", 0),
+            "documents_downloaded": reg.get("documents_downloaded", 0), "last_crawled": reg.get("last_crawled")}
+
+
+def status_of(row: dict) -> str:
+    """disabled > blocked > running > queued > failed (last job) > indexed (has chunks) > pending."""
+    job = row.get("last_job") or {}
+    if not row["enabled"]:
+        return "disabled"
+    if row["robots"] == "blocked":
+        return "blocked"
+    if job.get("status") in ("running", "queued"):
+        return job["status"]
+    if job.get("status") == "failed":
+        return "failed"
+    return "indexed" if row.get("chunks") else "pending"
+
+
 def source_model(row: dict) -> SourceRow:
     job = row.get("last_job")
-    return SourceRow(id=row["id"], kind=row["kind"], url=row["url"], site_id=row["site_id"],
-                     category=row.get("category"), start_urls=list(row.get("start_urls") or []),
-                     max_depth=row.get("max_depth"), max_pages=row.get("max_pages"), enabled=row["enabled"],
-                     robots=row["robots"], created_at=iso(row["created_at"]), chunks=row.get("chunks", 0),
-                     last_job=job_model(job) if job else None)
+    active = job if job and job.get("status") in ("running", "queued") else None
+    error = (job or {}).get("error") if (job or {}).get("status") == "failed" else None
+    return SourceRow(
+        id=row["id"], kind=row["kind"], url=row["url"], site_id=row["site_id"], title=row.get("title"),
+        category=row.get("category"), category_source=row.get("category_source"),
+        start_urls=list(row.get("start_urls") or []), max_depth=row.get("max_depth"), max_pages=row.get("max_pages"),
+        enabled=row["enabled"], robots=row["robots"], status=status_of(row),
+        pages=row.get("pages", 0), documents_found=row.get("documents_found", 0),
+        documents_downloaded=row.get("documents_downloaded", 0), chunks=row.get("chunks", 0),
+        lines=row.get("lines", 0), last_crawled=iso(row.get("last_crawled")),
+        progress=SourceProgress(job_id=active["id"], stage=active.get("stage"), percent=active.get("percent") or 0,
+                                eta_s=active.get("eta_s")) if active else None,
+        last_error=error[:200] if error else None, created_at=iso(row["created_at"]),
+        last_job=job_model(job) if job else None)
 
 
 def store(request: Request) -> AdminStore:
@@ -343,30 +465,83 @@ def http_client(request: Request) -> httpx.AsyncClient:
 
 @router.get("/sources", response_model=SourceList)
 async def list_sources(request: Request) -> SourceList:
-    rows = await run_in_threadpool(store(request).list_sources)
-    return SourceList(sources=[source_model(r) for r in rows])
-
-
-@router.post("/sources", response_model=SourceRow, status_code=201)
-async def add_source(req: SourceCreate, request: Request) -> SourceRow:
-    site_id = check_url(req.url)
-    client = http_client(request)
-    if req.kind == "document" and await document_type(client, req.url) is None:
-        raise ApiException(422, "validation_error", "url: not a PDF, DOC or DOCX document")
-    robots = "allowed" if await robots_allowed(client, req.url) else "blocked"
-    row = {"kind": req.kind, "url": req.url, "site_id": site_id, "category": req.category,
-           "start_urls": [req.url] if req.kind == "site" else [], "max_depth": req.max_depth,
-           "max_pages": req.max_pages, "robots": robots}
     admin = store(request)
+    rows = await run_in_threadpool(admin.list_sources)
+    return SourceList(sources=[source_model(r) for r in rows],
+                      totals=CorpusTotals(**await run_in_threadpool(admin.totals)))
+
+
+def added(row: dict, detected: SourceDetected, merged_into: int | None = None) -> SourceAdded:
+    return SourceAdded(**source_model(row).model_dump(), detected=detected, merged_into=merged_into)
+
+
+@router.post("/sources", response_model=SourceAdded, status_code=201,
+             responses={200: {"model": SourceAdded, "description": "merged into a source of the same domain"}})
+async def add_source(req: SourceCreate, request: Request, response: Response) -> SourceAdded:
+    """Paste a link: the server decides the rest. robots.txt first (nothing is fetched from a site that forbids it);
+    then kind (PDF/DOC/DOCX by content type or extension, else a site), category by rules (no LLM), crawl settings;
+    the job is queued at once. A second link of a domain that is already a source goes into that source."""
+    url = normalize_url(req.url)
+    site_id = site_of(url)
+    client = http_client(request)
+    admin = store(request)
+    blocked = site_id in EXCLUDED_SITES or not await robots_allowed(client, url)
+    title = text = None
+    if blocked:
+        kind = req.kind or ("document" if document_extension(url) else "site")
+    else:
+        found = await probe(client, url)
+        kind = req.kind or ("document" if found.content_type in DOCUMENT_TYPES or document_extension(url) else "site")
+        title, text = found.title, " ".join(x for x in (found.title, found.description) if x)
+
+    existing = await run_in_threadpool(admin.find_by_site, site_id)
+    if existing is not None:  # never a second row for a domain
+        known = {existing["url"].rstrip("/"), *(u.rstrip("/") for u in existing.get("start_urls") or [])}
+        if url.rstrip("/") in known or (kind == "site" and is_root(url)):
+            raise ApiException(409, "conflict", f"Already a source: {existing['site_id']} (id {existing['id']})")
+        row = await run_in_threadpool(admin.merge_url, existing["id"], url)
+        depth, pages = crawl_settings(url, kind)
+        if existing["robots"] == "blocked":
+            reason = f"Saved into {site_id}, but its robots.txt forbids crawling: no crawl."
+        elif not existing["enabled"]:
+            reason = f"Saved into {site_id}, which is disabled: no crawl."
+        elif req.start:
+            await run_in_threadpool(admin.create_job, existing["id"], "crawl", url)
+            row = await run_in_threadpool(admin.get_source, existing["id"])
+            reason = (f"Added the document to {site_id}; downloading, parsing and indexing it." if kind == "document"
+                      else f"Added the path {urlsplit(url).path} to {site_id}; crawling it up to depth {depth}.")
+        else:
+            reason = f"Added to {site_id}; no crawl started (start: false)."
+        response.status_code = 200
+        return added(row, SourceDetected(kind=kind, category=existing.get("category") or "other",
+                                         category_source="existing", title=title, crawl_depth=depth, max_pages=pages,
+                                         reason=reason), merged_into=existing["id"])
+
+    category, category_source = (req.category, "manual") if req.category else categorize(site_id, text or "")
+    depth, pages = crawl_settings(url, kind)
+    depth, pages = req.max_depth if req.max_depth is not None else depth, req.max_pages or pages
+    row = {"kind": kind, "url": url, "site_id": site_id, "title": title, "category": category,
+           "category_source": category_source, "start_urls": [url] if kind == "site" else [], "max_depth": depth,
+           "max_pages": pages, "robots": "blocked" if blocked else "allowed"}
     try:
         created = await run_in_threadpool(admin.add_source, row)
     except Duplicate as e:
-        what = f"site {site_id}" if req.kind == "site" else "document"
-        raise ApiException(409, "conflict", f"This {what} is already a source") from e
-    if req.start and robots == "allowed":
-        await run_in_threadpool(admin.create_job, created["id"], "crawl")
+        raise ApiException(409, "conflict", f"Already a source: {site_id}") from e
+    how = {"rule": "by domain rule", "keywords": "by title keywords", "default": "no rule matched",
+           "manual": "as sent"}[category_source]
+    what = "a document" if kind == "document" else "a website"
+    if blocked:
+        reason = f"Detected {what} ({category}, {how}); robots.txt of {site_id} forbids crawling: saved, no crawl."
+    elif req.start:
+        job_url = None if is_root(url) or kind == "document" else url  # a deeper path: crawled under its prefix
+        await run_in_threadpool(admin.create_job, created["id"], "crawl", job_url)
         created = await run_in_threadpool(admin.get_source, created["id"])
-    return source_model(created)
+        reason = (f"Detected {what} ({category}, {how}); downloading, parsing and indexing it." if kind == "document"
+                  else f"Detected {what} ({category}, {how}); crawling up to depth {depth}.")
+    else:
+        reason = f"Detected {what} ({category}, {how}); saved without a crawl (start: false)."
+    return added(created, SourceDetected(kind=kind, category=category, category_source=category_source, title=title,
+                                         crawl_depth=depth, max_pages=pages, reason=reason))
 
 
 @router.patch("/sources/{source_id}", response_model=SourceRow)
@@ -453,4 +628,49 @@ async def hide_suggestion(suggestion_id: int, request: Request) -> dict:
     suggestions = getattr(request.app.state, "suggestions", None)
     if suggestions is None or not await run_in_threadpool(suggestions.hide, suggestion_id):
         raise ApiException(404, "not_found", f"No quick question {suggestion_id}")
+    return {"ok": True}
+
+
+# ─────────────── gaps: questions without a full answer ───────────────
+
+
+def gaps_store(request: Request):
+    gaps = getattr(request.app.state, "gaps", None)
+    if gaps is None:
+        raise ApiException(503, "unavailable", "Database not initialized")
+    return gaps
+
+
+@router.get("/gaps", response_model=GapList)
+async def list_gaps(request: Request, status: str = "not_found,partial", lang: str | None = None,
+                    days: int = Query(30, ge=1, le=3650), limit: int = Query(50, ge=1, le=500),
+                    hidden: bool = False) -> GapList:
+    """Similar not_found / partial questions grouped (local embeddings, no LLM), biggest groups first."""
+    statuses = [x for x in status.split(",") if x in ("not_found", "partial")]
+    if not statuses or lang not in (None, "ro", "ru"):
+        raise ApiException(422, "validation_error", "status: not_found and/or partial; lang: ro or ru")
+    return GapList(**await run_in_threadpool(gaps_store(request).list, statuses, lang, days, limit, hidden))
+
+
+@router.post("/gaps/{gap_id}/recheck", response_model=GapRecheck)
+async def recheck_gap(gap_id: str, request: Request) -> GapRecheck:
+    """Asks the group's example again (one model call, only on this click). Answered now → the group leaves the
+    default list."""
+    result = await run_in_threadpool(gaps_store(request).recheck, gap_id, request.app.state.ask_once)
+    if result is None:
+        raise ApiException(404, "not_found", f"No gap {gap_id}")
+    return GapRecheck(**result)
+
+
+@router.post("/gaps/{gap_id}/hide")
+async def hide_gap(gap_id: str, request: Request) -> dict:
+    if not await run_in_threadpool(gaps_store(request).hide, gap_id, True):
+        raise ApiException(404, "not_found", f"No gap {gap_id}")
+    return {"ok": True}
+
+
+@router.post("/gaps/{gap_id}/unhide")
+async def unhide_gap(gap_id: str, request: Request) -> dict:
+    if not await run_in_threadpool(gaps_store(request).hide, gap_id, False):
+        raise ApiException(404, "not_found", f"No gap {gap_id}")
     return {"ok": True}

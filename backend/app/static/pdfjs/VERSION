@@ -1,0 +1,2 @@
+pdfjs-dist 6.3.289 (Apache-2.0): build/pdf.min.mjs, build/pdf.worker.min.mjs, wasm/ (JBIG2, OpenJPEG, qcms decoders
+for scanned pages) and standard_fonts/, vendored for the source preview (docs/tasks/11).

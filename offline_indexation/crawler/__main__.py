@@ -35,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-depth", type=int, help="override max_depth for every site")
     p.add_argument("--max-pages", type=int, help="override max_pages for every site")
     p.add_argument("--delay", type=float, help="override delay between requests, seconds")
+    p.add_argument("--start-urls", nargs="+", metavar="URL", help="start from these URLs instead of the site's")
+    p.add_argument("--path-prefix", help="follow only links under this path (e.g. /ro/servicii)")
     p.add_argument("--concurrency", type=int, default=6, help="sites crawled in parallel")
     p.add_argument("--ignore-robots", action="store_true", help="ignore robots.txt on every site")
     p.add_argument("--resume", action="store_true", help="continue from data/crawl/<site>/state.json")
@@ -56,6 +58,10 @@ def select_sites(args: argparse.Namespace) -> list[Site]:
             site.max_pages = args.max_pages
         if args.delay is not None:
             site.delay = args.delay
+        if args.start_urls:
+            site.start_urls = args.start_urls
+        if args.path_prefix:
+            site.path_prefix = args.path_prefix
     return sites
 
 

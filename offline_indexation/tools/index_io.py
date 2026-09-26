@@ -15,7 +15,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from .common import CONTAINER, ROOT, db_env, utf8_console
+from .common import CONTAINER, OI_DIR, ROOT, db_env, utf8_console
 
 TABLES = ("documents", "chunks", "lines", "act_relations", "contacts")  # contacts: python -m contacts
 # Dumps made before the indexer filled chunks.ord have 0 everywhere; the position is the first block.
@@ -90,6 +90,17 @@ def import_dump(dump: Path) -> None:
                capture_output=True, text=True, encoding="utf-8")
     print("   " + r.stdout.strip())
     print(counts(env["user"], env["db"]))
+    seed_admin_sources()
+
+
+def seed_admin_sources() -> None:
+    """The admin's sources from sites.toml and the indexed sites, so the admin is never empty after an import."""
+    from retrieval.db import get_connection, init_app_db
+    from retrieval.sources import seed_sources
+
+    with get_connection() as conn:
+        init_app_db(conn)
+        print(f"sources: {seed_sources(conn, OI_DIR / 'data' / 'sources' / 'sites.toml')} added")
 
 
 def restore_direct(dump: Path) -> None:
@@ -117,6 +128,7 @@ def restore_direct(dump: Path) -> None:
     init_db()
     with get_connection() as conn:
         conn.execute(ORD_BACKFILL)
+    seed_admin_sources()
 
 
 def main(argv: list[str] | None = None) -> None:

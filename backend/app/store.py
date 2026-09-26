@@ -69,6 +69,23 @@ class PgStore:
                           "WHERE doc_id = %s", (doc_id,))
         return rows[0] if rows else None
 
+    def preview_document(self, doc_id: str) -> dict | None:
+        """What the source preview needs of a document (GET /api/preview/{doc_id})."""
+        rows = self._rows(
+            "SELECT doc_id, kind, url, title, site, found_on, page_sizes, to_jsonb(d)->>'sha256' AS sha256, "
+            "COALESCE(updated_at, indexed_at)::text AS indexed_at FROM documents d WHERE doc_id = %s", (doc_id,))
+        if not rows:
+            return None
+        return rows[0] | {"has_file": raw_pdf(doc_id, rows[0].get("sha256")) is not None}
+
+    def doc_lines(self, doc_id: str) -> list[dict]:
+        """Every line of a document in reading order, with its chunk's boxes (a line without its own boxes is
+        shown with its chunk's on the same page)."""
+        return self._rows(
+            "SELECT l.line_id, l.text, l.page, l.bboxes, c.bboxes AS chunk_bboxes, c.pages FROM lines l "
+            "JOIN chunks c USING (chunk_id) WHERE l.doc_id = %s "
+            "ORDER BY (c.block_ids->>0)::int NULLS LAST, c.chunk_id, l.idx", (doc_id,))
+
     def later_acts(self, patterns: list[str], exclude_doc_ids: list[str], limit: int = 20) -> list[dict]:
         """Lines mentioning an act by number ("nr. 4/1", "4/1 din 05.03.2020"), outside given docs: later acts
         that amend, repeal or build on it. One line per chunk: {chunk_id, line_id}."""

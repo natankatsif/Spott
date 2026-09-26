@@ -83,7 +83,8 @@ class SiteCrawler:
         if not resumed:
             for url in self.site.start_urls:
                 self._enqueue(url, 0, None, "")
-            await self._discover_wp_media()
+            if not self.site.path_prefix:  # site-wide: not for a crawl of one path
+                await self._discover_wp_media()
 
         steps = 0
         progress = Progress()
@@ -198,7 +199,8 @@ class SiteCrawler:
                 if is_document_url(target) or (not internal and is_external_doc_host(target)):
                     self._add_document(target, url, anchor, depth + 1, via=node.tag, external=not internal)
                     docs_found += 1
-                elif internal and depth < self.site.max_depth and not is_skipped(target):
+                elif (internal and depth < self.site.max_depth and not is_skipped(target)
+                      and urlsplit(target).path.startswith(self.site.path_prefix)):
                     before = len(self.queue)
                     self._enqueue(target, depth + 1, url, anchor)
                     links_enqueued += len(self.queue) - before

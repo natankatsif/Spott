@@ -34,6 +34,7 @@ from retrieval.links import make_deep_link
 from .jsonstream import JsonEvents
 from .llm import DEEP_MODEL, LLM, REWRITE_MODEL, LLMResult, LLMUnavailable
 from .pdf_source import is_pdf_url
+from .preview import preview_kind, preview_url
 from .schemas import (
     AnswerMeta,
     AnswerSentence,
@@ -474,6 +475,8 @@ class ResponseBuilder:
             site=c.get("site"),
             file_url=file_url(c["doc_id"]) if kind == "file" and (doc.get("has_file") or is_pdf_url(url)) else None,
             bboxes=to_top_left(boxes, doc.get("page_sizes") or []) if kind == "file" else [],
+            preview_url=preview_url(c["doc_id"], [line["line_id"]] if line.get("line_id") else [], self.lang),
+            preview_kind=preview_kind(c.get("kind") or "page", url, bool(doc.get("has_file"))),
         )
 
     def evidence(self, refs: list[str]) -> list[str]:
@@ -1176,7 +1179,7 @@ def answer_events(
     *,
     pool=None,
     retrieve_fn: Callable = retrieve,
-    on_done: Callable[[AskRequest, AskResponse], None] | None = None,
+    on_done: Callable[[AskRequest, AskResponse, dict], None] | None = None,
     freshness: bool | None = None,
     rewrite: bool | None = None,
 ) -> Iterator[dict]:
@@ -1308,13 +1311,18 @@ def answer_events(
         "ttft_ms": ttft_ms,
         "total_ms": response.meta.latency_ms,
     })
-    if on_done:
-        on_done(req, response)
+    if on_done:  # what a partial answer lacked, and the sites found but not used: for the admin's gaps
+        cited_sites = {c.site for c in response.citations}
+        on_done(req, response, {
+            "missing": [m.strip() for m in (calls[-1].data.get("missing") or []) if m.strip()]
+            if calls and response.status == "partial" else [],
+            "retrieved_sites": sorted({c["site"] for c in g.chunks if c.get("site")} - cited_sites),
+        })
     yield {"type": "done", "response": response.model_dump()}
 
 
 def replay_events(cached: AskResponse, req: AskRequest,
-                  on_done: Callable[[AskRequest, AskResponse], None] | None = None) -> Iterator[dict]:
+                  on_done: Callable[[AskRequest, AskResponse, dict], None] | None = None) -> Iterator[dict]:
     """A quick question's checked answer replayed with the same events as a live one: a new answer id (ratings
     stay per answer), meta.path = "cache"."""
     started = time.perf_counter()
@@ -1327,7 +1335,7 @@ def replay_events(cached: AskResponse, req: AskRequest,
     response = response.model_copy(update={"meta": response.meta.model_copy(
         update={"latency_ms": round((time.perf_counter() - started) * 1000, 1)})})
     if on_done:
-        on_done(req, response)
+        on_done(req, response, {})
     yield {"type": "done", "response": response.model_dump()}
 
 

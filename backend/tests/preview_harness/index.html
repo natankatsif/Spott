@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- The chat's inline preview, as the frontend embeds it (AI Elements WebPreviewBody: the same iframe attributes).
+     Served from another origin than the API by test_preview_e2e.py:  ?api=<API origin>&src=<preview_url> -->
+<html lang="ro">
+<head><meta charset="utf-8"><title>preview harness</title>
+<style>body{margin:0;font:14px system-ui}#bar{padding:6px 10px;background:#eee}iframe{display:block;width:100%;height:560px;border:0}</style>
+</head>
+<body>
+<div id="bar">parent page (another origin) · last message: <code id="last">—</code></div>
+<iframe id="pv" title="Sursa" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+        referrerpolicy="no-referrer" loading="eager"></iframe>
+<script>
+  const params = new URLSearchParams(location.search);
+  const API = params.get("api");
+  window.__msgs = [];
+  window.addEventListener("message", (e) => {
+    if (e.origin !== API || !e.data || e.data.type !== "src-preview:ready") return;
+    window.__msgs.push(Object.assign({ t: performance.now() }, e.data));
+    document.getElementById("last").textContent = JSON.stringify(e.data);
+  });
+  window.__start = performance.now();
+  document.getElementById("pv").src = API + params.get("src");
+  window.highlight = (ids) => document.getElementById("pv").contentWindow.postMessage(
+    { type: "src-preview:highlight", line_ids: ids }, API);
+</script>
+</body>
+</html>

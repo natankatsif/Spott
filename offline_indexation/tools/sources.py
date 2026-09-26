@@ -13,33 +13,19 @@ import argparse
 from pathlib import Path
 
 import psycopg
-from psycopg.types.json import Jsonb
 from retrieval.db import get_connection, init_app_db
+from retrieval.sources import seed_sources
 
-from crawler.config import Site, load_sites
+from crawler.config import load_sites
 
 from .common import OI_DIR, utf8_console
-from .pipeline import EXCLUDED_SITES
 
 SITES_TOML = OI_DIR / "data" / "sources" / "sites.toml"
 
-INSERT_SITE = """
-INSERT INTO sources (kind, url, site_id, category, start_urls, max_depth, max_pages, delay, robots)
-VALUES ('site', %s, %s, %s, %s, %s, %s, %s, %s)
-ON CONFLICT (site_id) WHERE kind = 'site' DO NOTHING
-"""
-
-
-def import_sites(conn: psycopg.Connection, sites: list[Site]) -> int:
-    """Adds the sites not in `sources` yet; returns how many were added. Sites whose robots.txt forbids
-    crawling (EXCLUDED_SITES) come in as robots=blocked."""
-    added = 0
-    with conn.cursor() as cur:
-        for s in sites:
-            cur.execute(INSERT_SITE, (s.start_urls[0], s.id, s.category, Jsonb(s.start_urls), s.max_depth,
-                                      s.max_pages, s.delay, "blocked" if s.id in EXCLUDED_SITES else "allowed"))
-            added += cur.rowcount
-    return added
+def import_sites(conn: psycopg.Connection, config: Path = SITES_TOML) -> int:
+    """sites.toml into `sources` (only the sites not there yet), and the indexed sites without a source;
+    returns how many were added. Sites whose robots.txt forbids crawling come in as robots=blocked."""
+    return seed_sources(conn, config)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -53,9 +39,8 @@ def main(argv: list[str] | None = None) -> None:
     with get_connection(autocommit=True) as conn:
         init_app_db(conn)
         if args.command == "import":
-            sites = load_sites(args.config)
-            added = import_sites(conn, sites)
-            print(f"{args.config.name}: {len(sites)} sites, {added} added, {len(sites) - added} already there")
+            added = import_sites(conn, args.config)
+            print(f"{args.config.name}: {len(load_sites(args.config))} sites, {added} sources added")
         rows = conn.execute("SELECT id, kind, site_id, category, robots, enabled FROM sources ORDER BY id").fetchall()
         if args.command == "list":
             for r in rows:

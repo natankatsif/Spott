@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.28.1",
     "openai>=3.19.2",
     "retrieval",
+    "selectolax>=0.4.12",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -17,6 +18,7 @@ retrieval = { workspace = true }
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "playwright>=1.63.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.5.0",
@@ -25,6 +27,10 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"
+markers = [
+    "db: database integration tests",
+    "browser: headless Chromium end-to-end tests (Playwright, a running API)",
+]
 
 [tool.ruff]
 line-length = 120

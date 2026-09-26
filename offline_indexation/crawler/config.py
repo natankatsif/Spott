@@ -16,6 +16,7 @@ class Site:
     max_pages: int
     delay: float
     ignore_robots: bool
+    path_prefix: str = ""  # only pages under this path (a deeper link added in the admin)
 
 
 def load_sites(path: Path) -> list[Site]:
