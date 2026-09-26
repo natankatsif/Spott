@@ -104,7 +104,11 @@ class FakeLLM:
         self.prompts.append(user)
         return self.outputs[min(len(self.prompts), len(self.outputs)) - 1]
 
+    on_topic = True  # the check made when nothing is found
+
     def complete_json(self, system, user, schema_name, schema, **kw):
+        if schema_name == "topic":
+            return LLMResult(data={"on_topic": self.on_topic}, model="fake-mini", prompt_tokens=20, completion_tokens=2)
         if schema_name == "rewrite":
             if self.rewrite is None:
                 raise answering.LLMUnavailable("no rewrite in this test")
@@ -680,3 +684,17 @@ def test_a_greeting_is_answered_without_a_search():
         assert done.status == "answered" and done.lang == lang
         assert done.trace == [] and done.citations == [] and done.answer == answering.SMALL_TALK_ANSWER[lang]
     assert not answering.SMALL_TALK.match("Привет, как получить справку?")
+
+
+class TopicLLM(FakeLLM):
+    def __init__(self, on_topic):
+        super().__init__({})
+        self.on_topic = on_topic
+
+
+def test_off_topic_with_nothing_found_is_refused_without_a_search_shown(monkeypatch, tmp_path):
+    _, r, _ = run("Какая завтра погода в Париже?", [], TopicLLM(False), monkeypatch, tmp_path)
+    assert (r.status, r.trace, r.nav_links) == ("refused", [], [])
+    assert r.answer == answering.REFUSED["ru"]
+    _, r, _ = run("Где сделать пропуск в бассейн?", [], TopicLLM(True), monkeypatch, tmp_path)
+    assert r.status == "not_found" and r.trace

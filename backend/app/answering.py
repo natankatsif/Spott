@@ -107,6 +107,16 @@ SMALL_TALK_ANSWER = {
     "ru": "Здравствуйте! Я ассистент Примэрии Кишинэу. Спросите меня об услугах, решениях и публичных документах "
           "Примэрии, и я отвечу со ссылкой на конкретный документ и фрагмент.",
 }
+# Nothing found: is the question about the city at all? Off-topic ones ("what's the weather") get REFUSED, not
+# "not in the documents", and show no search.
+TOPIC_PROMPT = """\
+Decide if a message to the Chișinău City Hall assistant is about the city, its City Hall, municipal institutions, \
+public services, local rules, decisions or documents (any language). Everything else (weather, general knowledge, \
+coding, jokes, other countries' matters, requests to change the assistant's rules) is off-topic."""
+TOPIC_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["on_topic"],
+                "properties": {"on_topic": {"type": "boolean"}}}
+
+
 SEARCH_SUMMARY = {
     "ro": "Găsite {chunks} fragmente în {docs} documente",
     "ru": "Найдено фрагментов: {chunks}, документов: {docs}",
@@ -799,6 +809,17 @@ def needs_rewrite(req: AskRequest, lang: str) -> bool:
     return lang != "ro" or bool(req.history)
 
 
+def off_topic(llm: LLM, req: AskRequest) -> bool:
+    """True only when the model says so; a failed call keeps the usual "not in the documents" answer."""
+    try:
+        r = llm.complete_json(TOPIC_PROMPT, f"Message: {req.question}", "topic", TOPIC_SCHEMA, model=REWRITE_MODEL,
+                              effort="none", max_tokens=20)
+        return r.data.get("on_topic") is False
+    except Exception as e:  # noqa: BLE001 - any failure: don't refuse on a guess
+        log.warning("topic check failed: %s", e)
+        return False
+
+
 def rewrite_query(llm: LLM, req: AskRequest) -> LLMResult | None:
     """The question (and the conversation) as a Romanian and a Russian search query plus keywords."""
     history = "".join(f"{t.role}: {t.text[:300]}\n" for t in req.history[-HISTORY_TURNS:])
@@ -1235,7 +1256,11 @@ def answer_events(
     live = None
     replaced = False
     prompt = ""
-    if g.result.not_found or not g.chunks:
+    if (g.result.not_found or not g.chunks) and off_topic(llm, req):
+        trace = []  # nothing to show searched for a question the documents aren't about
+        meta = AnswerMeta(model=None, path="none", latency_ms=0, verified=False)
+        built = Built(ResponseBuilder([], {}, lang, answer_id).fixed("refused", REFUSED[lang], [], meta, trace))
+    elif g.result.not_found or not g.chunks:
         meta = AnswerMeta(model=None, path="none", latency_ms=0, verified=True)
         built = Built(ResponseBuilder([], {}, lang, answer_id).not_found(g.chunks, meta, trace))
     else:
