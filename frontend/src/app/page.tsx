@@ -1,8 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { MessageSquareTextIcon, RotateCcwIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcwIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -12,44 +12,83 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { AssistantAnswer } from "@/components/chat/assistant-answer";
+import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
-import type { ErrorCode, Lang } from "@/lib/api";
+import { type ErrorCode, health, type Lang } from "@/lib/api";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
+import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
 import { setApiMode, useApiMode } from "@/lib/mode";
 import { cn } from "@/lib/utils";
 
-const LANGS: Record<string, UILang> = { [UI.ro.langName]: "ro", [UI.ru.langName]: "ru", [UI.en.langName]: "en" };
 const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" };
+
+// Effort switch in the input: index 0 = fast (one retrieval), 1 = deep (agent). Read by the transport at send time.
+let askMode: "fast" | "deep" = "deep";
+
+/** docs/API.md, GET /health: while models_loaded=false (~20 s after a backend start) show "warming up". */
+function useWarmingUp(enabled: boolean): boolean {
+  const [warming, setWarming] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      try {
+        const h = await health();
+        if (stopped) return;
+        setWarming(!h.models_loaded);
+        if (!h.models_loaded) timer = setTimeout(check, 3000);
+      } catch {
+        if (!stopped) setWarming(false); // backend down: the ask itself reports it
+      }
+    };
+    void check();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      setWarming(false);
+    };
+  }, [enabled]);
+  return enabled && warming;
+}
 
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 /** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
 const langOfQuestion = (q: string | undefined, fallback: Lang): Lang => (q && /[а-яё]/i.test(q) ? "ru" : q ? "ro" : fallback);
 
 export default function Home() {
-  const [lang, setLang] = useState<UILang>("ro");
-  const langRef = useRef(lang);
-  langRef.current = lang;
+  const lang = useUILang();
   const mode = useApiMode();
   const t = UI[lang];
 
-  useEffect(() => {
-    document.documentElement.lang = lang;
-  }, [lang]);
-
-  const transport = useMemo(() => new MunicipalChatTransport({ lang: () => (langRef.current === "en" ? null : langRef.current) }), []);
+  const transport = useMemo(() => new MunicipalChatTransport({ lang: () => { const l = getUILang(); return l === "en" ? null : l; }, mode: () => askMode }), []);
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat<ChatMessage>({ transport });
   const busy = status === "submitted" || status === "streaming";
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!speechError) return;
+    const timer = setTimeout(() => setSpeechError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [speechError]);
+
+  // AskRequest.question is 1–2000 characters; say so here instead of a round trip to a 422
+  const [tooLong, setTooLong] = useState(false);
+  const warming = useWarmingUp(mode === "live");
 
   const ask = (text: string) => {
     const q = text.trim();
     if (!q || busy) return;
     clearError();
+    setTooLong(q.length > 2000);
+    if (q.length > 2000) return;
     void sendMessage({ text: q });
   };
 
-  const errorText = error ? (t.errors[error.message as ErrorCode] ?? t.errors.internal) : null;
+  const errorText = tooLong
+    ? t.errors.validation_error
+    : error ? (t.errors[error.message as ErrorCode] ?? t.errors.internal) : null;
 
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden">
@@ -79,12 +118,10 @@ export default function Home() {
       <Conversation className="flex-1">
         <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
           {messages.length === 0 ? (
-            <ConversationEmptyState
-              className="min-h-[55vh]"
-              description={t.subtitle}
-              icon={<MessageSquareTextIcon className="size-10" />}
-              title={t.title}
-            />
+            <ConversationEmptyState className="min-h-[55vh] gap-4">
+              <LogoMark className="h-[88px] w-auto" />
+              <h1 className="font-semibold text-[32px] leading-tight tracking-tight">{t.greeting}</h1>
+            </ConversationEmptyState>
           ) : (
             messages.map((m, i) =>
               m.role === "user" ? (
@@ -137,14 +174,24 @@ export default function Home() {
           alwaysExpanded
           efforts={[...t.efforts]}
           maxAttachments={0}
-          model={UI[lang].langName}
-          models={[UI.ro.langName, UI.ru.langName, UI.en.langName]}
-          onModelChange={(name) => setLang(LANGS[name] ?? "ro")}
-          onSubmit={(value) => ask(value)}
+          model={lang.toUpperCase()}
+          models={UI_LANGS.map((l) => l.toUpperCase())}
+          onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
+          onSpeechError={(code) => setSpeechError(code)}
+          onSubmit={(value, { effort }) => {
+            askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";
+            ask(value);
+          }}
           placeholder={t.placeholder}
           speechLang={SPEECH[lang]}
         />
-        <p className="text-foreground/80 text-sm">
+        {warming && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
+        {speechError && (
+          <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
+            {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}
+          </p>
+        )}
+        <p className="text-center text-foreground/80 text-sm">
           {t.poweredBy}{" "}
           <a className="underline underline-offset-2" href="/sources">
             {t.providers}

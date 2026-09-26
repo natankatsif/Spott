@@ -53,29 +53,6 @@ function MorphingText({ text }: { text: string }) {
   );
 }
 
-function ModelIcon({ model, className }: { model: string; className?: string }) {
-  const icons: Record<string, string> = {
-    "Composer 2.5": "https://cdn.21st.dev/assets/mirror/7d/7dc00bc09f225fcda46cbc9c6b669c69c025a231877d6c17baa6a003f04f02b2.svg",
-    "Gemini 3.5 Flash": "https://cdn.21st.dev/assets/mirror/cd/cda2df6631d5fa227de3fa04ed78cf354f910ba92a9f086e7455655c10ad9d09.svg",
-    "GPT 5.5": "https://cdn.21st.dev/assets/mirror/b9/b93fa7942be639a1dae60194ff12141145d7d9fd59581582d6ff23335755f19c.svg",
-    "Opus 4.8": "https://cdn.21st.dev/assets/mirror/5d/5de1221c77cc91e748066fd642ad0eee1c1fa65328814f5178166f901e599709.svg",
-    "GLM 5.2": "https://cdn.21st.dev/assets/mirror/b2/b2a6c0ff63efd8a555edf8a174ea6fcfeca120ac1595a2d461ca11d3ae89276c.svg"
-  };
-
-  const filters: Record<string, string> = {
-    "GPT 5.5": "dark:invert", 
-  };
-
-  if (!icons[model]) return null; // project: the selector holds languages, not vendor models
-  return (
-    <img 
-      src={icons[model]} 
-      alt={model} 
-      className={cn("object-contain", filters[model], className)} 
-    />
-  );
-}
-
 function ArrowUpIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -308,7 +285,7 @@ export interface PromptInputProps {
   maxAttachments?: number;
   /** project: BCP-47 language for speech recognition, e.g. "ro-RO" / "ru-RU" */
   speechLang?: string;
-  /** project: text typed by the voice demo when the microphone is unavailable */
+  /** project: text typed by the voice demo when the microphone is unavailable; unset = report via onSpeechError */
   demoVoiceText?: string;
   /** project: index of the initially selected effort */
   defaultEffortIndex?: number;
@@ -316,6 +293,8 @@ export interface PromptInputProps {
   onModelChange?: (model: string) => void;
   /** project: controlled selector value, so the language can also be switched from outside */
   model?: string;
+  /** project: speech recognition failed; code from SpeechRecognitionErrorEvent.error ("not-allowed", "network", …) */
+  onSpeechError?: (code: string) => void;
   /** project: never collapse to the small pill */
   alwaysExpanded?: boolean;
 }
@@ -333,11 +312,12 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       onChange,
       maxAttachments = 6,
       speechLang,
-      demoVoiceText = "Cine elaborează Planul urbanistic general?",
+      demoVoiceText,
       defaultEffortIndex = 1,
       onModelChange,
       model: controlledModel,
       alwaysExpanded = false,
+      onSpeechError,
     },
     ref
   ) => {
@@ -365,7 +345,6 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     const demoIntervalRef = useRef<number | null>(null);
     const demoTextIntervalRef = useRef<number | null>(null);
 
-    const [hoverStyle, setHoverStyle] = useState({ opacity: 0, transform: "translateY(0px) scale(0.95)", transition: "none" });
     const [containerHeight, setContainerHeight] = useState(116);
     const [textareaHeight, setTextareaHeight] = useState(68);
     const [isScrolling, setIsScrolling] = useState(false);
@@ -445,20 +424,32 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       setIsSmoothResize(false);
       setExpanded(true);
 
+      // project: without a recogniser or a microphone, say so (onSpeechError) instead of typing demo text,
+      // unless a demoVoiceText is passed explicitly.
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition && !demoVoiceText) {
+        onSpeechError?.("not-supported");
+        return;
+      }
+
       let stream: MediaStream | null = null;
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
-      } catch (err) {
-        console.warn("Microphone access denied or unavailable. Falling back to simulated voice mode for demo.");
+      } catch {
+        console.warn("Microphone access denied or unavailable.");
+      }
+      if (!stream && !demoVoiceText) {
+        onSpeechError?.("not-allowed");
+        return;
       }
 
       setIsRecording(true);
 
       // Simulation function for tight sandbox environments
       function simulateText() {
-        const fakeText = demoVoiceText;
+        const fakeText = demoVoiceText ?? "";
         const words = fakeText.split(" ");
         let i = 0;
         let currentBase = valueRef.current;
@@ -481,31 +472,40 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
         const audioCtx = new AudioCtx();
         audioContextRef.current = audioCtx;
 
+        void audioCtx.resume(); // iOS/Safari start the context suspended
+
+        // project: bars follow the voice. Finer FFT, only the speech range (~100 Hz–4 kHz) split into log-spaced
+        // bands, then attack/release smoothing so the bars rise with the voice and fall back softly.
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 64; 
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.6;
         const source = audioCtx.createMediaStreamSource(stream);
         source.connect(analyser);
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const binHz = audioCtx.sampleRate / analyser.fftSize;
+        const lo = Math.max(1, Math.floor(100 / binHz));
+        const hi = Math.min(dataArray.length - 1, Math.ceil(4000 / binHz));
+        const edges = Array.from({ length: 6 }, (_, i) => Math.round(lo * Math.pow(hi / lo, i / 5)));
+        const order = [3, 1, 0, 2, 4]; // loudest (lowest) band in the middle bar
+        const levels = new Array(5).fill(0);
 
         const updateVisualizer = () => {
           analyser.getByteFrequencyData(dataArray);
-          const bands = new Array(5).fill(0);
-          const step = Math.floor(dataArray.length / 5);
-          for (let i = 0; i < 5; i++) {
+          for (let b = 0; b < 5; b++) {
+            const from = edges[b];
+            const to = Math.max(from + 1, edges[b + 1]);
             let sum = 0;
-            for (let j = 0; j < step; j++) {
-              sum += dataArray[i * step + j];
-            }
-            bands[i] = sum / step / 255; // normalize to 0-1
+            for (let j = from; j < to; j++) sum += dataArray[j];
+            const target = Math.min(1, Math.pow(sum / (to - from) / 255, 0.8) * 1.5);
+            levels[b] += (target - levels[b]) * (target > levels[b] ? 0.55 : 0.18);
           }
-          setAudioData(bands);
+          setAudioData(order.map((b) => levels[b]));
           rafRef.current = requestAnimationFrame(updateVisualizer);
         };
         updateVisualizer();
 
         // Setup Speech Recognition
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
           const recognition = new SpeechRecognition();
           recognition.continuous = true;
@@ -534,7 +534,10 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           };
 
           recognition.onerror = (e: any) => {
-            console.error("Speech recognition error", e);
+            // project: the event serialises as {}; the reason is in e.error. no-speech/aborted are normal ends.
+            if (e.error === "no-speech" || e.error === "aborted") return;
+            console.warn("Speech recognition error:", e.error, e.message || "");
+            onSpeechError?.(e.error);
             stopRecording();
           };
 
@@ -555,7 +558,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
         }, 100);
         simulateText();
       }
-    }, [handleValueChange, stopRecording, demoVoiceText, speechLang]);
+    }, [handleValueChange, stopRecording, demoVoiceText, speechLang, onSpeechError]);
 
     // Keep textarea auto-scrolled to bottom while recording
     useEffect(() => {
@@ -874,66 +877,32 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 expanded && !isRecording ? "opacity-100 blur-0 translate-y-0 pointer-events-auto" : "opacity-0 blur-sm translate-y-2 pointer-events-none"
               )}
             >
-              <div className="relative">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsModelSelectOpen((prev) => !prev);
-                  }}
-                  className={cn(
-                    "group flex items-center gap-1 rounded-full px-2 py-1 text-foreground/50 transition-all duration-200 outline-none hover:bg-accent/60 hover:text-foreground cursor-default",
-                    isModelSelectOpen ? "bg-accent/60 text-foreground" : ""
-                  )}
-                  aria-label={`Select model. Current: ${selectedModel}`}
-                >
-                  <ModelIcon model={selectedModel} className="size-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
-                  <span className="text-xs font-semibold select-none transition-colors">
-                    <MorphingText text={selectedModel} />
-                  </span>
-                </button>
-
-                <div
-                  style={{ transformOrigin: "bottom left" }}
-                  onMouseLeave={() => {
-                    setHoverStyle((prev) => ({
-                      ...prev, opacity: 0, transform: prev.transform.replace("scale(1)", "scale(0.95)"), transition: "opacity 0.2s ease-in, transform 0.2s ease-out",
-                    }));
-                  }}
-                  className={cn(
-                    "absolute bottom-full left-0 mb-2.5 z-50 w-44 rounded-2xl border border-border bg-card/95 p-1 shadow-xl backdrop-blur-md flex flex-col gap-0.5 transition-all duration-400 cursor-default",
-                    isModelSelectOpen
-                      ? "opacity-100 scale-100 translate-y-0 pointer-events-auto ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-                      : "opacity-0 scale-95 translate-y-3 pointer-events-none ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
-                  )}
-                >
-                  <div className="relative flex flex-col gap-0.5">
-                    <div style={hoverStyle} className="absolute left-0 right-0 top-0 h-8 -z-10 rounded-xl bg-accent pointer-events-none" />
-                    {models.map((model, idx) => (
-                      <button
-                        key={model}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onMouseEnter={() => {
-                          setHoverStyle((prev) => ({
-                            opacity: 1, transform: `translateY(${idx * 34}px) scale(1)`,
-                            transition: prev.opacity === 0 ? "opacity 0.15s ease-out" : "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.15s ease", 
-                          }));
-                        }}
-                        onClick={(e) => { e.stopPropagation(); setSelectedModel(model); onModelChange?.(model); setIsModelSelectOpen(false); }}
-                        className="group relative flex h-8 w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-foreground/80 outline-none active:scale-[0.98] cursor-default"
-                      >
-                        <span className="flex items-center gap-2">
-                          <ModelIcon model={model} className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity" />
-                          {model}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              {/* project: languages as an inline segmented switch instead of a dropdown; the pill slides to the pick */}
+              <div className="relative mr-1 flex items-center rounded-full bg-muted/70 p-0.5" role="radiogroup">
+                <span
+                  aria-hidden
+                  className="absolute top-0.5 bottom-0.5 left-0.5 w-8 rounded-full bg-card shadow-sm transition-transform duration-400 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] motion-reduce:transition-none"
+                  style={{ transform: `translateX(${Math.max(0, models.indexOf(selectedModel)) * 100}%)` }}
+                />
+                {models.map((model) => (
+                  <button
+                    aria-checked={model === selectedModel}
+                    className={cn(
+                      "relative z-[1] w-8 rounded-full py-0.5 text-center text-xs font-semibold outline-none transition-colors duration-300 cursor-default select-none active:scale-95",
+                      model === selectedModel ? "text-foreground" : "text-foreground/50 hover:text-foreground/80",
+                    )}
+                    key={model}
+                    onClick={(e) => { e.stopPropagation(); setSelectedModel(model); onModelChange?.(model); }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    role="radio"
+                    type="button"
+                  >
+                    {model}
+                  </button>
+                ))}
               </div>
 
+              {/* project: fast/deep switch hidden until the backend has a deep mode (docs/API.md: mode=deep runs the fast path)
               <button
                 type="button" onMouseDown={(e) => e.preventDefault()} onClick={cycleEffort}
                 className="group flex items-center gap-1 rounded-full px-2 py-1 text-foreground/50 transition-all duration-200 hover:bg-accent/60 hover:text-foreground outline-none cursor-default"
@@ -941,6 +910,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 <DynamicBarsIcon index={effortIndex} count={efforts.length} />
                 <span className="text-xs font-semibold select-none transition-colors"><MorphingText text={efforts[effortIndex]} /></span>
               </button>
+              */}
 
               <button
                 type="button" onMouseDown={(e) => e.preventDefault()} onClick={openFileChooser} disabled={attachments.length >= maxAttachments}
@@ -960,7 +930,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               {audioData.map((val, i) => (
                 <div
                   key={i}
-                  className="w-1 rounded-full bg-primary transition-[height] duration-75 ease-out"
+                  className="w-1 rounded-full bg-primary"
                   style={{ height: `${Math.max(4, val * 24)}px` }}
                 />
               ))}

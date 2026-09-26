@@ -161,7 +161,7 @@ export type ContactCard = {
 };
 
 // ─────────────── POST /api/ask/stream (SSE) ───────────────
-// Order: start → trace* → (citation* → delta* → sentence)* → done. `error` can come any time.
+// Order: start → trace* → (citation* → delta* → sentence)* → citation* → done. `error` can come any time.
 // `done.response` is authoritative — replace the assembled state with it. Client: ./stream.ts
 
 export type StreamStart = {

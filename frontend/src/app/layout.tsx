@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -7,7 +7,12 @@ const inter = Inter({ subsets: ["latin", "latin-ext", "cyrillic"], variable: "--
 export const metadata: Metadata = {
   title: "Asistentul Primăriei Chișinău",
   description: "Răspunsuri din documentele publice ale Primăriei, cu surse / Ответы по публичным документам Примэрии, с источниками",
+  // iOS "Add to Home Screen": name under the icon; the icon itself is app/apple-icon.png
+  appleWebApp: { title: "Asistent", capable: true, statusBarStyle: "default" },
 };
+
+// colour of the mobile browser bar / Android task switcher, same as the page background
+export const viewport: Viewport = { themeColor: "#f5f6f8" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

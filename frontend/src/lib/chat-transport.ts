@@ -12,8 +12,9 @@
 //   source-url            — one per citation, so generic AI Elements <Sources> work too
 
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import { API_URL, checked, ApiRequestError, type AskResponse, type ChatTurn, type Citation, type Lang, type StreamEvent, type TraceStep } from "./api";
+import { API_URL, checked, ApiRequestError, type AskRequest, type AskResponse, type ChatTurn, type Citation, type Lang, type StreamEvent, type TraceStep } from "./api";
 import { isMock } from "./mode";
+import { sessionId } from "./session";
 import { mockStream, parseSse } from "./stream";
 
 export type SentenceMeta = { index: number; cites: string[]; verified: boolean };
@@ -27,25 +28,38 @@ export type ChatData = {
 
 export type ChatMessage = UIMessage<never, ChatData>;
 
-export type TransportOptions = { lang: () => Lang | null };
+export type TransportOptions = { lang: () => Lang | null; mode: () => AskRequest["mode"] };
 
 function historyOf(messages: ChatMessage[]): ChatTurn[] {
   return messages.slice(0, -1).flatMap((m): ChatTurn[] => {
     const text = m.parts.flatMap((p) => (p.type === "text" ? [p.text.trim()] : [])).join(" ");
-    return text ? [{ role: m.role === "user" ? "user" : "assistant", text }] : [];
+    // ChatTurn.text is max 4000 characters (backend answers 422 otherwise)
+    return text ? [{ role: m.role === "user" ? "user" : "assistant", text: text.slice(0, 4000) }] : [];
   }).slice(-10);
 }
 
+/** docs/API.md, UI state 7: backend down → error after 30 s. Counts until the first event; a started answer may run longer. */
+const FIRST_EVENT_TIMEOUT_MS = 30_000;
+
 async function* liveEvents(body: unknown, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
-  const res = await fetch(`${API_URL}/api/ask/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  await checked(res);
-  if (!res.body) throw new Error("empty stream body");
-  yield* parseSse(res.body);
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), FIRST_EVENT_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_URL}/api/ask/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal,
+    });
+    await checked(res);
+    if (!res.body) throw new Error("empty stream body");
+    for await (const ev of parseSse(res.body)) {
+      clearTimeout(timer);
+      yield ev;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Our stream event → AI SDK chunks. `open` tracks sentences whose text part has started. */
@@ -90,7 +104,13 @@ export class MunicipalChatTransport implements ChatTransport<ChatMessage> {
   async sendMessages({ messages, abortSignal }: Parameters<ChatTransport<ChatMessage>["sendMessages"]>[0]) {
     const last = messages.at(-1);
     const question = last?.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(" ").trim() ?? "";
-    const request = { question, lang: this.opts.lang(), history: historyOf(messages), mode: "auto" as const };
+    const request: AskRequest = {
+      question,
+      lang: this.opts.lang(),
+      history: historyOf(messages),
+      mode: this.opts.mode(),
+      session_id: sessionId(),
+    };
     const events = isMock() ? mockStream(question) : liveEvents(request, abortSignal);
 
     return new ReadableStream<UIMessageChunk>({
@@ -143,8 +163,18 @@ export function viewOf(message: ChatMessage): AnswerView {
   }
   if (answer) {
     const a: AskResponse = answer;
+    // `done` is authoritative, but it has only the answer-wide `verified`. Keep the per-sentence one from the
+    // stream while the sentence is the same one that was streamed (a second answer replaces the text: docs/API.md).
+    const streamedVerified = (index: number, text: string) =>
+      texts.get(index)?.text.trim() === text ? metas.get(index)?.verified : undefined;
     return {
-      sentences: a.sentences.map((s, index) => ({ index, text: s.text, cites: s.cites, verified: a.meta.verified, done: true })),
+      sentences: a.sentences.map((s, index) => ({
+        index,
+        text: s.text,
+        cites: s.cites,
+        verified: streamedVerified(index, s.text) ?? a.meta.verified,
+        done: true,
+      })),
       citations: a.citations,
       trace: a.trace,
       answer: a,
