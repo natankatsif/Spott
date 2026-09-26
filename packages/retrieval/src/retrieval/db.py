@@ -60,17 +60,23 @@ def get_pool(
 INIT_SQL = """
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'ro_unaccent') THEN
     CREATE TEXT SEARCH CONFIGURATION ro_unaccent (COPY = romanian);
-    ALTER TEXT SEARCH CONFIGURATION ro_unaccent ALTER MAPPING FOR hword, hword_part, word WITH unaccent, romanian_stem;
   END IF;
+  ALTER TEXT SEARCH CONFIGURATION ro_unaccent 
+    ALTER MAPPING FOR asciiword, asciihword, hword_asciipart, word, hword, hword_part 
+    WITH unaccent, romanian_stem;
+
   IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'ru_unaccent') THEN
     CREATE TEXT SEARCH CONFIGURATION ru_unaccent (COPY = russian);
-    ALTER TEXT SEARCH CONFIGURATION ru_unaccent ALTER MAPPING FOR hword, hword_part, word WITH unaccent, russian_stem;
   END IF;
+  ALTER TEXT SEARCH CONFIGURATION ru_unaccent 
+    ALTER MAPPING FOR asciiword, asciihword, hword_asciipart, word, hword, hword_part 
+    WITH unaccent, russian_stem;
 END
 $$;
 
@@ -123,6 +129,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     site TEXT,
     url TEXT,
     found_on TEXT,
+    ord INTEGER DEFAULT 0,
     embedding vector(1024),
     tsv tsvector GENERATED ALWAYS AS (
         to_tsvector(
@@ -135,10 +142,44 @@ CREATE TABLE IF NOT EXISTS chunks (
     ) STORED
 );
 
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS ord INTEGER DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
 CREATE INDEX IF NOT EXISTS idx_chunks_site ON chunks(site);
 CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING GIN(tsv);
+CREATE INDEX IF NOT EXISTS idx_chunks_doc_ord ON chunks(doc_id, ord);
+
+CREATE TABLE IF NOT EXISTS lines (
+    line_id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL REFERENCES chunks(chunk_id) ON DELETE CASCADE,
+    doc_id TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    embed_text TEXT NOT NULL,
+    lang TEXT,
+    block_id TEXT,
+    page INTEGER,
+    bboxes JSONB,
+    content_hash TEXT NOT NULL,
+    embedding vector(1024),
+    tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            CASE 
+                WHEN lang = 'ru' THEN 'ru_unaccent'::regconfig
+                ELSE 'ro_unaccent'::regconfig
+            END,
+            immutable_unaccent(embed_text)
+        )
+    ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS idx_lines_chunk_idx ON lines(chunk_id, idx);
+CREATE INDEX IF NOT EXISTS idx_lines_doc_id ON lines(doc_id);
+CREATE INDEX IF NOT EXISTS idx_lines_content_hash ON lines(content_hash);
+CREATE INDEX IF NOT EXISTS idx_lines_tsv ON lines USING GIN(tsv);
+CREATE INDEX IF NOT EXISTS idx_lines_text_trgm ON lines USING GIN(text gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_lines_embedding ON lines USING HNSW(embedding vector_cosine_ops);
 """
 
 

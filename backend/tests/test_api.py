@@ -15,7 +15,7 @@ def test_search_request_defaults():
     req = SearchRequest(query="autorizatie de constructie")
     assert req.query == "autorizatie de constructie"
     assert req.k == RERANK_TOP_K
-    assert req.rerank is True
+    assert req.rerank is False
     assert req.lang is None
 
 

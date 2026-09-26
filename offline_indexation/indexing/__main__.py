@@ -16,9 +16,10 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+from retrieval.db import get_connection, init_db
+
 from chunking.chunker import chunk_document
 
-from .db import get_connection, init_db
 from .indexer import Indexer
 
 log = logging.getLogger("indexing")

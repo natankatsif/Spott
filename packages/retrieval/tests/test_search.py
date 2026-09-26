@@ -135,3 +135,28 @@ def test_rrf_fuse():
     assert fused[0]["vec_rank"] == 2
     assert fused[0]["fts_rank"] == 1
     assert fused[0]["rrf_score"] > fused[1]["rrf_score"]
+
+
+def test_weighted_rrf_fuse():
+    from retrieval.search import weighted_rrf_fuse
+
+    vec = [{"chunk_id": "c1"}, {"chunk_id": "c2"}]
+    line = [{"chunk_id": "c2"}, {"chunk_id": "c3"}]
+    fts = [{"chunk_id": "c3"}]
+
+    # When vec has weight 2.0 and fts has weight 0.1
+    fused = weighted_rrf_fuse(
+        [(vec, 2.0, "vec_rank"), (line, 1.0, "line_rank"), (fts, 0.1, "fts_rank")],
+        k=60,
+    )
+    assert len(fused) == 3
+    assert fused[0]["chunk_id"] in ("c1", "c2")
+
+
+def test_retrieve_disabled_reranker_raises():
+    import pytest
+
+    from retrieval.pipeline import retrieve
+
+    with pytest.raises(ValueError, match="Reranker is disabled"):
+        retrieve(None, "test query", rerank=True)

@@ -4,6 +4,7 @@ from .config import (
     EMBEDDING_MODEL_NAME,
     NOT_FOUND_THRESHOLD,
     RERANK_TOP_K,
+    RERANKER_ENABLED,
     RERANKER_MODEL_NAME,
     RRF_K,
     TOP_CANDIDATES,
@@ -20,6 +21,10 @@ from .embeddings import (
     get_embedding_model,
     uses_half_precision,
 )
+from .pipeline import (
+    RetrievalResult,
+    retrieve,
+)
 from .rerank import (
     get_reranker_model,
     rerank_candidates,
@@ -30,9 +35,13 @@ from .search import (
     clean_tsquery_term,
     deduplicate_results,
     execute_fts_query,
+    execute_line_fts_query,
+    execute_line_vector_query,
     execute_vector_query,
+    get_chunks_by_ids,
     kind_priority,
     rrf_fuse,
+    weighted_rrf_fuse,
 )
 
 __all__ = [
@@ -41,15 +50,20 @@ __all__ = [
     "INIT_SQL",
     "NOT_FOUND_THRESHOLD",
     "RERANK_TOP_K",
+    "RERANKER_ENABLED",
     "RERANKER_MODEL_NAME",
     "RRF_K",
+    "RetrievalResult",
     "TOP_CANDIDATES",
     "build_fts_query",
     "clean_tsquery_term",
     "deduplicate_results",
     "execute_fts_query",
+    "execute_line_fts_query",
+    "execute_line_vector_query",
     "execute_vector_query",
     "free_device_cache",
+    "get_chunks_by_ids",
     "get_connection",
     "get_device",
     "get_embedding_model",
@@ -58,6 +72,8 @@ __all__ = [
     "init_db",
     "kind_priority",
     "rerank_candidates",
+    "retrieve",
     "rrf_fuse",
     "uses_half_precision",
+    "weighted_rrf_fuse",
 ]

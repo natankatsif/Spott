@@ -18,13 +18,12 @@ from __future__ import annotations
 import argparse
 import logging
 import statistics
-import time
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-from indexing.search import HybridSearcher
+from retrieval.db import get_connection
+from retrieval.pipeline import retrieve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("eval_smoke")
@@ -99,7 +98,7 @@ def is_match(chunk: dict[str, Any], expected: Any) -> bool:
 
 
 def evaluate_mode(
-    searcher: HybridSearcher,
+    conn: Any,
     mode_name: str,
     positive_queries: list[dict[str, Any]],
     negative_queries: list[dict[str, Any]],
@@ -111,23 +110,24 @@ def evaluate_mode(
     pos_top1_scores: list[float] = []
     query_results: dict[str, list[dict[str, Any]]] = {}
 
+    def run_query(query_text: str, k: int = 20) -> tuple[list[dict[str, Any]], float]:
+        if mode_name == "Vector only":
+            res = retrieve(conn, query_text, k=k, w_vector=1.0, w_fts=0.0, w_line=0.0, rerank=False)
+        elif mode_name == "FTS only":
+            res = retrieve(conn, query_text, k=k, w_vector=0.0, w_fts=1.0, w_line=0.0, rerank=False)
+        elif mode_name == "Hybrid RRF":
+            res = retrieve(conn, query_text, k=k, rerank=False)
+        elif mode_name == "CrossEncoder Rerank":
+            res = retrieve(conn, query_text, k=k, rerank=True)
+        else:
+            raise ValueError(f"Unknown mode: {mode_name}")
+        return res.items, res.timings_ms.get("total", 0.0)
+
     for q in positive_queries:
         query_text = q["query"]
         expected = q.get("expected")
 
-        t0 = time.perf_counter()
-        if mode_name == "Vector only":
-            results = searcher.search_vector(query_text, k=20, limit=20)
-        elif mode_name == "FTS only":
-            results = searcher.search_fts(query_text, k=20, limit=20)
-        elif mode_name == "Hybrid RRF":
-            results = searcher.search_hybrid(query_text, k=20, top_candidates=40)
-        elif mode_name == "CrossEncoder Rerank":
-            results = searcher.search_rerank(query_text, k=5, top_candidates=20)
-        else:
-            raise ValueError(f"Unknown mode: {mode_name}")
-        elapsed_ms = (time.perf_counter() - t0) * 1000.0
-
+        results, elapsed_ms = run_query(query_text, k=20)
         latencies.append(elapsed_ms)
         query_results[q["id"]] = results
 
@@ -153,16 +153,7 @@ def evaluate_mode(
     neg_top1_scores: list[float] = []
     for q in negative_queries:
         query_text = q["query"]
-        t0 = time.perf_counter()
-        if mode_name == "Vector only":
-            results = searcher.search_vector(query_text, k=5, limit=5)
-        elif mode_name == "FTS only":
-            results = searcher.search_fts(query_text, k=5, limit=5)
-        elif mode_name == "Hybrid RRF":
-            results = searcher.search_hybrid(query_text, k=5, top_candidates=20)
-        elif mode_name == "CrossEncoder Rerank":
-            results = searcher.search_rerank(query_text, k=5, top_candidates=20)
-        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        results, elapsed_ms = run_query(query_text, k=5)
         latencies.append(elapsed_ms)
         query_results[q["id"]] = results
 
@@ -195,23 +186,27 @@ def main() -> None:
     neg_queries = [q for q in queries if not q.get("expected") or q["expected"] == "none"]
     log.info("Positive queries: %d, Negative queries: %d", len(pos_queries), len(neg_queries))
 
-    searcher = HybridSearcher()
+    conn = get_connection(autocommit=True)
 
     modes = [
         "Vector only",
         "FTS only",
         "Hybrid RRF",
-        "CrossEncoder Rerank",
     ]
+    # Only test reranker if RERANKER_ENABLED
+    from retrieval.config import RERANKER_ENABLED
+
+    if RERANKER_ENABLED:
+        modes.append("CrossEncoder Rerank")
 
     all_metrics = []
     detailed_results = {}
 
     for mode in modes:
         log.info("Evaluating mode: %s...", mode)
-        m = evaluate_mode(searcher, mode, pos_queries, neg_queries)
+        m = evaluate_mode(conn, mode, pos_queries, neg_queries)
         all_metrics.append(m)
-        if mode == "CrossEncoder Rerank":
+        if mode in ("CrossEncoder Rerank", "Hybrid RRF"):
             detailed_results = m["query_results"]
 
     print("\n" + "=" * 80)

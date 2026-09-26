@@ -1,7 +1,8 @@
 """Tests for common/text.py and indexing/embeddings.py."""
 
+from retrieval.embeddings import get_device
+
 from common.text import check_contacts, format_table_markdown, has_contacts
-from indexing.embeddings import get_device
 
 
 def test_has_contacts():

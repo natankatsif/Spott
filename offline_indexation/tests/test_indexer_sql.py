@@ -2,9 +2,10 @@
 
 import json
 
+from retrieval.search import rrf_fuse
+
 from chunking.chunker import starts_new_group
 from indexing.indexer import CHUNK_COLUMNS, UPSERT_CHUNK, UPSERT_DOCUMENT, document_record, row_values
-from indexing.search import rrf_fuse
 
 
 def test_upsert_sql_updates_every_non_key_column():

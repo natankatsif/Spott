@@ -104,25 +104,41 @@ RESULT_COLUMNS = (
     "text, embed_text, content_hash, parent_legal_path, pages, found_on"
 )
 FTS_QUERY = "(to_tsquery('ro_unaccent', %(q)s) || to_tsquery('ru_unaccent', %(q)s))"
+LINE_RESULT_COLUMNS = "line_id, chunk_id, doc_id, idx, text, embed_text, lang, block_id, page, bboxes"
 
 
-def rrf_fuse(*rankings: list[dict], k: int = RRF_K) -> list[dict]:
-    """Reciprocal Rank Fusion: score = sum of 1 / (k + rank) over the rankings a chunk is in."""
+def weighted_rrf_fuse(
+    rankings_with_weights: list[tuple[list[dict], float, str]],
+    k: int = RRF_K,
+) -> list[dict]:
+    """Weighted Reciprocal Rank Fusion: score = sum of weight / (k + rank) over rankings."""
     fused: dict[str, dict] = {}
-    for mode, ranking in zip(("vec_rank", "fts_rank"), rankings, strict=False):
+    for ranking, weight, mode in rankings_with_weights:
         for rank, item in enumerate(ranking, 1):
-            entry = fused.setdefault(item["chunk_id"], item | {"vec_rank": None, "fts_rank": None, "rrf_score": 0.0})
+            chunk_id = item["chunk_id"]
+            entry = fused.setdefault(
+                chunk_id,
+                item | {"vec_rank": None, "fts_rank": None, "line_rank": None, "rrf_score": 0.0},
+            )
             entry[mode] = rank
-            entry["rrf_score"] += 1.0 / (k + rank)
+            entry["rrf_score"] += weight / (k + rank)
     for entry in fused.values():
         entry["score"] = entry["rrf_score"]
     return sorted(fused.values(), key=lambda e: e["rrf_score"], reverse=True)
+
+
+def rrf_fuse(*rankings: list[dict], k: int = RRF_K) -> list[dict]:
+    """Reciprocal Rank Fusion with equal weights."""
+    modes = ("vec_rank", "fts_rank", "line_rank")
+    weighted = [(r, 1.0, modes[i % len(modes)]) for i, r in enumerate(rankings)]
+    return weighted_rrf_fuse(weighted, k=k)
 
 
 def execute_vector_query(
     conn: psycopg.Connection,
     q_vec: np.ndarray,
     lang: str | None = None,
+    site: str | None = None,
     limit: int = 40,
 ) -> list[dict]:
     """Runs pure cosine similarity vector search on a psycopg connection."""
@@ -131,11 +147,13 @@ def execute_vector_query(
             f"""
             SELECT {RESULT_COLUMNS}, 1 - (embedding <=> %(v)s::vector) AS raw_score
             FROM chunks
-            WHERE embedding IS NOT NULL AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
+            WHERE embedding IS NOT NULL 
+              AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
+              AND (%(site)s::text IS NULL OR site = %(site)s::text)
             ORDER BY embedding <=> %(v)s::vector
             LIMIT %(limit)s
             """,
-            {"v": q_vec, "lang": lang, "limit": limit},
+            {"v": q_vec, "lang": lang, "site": site, "limit": limit},
         )
         rows = cur.fetchall()
     for row in rows:
@@ -149,6 +167,7 @@ def execute_fts_query(
     conn: psycopg.Connection,
     fts_query: str,
     lang: str | None = None,
+    site: str | None = None,
     limit: int = 40,
 ) -> list[dict]:
     """Runs full-text search with ro_unaccent | ru_unaccent on a psycopg connection."""
@@ -160,11 +179,13 @@ def execute_fts_query(
                 f"""
                 SELECT {RESULT_COLUMNS}, ts_rank_cd(tsv, {FTS_QUERY}) AS raw_score
                 FROM chunks
-                WHERE tsv @@ {FTS_QUERY} AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
+                WHERE tsv @@ {FTS_QUERY} 
+                  AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
+                  AND (%(site)s::text IS NULL OR site = %(site)s::text)
                 ORDER BY raw_score DESC
                 LIMIT %(limit)s
                 """,
-                {"q": fts_query, "lang": lang, "limit": limit},
+                {"q": fts_query, "lang": lang, "site": site, "limit": limit},
             )
             rows = cur.fetchall()
         except psycopg.Error as e:
@@ -175,6 +196,90 @@ def execute_fts_query(
         row["lang"] = row["lang"] or ""
         row["score"] = row["rrf_score"] = float(row.pop("raw_score"))
     return rows
+
+
+def execute_line_vector_query(
+    conn: psycopg.Connection,
+    q_vec: np.ndarray,
+    lang: str | None = None,
+    site: str | None = None,
+    limit: int = 60,
+) -> list[dict]:
+    """Cosine similarity search on lines table."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        try:
+            cur.execute(
+                f"""
+                SELECT {LINE_RESULT_COLUMNS}, 1 - (l.embedding <=> %(v)s::vector) AS raw_score
+                FROM lines l
+                {'JOIN documents d ON l.doc_id = d.doc_id' if site else ''}
+                WHERE l.embedding IS NOT NULL 
+                  AND (%(lang)s::text IS NULL OR l.lang = %(lang)s::text)
+                  {'AND d.site = %(site)s' if site else ''}
+                ORDER BY l.embedding <=> %(v)s::vector
+                LIMIT %(limit)s
+                """,
+                {"v": q_vec, "lang": lang, "site": site, "limit": limit},
+            )
+            rows = cur.fetchall()
+        except psycopg.Error as e:
+            log.warning("Line vector query failed: %s", e)
+            return []
+    for row in rows:
+        row["score"] = float(row.pop("raw_score"))
+    return rows
+
+
+def execute_line_fts_query(
+    conn: psycopg.Connection,
+    fts_query: str,
+    lang: str | None = None,
+    site: str | None = None,
+    limit: int = 60,
+) -> list[dict]:
+    """Full-text search on lines table."""
+    if not fts_query:
+        return []
+    with conn.cursor(row_factory=dict_row) as cur:
+        try:
+            cur.execute(
+                f"""
+                SELECT {LINE_RESULT_COLUMNS}, ts_rank_cd(l.tsv, {FTS_QUERY}) AS raw_score
+                FROM lines l
+                {'JOIN documents d ON l.doc_id = d.doc_id' if site else ''}
+                WHERE l.tsv @@ {FTS_QUERY}
+                  AND (%(lang)s::text IS NULL OR l.lang = %(lang)s::text)
+                  {'AND d.site = %(site)s' if site else ''}
+                ORDER BY raw_score DESC
+                LIMIT %(limit)s
+                """,
+                {"q": fts_query, "lang": lang, "site": site, "limit": limit},
+            )
+            rows = cur.fetchall()
+        except psycopg.Error as e:
+            log.warning("Line FTS query failed for tsquery %r: %s", fts_query, e)
+            return []
+    for row in rows:
+        row["score"] = float(row.pop("raw_score"))
+    return rows
+
+
+def get_chunks_by_ids(conn: psycopg.Connection, chunk_ids: list[str]) -> dict[str, dict]:
+    """Fetches chunk rows by list of chunk_ids, returning dict keyed by chunk_id."""
+    if not chunk_ids:
+        return {}
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"SELECT {RESULT_COLUMNS} FROM chunks WHERE chunk_id = ANY(%(ids)s)",
+            {"ids": chunk_ids},
+        )
+        rows = cur.fetchall()
+    by_id = {}
+    for r in rows:
+        r["url"] = r["url"] or ""
+        r["lang"] = r["lang"] or ""
+        by_id[r["chunk_id"]] = r
+    return by_id
 
 
 class HybridSearcher:

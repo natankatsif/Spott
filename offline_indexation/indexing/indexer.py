@@ -14,9 +14,8 @@ import time
 
 import numpy as np
 import psycopg
-
-from .db import get_connection
-from .embeddings import free_device_cache, get_device, get_embedding_model
+from retrieval.db import get_connection
+from retrieval.embeddings import free_device_cache, get_device, get_embedding_model
 
 log = logging.getLogger("indexing.indexer")
 

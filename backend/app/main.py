@@ -3,9 +3,7 @@
     uv run uvicorn app.main:app --reload --port 8000
 """
 
-import asyncio
 import logging
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,19 +11,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg_pool import ConnectionPool
 from retrieval import (
-    NOT_FOUND_THRESHOLD,
-    TOP_CANDIDATES,
-    HybridSearcher,
-    build_fts_query,
-    deduplicate_results,
-    execute_fts_query,
-    execute_vector_query,
+    RERANKER_ENABLED,
     get_device,
     get_embedding_model,
     get_pool,
     get_reranker_model,
-    rerank_candidates,
-    rrf_fuse,
+    retrieve,
 )
 from starlette.concurrency import run_in_threadpool
 
@@ -33,6 +24,7 @@ from .schemas import (
     AskRequest,
     AskResponse,
     HealthResponse,
+    MatchedLine,
     SearchRequest,
     SearchResponse,
     SearchResultItem,
@@ -57,15 +49,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 2. Pre-load models in worker thread
     log.info("Loading embedding model on %s...", device)
     await run_in_threadpool(get_embedding_model, device)
-    log.info("Loading reranker model on %s...", device)
-    await run_in_threadpool(get_reranker_model, device)
+    if RERANKER_ENABLED:
+        log.info("Loading reranker model on %s...", device)
+        await run_in_threadpool(get_reranker_model, device)
+    else:
+        log.info("Reranker is disabled (RERANKER_ENABLED=false), skipping reranker pre-load.")
     app.state.models_loaded = True
 
     # 3. Warm-up search query to compile MPS/CUDA kernels
     log.info("Running warm-up search query...")
-    searcher = HybridSearcher()
     try:
-        await run_in_threadpool(searcher.search_rerank, "warmup query", k=8, top_candidates=30)
+        await run_in_threadpool(retrieve, pool, "warmup query", k=2, rerank=False)
     except Exception as e:
         log.warning("Warmup search query encountered error (ignored): %s", e)
 
@@ -115,70 +109,31 @@ async def search_endpoint(req: SearchRequest) -> SearchResponse:
     if pool is None:
         raise HTTPException(status_code=503, detail="Database pool not initialized")
 
-    device = getattr(app.state, "device", None)
-    t_start = time.perf_counter()
-
-    # 1. Embed query (runs in worker thread)
-    searcher = HybridSearcher()
-    t_embed_start = time.perf_counter()
-    q_vec = await run_in_threadpool(searcher.embed_query, req.query)
-    embed_ms = (time.perf_counter() - t_embed_start) * 1000.0
-
-    # 2. Run vector and FTS SQL queries in parallel using pool connections
-    fts_query = build_fts_query(req.query)
-
-    def run_vector() -> tuple[list[dict], float]:
-        t0 = time.perf_counter()
-        with pool.connection() as conn:
-            rows = execute_vector_query(conn, q_vec, lang=req.lang, limit=TOP_CANDIDATES)
-        return rows, (time.perf_counter() - t0) * 1000.0
-
-    def run_fts() -> tuple[list[dict], float]:
-        t0 = time.perf_counter()
-        with pool.connection() as conn:
-            rows = execute_fts_query(conn, fts_query, lang=req.lang, limit=TOP_CANDIDATES)
-        return rows, (time.perf_counter() - t0) * 1000.0
-
-    (vec_res, vec_ms), (fts_res, fts_ms) = await asyncio.gather(
-        run_in_threadpool(run_vector),
-        run_in_threadpool(run_fts),
-    )
-
-    # 3. RRF Fusion + Deduplication
-    fused = rrf_fuse(vec_res, fts_res)
-    candidates = deduplicate_results(fused, k=TOP_CANDIDATES)
-
-    # 4. Rerank top candidates with CrossEncoder (if requested)
-    rerank_ms = 0.0
-    if req.rerank and candidates:
-        t_rerank_start = time.perf_counter()
-        candidates = await run_in_threadpool(
-            rerank_candidates,
+    try:
+        res = await run_in_threadpool(
+            retrieve,
+            pool,
             req.query,
-            candidates,
-            top_k=req.k,
-            device=device,
+            lang=req.lang,
+            k=req.k,
+            rerank=req.rerank,
         )
-        rerank_ms = (time.perf_counter() - t_rerank_start) * 1000.0
-    else:
-        candidates = candidates[: req.k]
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
-    total_ms = (time.perf_counter() - t_start) * 1000.0
-
-    # 5. Check rejection threshold
-    not_found = False
-    if not candidates:
-        not_found = True
-    elif req.rerank:
-        top_score = candidates[0].get("rerank_score", 0.0)
-        if top_score < NOT_FOUND_THRESHOLD:
-            not_found = True
-
-    # 6. Format response items
     formatted_results = []
-    for c in candidates:
+    for c in res.items:
         pages = c.get("pages")
         page_val = pages[0] if (pages and isinstance(pages, list) and len(pages) > 0) else None
+        matched_lines = [
+            MatchedLine(
+                line_id=m["line_id"],
+                idx=m["idx"],
+                text=m["text"],
+                score=m.get("score"),
+            )
+            for m in c.get("matched_lines", [])
+        ]
         formatted_results.append(
             SearchResultItem(
                 chunk_id=c["chunk_id"],
@@ -194,19 +149,20 @@ async def search_endpoint(req: SearchRequest) -> SearchResponse:
                 rerank_score=c.get("rerank_score"),
                 vec_rank=c.get("vec_rank"),
                 fts_rank=c.get("fts_rank"),
+                matched_lines=matched_lines,
             )
         )
 
     return SearchResponse(
         results=formatted_results,
         timings_ms=SearchTimings(
-            embed=round(embed_ms, 2),
-            vector_sql=round(vec_ms, 2),
-            fts_sql=round(fts_ms, 2),
-            rerank=round(rerank_ms, 2),
-            total=round(total_ms, 2),
+            embed=res.timings_ms.get("embed", 0.0),
+            vector_sql=res.timings_ms.get("vector_sql", 0.0),
+            fts_sql=res.timings_ms.get("fts_sql", 0.0),
+            rerank=res.timings_ms.get("rerank", 0.0),
+            total=res.timings_ms.get("total", 0.0),
         ),
-        not_found=not_found,
+        not_found=res.not_found,
     )
 
 

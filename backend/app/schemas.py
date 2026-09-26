@@ -43,7 +43,14 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     lang: SearchLang | None = None
     k: int = Field(default=RERANK_TOP_K, ge=1, le=50)
-    rerank: bool = True
+    rerank: bool = False
+
+
+class MatchedLine(BaseModel):
+    line_id: str
+    idx: int
+    text: str
+    score: float | None = None
 
 
 class SearchResultItem(BaseModel):
@@ -60,6 +67,7 @@ class SearchResultItem(BaseModel):
     rerank_score: float | None = None
     vec_rank: int | None = None
     fts_rank: int | None = None
+    matched_lines: list[MatchedLine] = []
 
 
 class SearchTimings(BaseModel):
