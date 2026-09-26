@@ -66,11 +66,14 @@ from .schemas import (
     ToolOpenRequest,
     ToolSearchRequest,
     ToolTocRequest,
+    VisitorCount,
+    VisitRequest,
     WallResponse,
 )
 from .stats import corpus_stats
 from .store import PgStore
 from .suggestions import PgSuggestions
+from .visitors import PgVisitors
 from .wall import Wall
 
 log = logging.getLogger("backend")
@@ -109,6 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.answers = PgAnswers(pool)
     app.state.suggestions = PgSuggestions(pool)
     app.state.gaps = PgGaps(pool)
+    app.state.visitors = PgVisitors(pool)
     # The admin's gap re-check: one question, one model call (no rewrite call, no second pass).
     app.state.ask_once = lambda req: answer_question(app.state.store, get_llm(), req, pool=pool, freshness=False,
                                                      rewrite=False, on_done=answered)
@@ -361,6 +365,15 @@ async def suggestions(lang: str = Query("ro", pattern="^(ro|ru)$"), limit: int =
 @app.get("/api/corpus/stats", response_model=CorpusStats)
 async def stats() -> CorpusStats:
     return await run_in_threadpool(corpus_stats, require_pool())
+
+
+@app.post("/api/visits", response_model=VisitorCount)
+async def visit(req: VisitRequest) -> VisitorCount:
+    """Counts this browser once (its anonymous id) and returns the number of unique visitors, for the header."""
+    visitors = getattr(app.state, "visitors", None)
+    if visitors is None:
+        raise ApiException(503, "unavailable", "Database pool not initialized")
+    return VisitorCount(visitors=await run_in_threadpool(visitors.visit, req.visitor_id))
 
 
 # ─────────────── search and agent tools ───────────────

@@ -111,3 +111,25 @@ def test_star_rating_with_tags_is_stored(client):
             assert client.post("/api/feedback", json=bad).status_code == 422
     finally:
         main.app.state.answers = None
+
+
+class Visitors:
+    def __init__(self):
+        self.seen = set()
+
+    def visit(self, visitor_id):
+        self.seen.add(visitor_id)
+        return len(self.seen)
+
+
+def test_visits_count_each_browser_once(client):
+    main.app.state.visitors = Visitors()
+    try:
+        assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
+        assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
+        assert client.post("/api/visits", json={"visitor_id": "anon-2"}).json() == {"visitors": 2}
+        assert client.post("/api/visits", json={"visitor_id": ""}).status_code == 422
+    finally:
+        main.app.state.visitors = None
+    r = client.post("/api/visits", json={"visitor_id": "anon-3"})
+    assert (r.status_code, r.json()["error"]) == (503, "unavailable")

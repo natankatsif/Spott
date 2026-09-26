@@ -448,6 +448,10 @@ export type HealthResponse = {
   chunk_count: number;
 };
 
+// ─────────────── POST /api/visits ───────────────
+
+export type VisitorCount = { visitors: number }; // unique browsers so far, this one included
+
 // ─────────────── POST /api/search (works now, no LLM) ───────────────
 
 export type MatchedLine = { line_id: string; idx: number; text: string; score: number | null };
@@ -570,6 +574,12 @@ export async function suggestions(lang: Lang, limit = 6): Promise<SuggestionList
 export async function corpusStats(): Promise<CorpusStats> {
   if (isMock()) return corpusStatsMock as unknown as CorpusStats;
   return get<CorpusStats>("/api/corpus/stats");
+}
+
+/** Counts this browser once (its anonymous session id) and returns the number of unique visitors. */
+export async function visit(visitorId: string): Promise<VisitorCount> {
+  if (isMock()) return { visitors: 1284 };
+  return post<VisitorCount>("/api/visits", { visitor_id: visitorId });
 }
 
 // ─────────────── admin client ───────────────

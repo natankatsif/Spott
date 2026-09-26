@@ -256,6 +256,11 @@ Before the stream starts (bad request, rate limit), `/api/ask/stream` answers wi
 - The widget embedded on other sites needs `*` for `/api/ask*`, `/api/feedback`, `/api/documents/*`. Configure via env `CORS_ORIGINS`.
 - Streaming behind a proxy needs `X-Accel-Buffering: no` and `Cache-Control: no-cache`.
 
+## `POST /api/visits`
+`{ "visitor_id": "anon-…" }` → `{ "visitors": 1284 }` (mock: a fixed number)
+- The unique-visitor counter in the header. The frontend sends its anonymous per-browser id (`lib/session.ts`, the same as `AskRequest.session_id`) once per page load; each id is counted once, nothing else about the visitor is stored.
+- Without a database → 503 `unavailable`; the header then shows no counter.
+
 ## `GET /health`
 `{status, device, models_loaded, chunk_count}`. While `models_loaded=false` (first ~20 s after start), show "warming up".
 
