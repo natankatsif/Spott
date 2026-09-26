@@ -76,3 +76,39 @@ def test_health_response():
     assert health.status == "ok"
     assert health.device == "mps"
     assert health.chunk_count == 2269
+
+
+def test_tool_request_models():
+    from app.schemas import (
+        ToolGrepRequest,
+        ToolOpenRequest,
+        ToolSearchRequest,
+        ToolTocRequest,
+    )
+
+    s = ToolSearchRequest(query="test", k=5)
+    assert s.k == 5
+
+    g = ToolGrepRequest(pattern="test")
+    assert g.limit == 20
+
+    t = ToolTocRequest(doc_id="doc1")
+    assert t.doc_id == "doc1"
+
+    o = ToolOpenRequest(doc_id="doc1", chunk_id="chk1", max_lines=30)
+    assert o.max_lines == 30
+
+
+def test_tools_schemas_endpoint():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    client = TestClient(app)
+    resp = client.get("/api/tools/schemas")
+    assert resp.status_code == 200
+    schemas = resp.json()
+    assert len(schemas) == 4
+    names = {s["function"]["name"] for s in schemas}
+    assert names == {"search", "grep", "toc", "open"}
+

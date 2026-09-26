@@ -18,6 +18,13 @@ from retrieval import (
     get_reranker_model,
     retrieve,
 )
+from retrieval.tools import (
+    TOOL_SCHEMAS,
+    grep_tool,
+    open_tool,
+    search_tool,
+    toc_tool,
+)
 from starlette.concurrency import run_in_threadpool
 
 from .schemas import (
@@ -29,6 +36,10 @@ from .schemas import (
     SearchResponse,
     SearchResultItem,
     SearchTimings,
+    ToolGrepRequest,
+    ToolOpenRequest,
+    ToolSearchRequest,
+    ToolTocRequest,
 )
 
 log = logging.getLogger("backend")
@@ -163,6 +174,54 @@ async def search_endpoint(req: SearchRequest) -> SearchResponse:
             total=res.timings_ms.get("total", 0.0),
         ),
         not_found=res.not_found,
+    )
+
+
+@app.get("/api/tools/schemas")
+def tool_schemas() -> list[dict]:
+    return TOOL_SCHEMAS
+
+
+@app.post("/api/tools/search")
+async def tool_search(req: ToolSearchRequest) -> dict:
+    pool: ConnectionPool = getattr(app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool not initialized")
+    return await run_in_threadpool(
+        search_tool, pool, req.query, lang=req.lang, site=req.site, k=req.k
+    )
+
+
+@app.post("/api/tools/grep")
+async def tool_grep(req: ToolGrepRequest) -> dict:
+    pool: ConnectionPool = getattr(app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool not initialized")
+    return await run_in_threadpool(
+        grep_tool, pool, req.pattern, doc_id=req.doc_id, site=req.site, limit=req.limit
+    )
+
+
+@app.post("/api/tools/toc")
+async def tool_toc(req: ToolTocRequest) -> dict:
+    pool: ConnectionPool = getattr(app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool not initialized")
+    return await run_in_threadpool(toc_tool, pool, req.doc_id)
+
+
+@app.post("/api/tools/open")
+async def tool_open(req: ToolOpenRequest) -> dict:
+    pool: ConnectionPool = getattr(app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool not initialized")
+    return await run_in_threadpool(
+        open_tool,
+        pool,
+        req.doc_id,
+        node_id=req.node_id,
+        chunk_id=req.chunk_id,
+        max_lines=req.max_lines,
     )
 
 

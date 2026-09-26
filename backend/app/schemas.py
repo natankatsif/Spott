@@ -89,3 +89,29 @@ class HealthResponse(BaseModel):
     device: str
     models_loaded: bool
     chunk_count: int
+
+
+class ToolSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    lang: str | None = None
+    site: str | None = None
+    k: int = Field(default=8, ge=1, le=50)
+
+
+class ToolGrepRequest(BaseModel):
+    pattern: str = Field(min_length=1, max_length=500)
+    doc_id: str | None = None
+    site: str | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ToolTocRequest(BaseModel):
+    doc_id: str = Field(min_length=1)
+
+
+class ToolOpenRequest(BaseModel):
+    doc_id: str = Field(min_length=1)
+    node_id: str | None = None
+    chunk_id: str | None = None
+    max_lines: int = Field(default=60, ge=1, le=200)
+
