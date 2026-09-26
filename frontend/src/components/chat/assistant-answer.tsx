@@ -176,7 +176,7 @@ export function AssistantAnswer({
   // searched and not found); a greeting or an off-topic question shows none
   const showSearch =
     !streaming && view.trace.length > 0 && (view.citations.length > 0 || a?.status === "not_found" || a?.status === "partial");
-  const smallTalk = !!a && a.citations.length === 0 && a.trace.length === 0; // "привет": nothing to rate
+  const noDocs = !!a && a.citations.length === 0 && a.trace.length === 0; // a greeting, off-topic, a clarifying question
 
   const rate = (v: "up" | "down") => {
     if (!a || vote) return;
@@ -297,7 +297,7 @@ export function AssistantAnswer({
             >
               {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
             </MessageAction>
-            {!smallTalk && (
+            {!noDocs && (
               <>
                 <MessageAction disabled={!!vote} label={t.helpful} onClick={() => rate("up")} tooltip={t.helpful}>
                   <ThumbsUpIcon className={cn("size-3.5", vote === "up" && "fill-current")} />

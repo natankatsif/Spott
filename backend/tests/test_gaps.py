@@ -68,7 +68,7 @@ def test_hidden_and_solved_groups_are_left_out():
 
 
 def test_recheck_is_exactly_one_model_call(monkeypatch, tmp_path):
-    """The admin's re-check runs the pipeline without the rewrite call and the second pass."""
+    """The admin's re-check runs the pipeline without the routing and rewrite calls and the second pass."""
     monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
     llm = FakeLLM(model(sentences=[{"refs": ["S1.L1"], "text": "Taxa e 200 lei."}]),
                   rewrite={"ro": "x", "ru": "x", "keywords": []})
@@ -77,7 +77,7 @@ def test_recheck_is_exactly_one_model_call(monkeypatch, tmp_path):
     llm.complete_json = lambda *a, **kw: calls.append(a[2]) or original(*a, **kw)
     r = answering.answer_question(FakeStore(), llm, AskRequest(question="Сколько стоит разрешение?"),
                                   retrieve_fn=lambda *a, **kw: RetrievalResult(items=[DECISION]),
-                                  freshness=False, rewrite=False)
+                                  freshness=False, rewrite=False, routing=False)
     assert r.status == "answered" and len(llm.prompts) == 1 and calls == []
 
 

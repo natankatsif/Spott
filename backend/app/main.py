@@ -114,9 +114,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.suggestions = PgSuggestions(pool)
     app.state.gaps = PgGaps(pool)
     app.state.visitors = PgVisitors(pool)
-    # The admin's gap re-check: one question, one model call (no rewrite call, no second pass).
+    # The admin's gap re-check: one question, one model call (no routing or rewrite call, no second pass).
     app.state.ask_once = lambda req: answer_question(app.state.store, get_llm(), req, pool=pool, freshness=False,
-                                                     rewrite=False, on_done=answered)
+                                                     rewrite=False, routing=False,
+                                                     on_done=answered)
     http_clients = make_clients()
     app.state.http = http_clients[0]
     app.state.pdf_source = PdfSource(*http_clients)
