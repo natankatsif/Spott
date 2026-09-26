@@ -11,16 +11,24 @@ SearchLang = Literal["ro", "ru", "en", "uk"]
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    lang: Lang | None = None  # None → detect from the question
+    # The answer follows the language of the question; this is only a fallback
+    # when the question has no letters to detect it from.
+    lang: Lang | None = None
 
 
 class Citation(BaseModel):
     document_title: str
     url: str
-    passage: str  # verbatim quote from the document
-    location: str | None = None  # e.g. "Anexa 1, pct. 3.2"
+    passage: str  # verbatim line from the document, taken from the index, never from the model
+    location: str | None = None  # e.g. "Anexa 1 › pct. 3.2"
     page: int | None = None
     published: str | None = None
+    chunk_id: str | None = None
+    line_id: str | None = None
+    found_on: str | None = None  # site page where the file is published
+    deep_link: str | None = None  # PDF #page=N or HTML #:~:text=
+    doc_lang: str | None = None
+    passage_translation: str | None = None  # when the document language differs from the answer
 
 
 class NavLink(BaseModel):
@@ -28,15 +36,28 @@ class NavLink(BaseModel):
     url: str
 
 
+class Conflict(BaseModel):
+    param: str  # what the sources disagree on, e.g. "taxa"
+    citations: list[int]  # 1-based indexes into AskResponse.citations
+    values: list[str]
+    # newer   — a later act replaced the earlier one; the answer follows the newer
+    # unclear — a real contradiction; status is "conflict"
+    resolution: Literal["newer", "unclear"]
+
+
 class AskResponse(BaseModel):
-    # answered  — answer grounded in citations
-    # not_found — corpus has no information on the question
-    # conflict  — sources contradict each other; all of them are cited
-    status: Literal["answered", "not_found", "conflict"]
+    # answered     — answer grounded in citations; [n] markers in `answer` point to citations[n-1]
+    # not_found    — corpus has no information on the question
+    # conflict     — sources contradict each other; all of them are cited
+    # out_of_scope — not a question about the City Hall
+    status: Literal["answered", "not_found", "conflict", "out_of_scope"]
     lang: Lang
     answer: str
     citations: list[Citation] = []
     nav_links: list[NavLink] = []
+    query_id: str | None = None
+    conflicts: list[Conflict] = []
+    gaps: list[str] = []  # parts of the question the corpus doesn't answer
 
 
 class SearchRequest(BaseModel):

@@ -15,8 +15,9 @@ offline_indexation/data/*
 data/export/
 *.dump
 
-# Tester logs
+# Tester logs and /api/ask query logs
 data/test_logs/
+data/query_logs/
 
 # Build metadata
 *.egg-info/

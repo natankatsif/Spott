@@ -27,6 +27,8 @@ from retrieval.tools import (
 )
 from starlette.concurrency import run_in_threadpool
 
+from .answering import answer_question
+from .llm import LLM, LLMUnavailable, OpenAILLM
 from .schemas import (
     AskRequest,
     AskResponse,
@@ -97,12 +99,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-NOT_FOUND = {
-    "ro": "Informația nu a fost găsită în documentele disponibile.",
-    "ru": "В доступных документах информация не найдена.",
-}
-
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -225,8 +221,24 @@ async def tool_open(req: ToolOpenRequest) -> dict:
     )
 
 
+def get_llm() -> LLM:
+    # Created on the first question, so the server starts (and /api/search works) without an API key.
+    if getattr(app.state, "llm", None) is None:
+        try:
+            app.state.llm = OpenAILLM()
+        except LLMUnavailable as e:
+            raise HTTPException(status_code=503, detail=f"LLM not configured: {e}") from e
+    return app.state.llm
+
+
 @app.post("/api/ask", response_model=AskResponse)
-def ask(req: AskRequest) -> AskResponse:
-    # Stub until retrieval over the offline_indexation corpus is wired in.
-    lang = req.lang or "ro"
-    return AskResponse(status="not_found", lang=lang, answer=NOT_FOUND[lang])
+async def ask(req: AskRequest) -> AskResponse:
+    pool: ConnectionPool = getattr(app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="Database pool not initialized")
+    llm = get_llm()
+    try:
+        return await run_in_threadpool(answer_question, pool, llm, req)
+    except LLMUnavailable as e:
+        log.warning("LLM call failed: %s", e)
+        raise HTTPException(status_code=502, detail="LLM unavailable, try again") from e
