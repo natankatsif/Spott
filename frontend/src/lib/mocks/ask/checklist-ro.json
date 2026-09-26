@@ -45,7 +45,9 @@
           "page_width": 595.5,
           "page_height": 842.25
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/checklist-ro-c1.html",
+      "preview_kind": "pdf"
     },
     {
       "id": "c2",
@@ -79,7 +81,9 @@
           "page_width": 595.5,
           "page_height": 842.25
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/checklist-ro-c2.html",
+      "preview_kind": "pdf"
     },
     {
       "id": "c3",
@@ -113,7 +117,9 @@
           "page_width": 595.5,
           "page_height": 842.25
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/checklist-ro-c3.html",
+      "preview_kind": "pdf"
     },
     {
       "id": "c4",
@@ -147,7 +153,9 @@
           "page_width": 595.5,
           "page_height": 842.25
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/checklist-ro-c4.html",
+      "preview_kind": "pdf"
     }
   ],
   "conflict": null,

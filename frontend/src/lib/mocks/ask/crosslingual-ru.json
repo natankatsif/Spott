@@ -34,7 +34,9 @@
       "found_on": "https://proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea",
       "site": "proiecte.chisinau.md",
       "file_url": null,
-      "bboxes": []
+      "bboxes": [],
+      "preview_url": "/mocks/preview/crosslingual-ru-c1.html",
+      "preview_kind": "page"
     }
   ],
   "conflict": null,

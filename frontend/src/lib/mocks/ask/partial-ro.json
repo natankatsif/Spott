@@ -52,7 +52,9 @@
           "page_width": 595.8,
           "page_height": 842.4
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/partial-ro-c1.html",
+      "preview_kind": "pdf"
     }
   ],
   "conflict": null,

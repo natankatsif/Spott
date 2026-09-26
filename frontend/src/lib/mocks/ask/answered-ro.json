@@ -50,7 +50,9 @@
           "page_width": 595.8,
           "page_height": 842.4
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/answered-ro-c1.html",
+      "preview_kind": "pdf"
     },
     {
       "id": "c2",
@@ -84,7 +86,9 @@
           "page_width": 595.8,
           "page_height": 842.4
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/answered-ro-c2.html",
+      "preview_kind": "pdf"
     }
   ],
   "conflict": null,

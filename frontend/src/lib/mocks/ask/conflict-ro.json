@@ -54,7 +54,9 @@
           "page_width": 595.2,
           "page_height": 841.92
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/conflict-ro-c1.html",
+      "preview_kind": "pdf"
     },
     {
       "id": "c2",
@@ -88,7 +90,9 @@
           "page_width": 595.8,
           "page_height": 842.4
         }
-      ]
+      ],
+      "preview_url": "/mocks/preview/conflict-ro-c2.html",
+      "preview_kind": "pdf"
     }
   ],
   "conflict": {

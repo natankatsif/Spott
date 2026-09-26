@@ -1,0 +1,267 @@
+{
+  "items": [
+    {
+      "id": "ans_g1",
+      "example": "Cât costă o autorizație de construire pentru un garaj?",
+      "questions": [
+        {
+          "answer_id": "ans_g1",
+          "question": "Cât costă o autorizație de construire pentru un garaj?",
+          "lang": "ro",
+          "status": "partial",
+          "ts": "2026-09-26T09:05:00+03:00"
+        },
+        {
+          "answer_id": "ans_g1_1",
+          "question": "autorizatie construire garaj pret",
+          "lang": "ro",
+          "status": "not_found",
+          "ts": "2026-09-26T09:48:00+03:00"
+        },
+        {
+          "answer_id": "ans_g1_2",
+          "question": "Сколько стоит разрешение на строительство гаража?",
+          "lang": "ru",
+          "status": "partial",
+          "ts": "2026-09-26T10:20:00+03:00"
+        },
+        {
+          "answer_id": "ans_g1_3",
+          "question": "Care este taxa pentru autorizația de construire?",
+          "lang": "ro",
+          "status": "partial",
+          "ts": "2026-09-26T11:02:00+03:00"
+        },
+        {
+          "answer_id": "ans_g1_4",
+          "question": "Разрешение на строительство: сколько платить и сколько ждать?",
+          "lang": "ru",
+          "status": "partial",
+          "ts": "2026-09-26T11:52:00+03:00"
+        }
+      ],
+      "count": 5,
+      "last_asked": "2026-09-26T11:52:00+03:00",
+      "langs": [
+        "ro",
+        "ru"
+      ],
+      "status": "not_found",
+      "missing": [
+        "taxa pentru eliberarea autorizației",
+        "termenul de eliberare"
+      ],
+      "hint_sites": [
+        {
+          "site": "dgaurf.md",
+          "hits": 5
+        },
+        {
+          "site": "help.chisinau.md",
+          "hits": 2
+        }
+      ],
+      "rechecked": null,
+      "hidden": false
+    },
+    {
+      "id": "ans_g2",
+      "example": "Cum plătesc parcarea prin SMS?",
+      "questions": [
+        {
+          "answer_id": "ans_g2",
+          "question": "Cum plătesc parcarea prin SMS?",
+          "lang": "ro",
+          "status": "not_found",
+          "ts": "2026-09-26T09:40:00+03:00"
+        },
+        {
+          "answer_id": "ans_g2_1",
+          "question": "Где оплатить парковку в центре через SMS?",
+          "lang": "ru",
+          "status": "not_found",
+          "ts": "2026-09-26T10:31:00+03:00"
+        },
+        {
+          "answer_id": "ans_g2_2",
+          "question": "Номер для оплаты парковки SMS",
+          "lang": "ru",
+          "status": "not_found",
+          "ts": "2026-09-26T11:47:00+03:00"
+        }
+      ],
+      "count": 3,
+      "last_asked": "2026-09-26T11:47:00+03:00",
+      "langs": [
+        "ro",
+        "ru"
+      ],
+      "status": "not_found",
+      "missing": [],
+      "hint_sites": [
+        {
+          "site": "mobilitatechisinau.md",
+          "hits": 3
+        }
+      ],
+      "rechecked": null,
+      "hidden": false
+    },
+    {
+      "id": "ans_g3",
+      "example": "Program de lucru al Direcției educație în weekend",
+      "questions": [
+        {
+          "answer_id": "ans_g3",
+          "question": "Program de lucru al Direcției educație în weekend",
+          "lang": "ro",
+          "status": "partial",
+          "ts": "2026-09-26T10:12:00+03:00"
+        },
+        {
+          "answer_id": "ans_g3_1",
+          "question": "Lucrează Direcția generală educație sâmbăta?",
+          "lang": "ro",
+          "status": "partial",
+          "ts": "2026-09-26T11:30:00+03:00"
+        }
+      ],
+      "count": 2,
+      "last_asked": "2026-09-26T11:30:00+03:00",
+      "langs": [
+        "ro"
+      ],
+      "status": "partial",
+      "missing": [
+        "programul de sâmbătă"
+      ],
+      "hint_sites": [
+        {
+          "site": "chisinauedu.dgets.md",
+          "hits": 2
+        },
+        {
+          "site": "detscentru.md",
+          "hits": 1
+        }
+      ],
+      "rechecked": null,
+      "hidden": false
+    },
+    {
+      "id": "ans_g4",
+      "example": "Как записать ребёнка в детский сад онлайн?",
+      "questions": [
+        {
+          "answer_id": "ans_g4",
+          "question": "Как записать ребёнка в детский сад онлайн?",
+          "lang": "ru",
+          "status": "partial",
+          "ts": "2026-09-26T10:10:00+03:00"
+        },
+        {
+          "answer_id": "ans_g4_1",
+          "question": "Какие документы нужны для записи в детский сад?",
+          "lang": "ru",
+          "status": "partial",
+          "ts": "2026-09-26T10:58:00+03:00"
+        }
+      ],
+      "count": 2,
+      "last_asked": "2026-09-26T10:58:00+03:00",
+      "langs": [
+        "ru"
+      ],
+      "status": "partial",
+      "missing": [
+        "lista documentelor necesare"
+      ],
+      "hint_sites": [
+        {
+          "site": "egradinita.md",
+          "hits": 2
+        }
+      ],
+      "rechecked": {
+        "status": "partial",
+        "verified": true,
+        "answer_id": "ans_g4_re",
+        "ts": "2026-09-26T11:05:00+03:00"
+      },
+      "hidden": false
+    },
+    {
+      "id": "ans_g5",
+      "example": "Unde depun o plângere despre gunoiul neridicat?",
+      "questions": [
+        {
+          "answer_id": "ans_g5",
+          "question": "Unde depun o plângere despre gunoiul neridicat?",
+          "lang": "ro",
+          "status": "not_found",
+          "ts": "2026-09-26T10:41:00+03:00"
+        },
+        {
+          "answer_id": "ans_g5_1",
+          "question": "Куда жаловаться, если не вывозят мусор?",
+          "lang": "ru",
+          "status": "not_found",
+          "ts": "2026-09-26T11:15:00+03:00"
+        }
+      ],
+      "count": 2,
+      "last_asked": "2026-09-26T11:15:00+03:00",
+      "langs": [
+        "ro",
+        "ru"
+      ],
+      "status": "not_found",
+      "missing": [],
+      "hint_sites": [
+        {
+          "site": "autosalubritate.md",
+          "hits": 2
+        }
+      ],
+      "rechecked": null,
+      "hidden": false
+    },
+    {
+      "id": "ans_g6",
+      "example": "Cine repară drumul pe strada mea? Tel •••",
+      "questions": [
+        {
+          "answer_id": "ans_g6",
+          "question": "Cine repară drumul pe strada mea? Tel •••",
+          "lang": "ro",
+          "status": "not_found",
+          "ts": "2026-09-26T09:15:00+03:00"
+        }
+      ],
+      "count": 1,
+      "last_asked": "2026-09-26T09:15:00+03:00",
+      "langs": [
+        "ro"
+      ],
+      "status": "not_found",
+      "missing": [],
+      "hint_sites": [
+        {
+          "site": "proiecte.chisinau.md",
+          "hits": 1
+        },
+        {
+          "site": "dglca.md",
+          "hits": 1
+        }
+      ],
+      "rechecked": null,
+      "hidden": false
+    }
+  ],
+  "totals": {
+    "not_found": 7,
+    "partial": 8,
+    "groups": 6
+  }
+}
