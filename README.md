@@ -1,209 +1,239 @@
 # Chișinău Municipal Assistant
 
-AI-ассистент Примэрии Кишинэу (челлендж DeepTech GigaHack 2026): отвечает на вопросы граждан и сотрудников на румынском и русском **только по корпусу публичных документов**, цитирует документ и фрагмент, явно сообщает, если информации нет или документы противоречат друг другу, и направляет на нужную страницу сайта.
+An AI assistant for the Chișinău City Hall (Primăria Municipiului Chișinău) that answers questions from citizens and municipal employees in **Romanian and Russian**, using **only** the City Hall's public documents, and shows the exact document and passage behind every answer.
 
-## Структура
-
-Три независимых проекта:
-
-| Папка | Стек | Назначение |
-|---|---|---|
-| [`offline_indexation/`](offline_indexation) | Python, uv | Сбор корпуса: обход сайтов из Annex 1, поиск документов, дальше — оцифровка (OCR) и индексация |
-| [`backend/`](backend) | Python, uv, FastAPI | API ассистента: поиск по корпусу, ответ с цитатами |
-| [`frontend/`](frontend) | Node, Next.js | Веб-чат (RO / RU) |
-
-## Как запустить (Mac и Windows)
-
-Пошаговая инструкция для тестировщика и для всех, кто ставит проект впервые: **[docs/TESTER.md](docs/TESTER.md)**. Там же: что реализовано, как устроен Docker, консольный поиск `qsearch` и решение типичных проблем.
-
-Коротко:
-
-```bash
-git clone <repo-url> qwerty && cd qwerty
-cp .env.example .env                  # Windows: copy .env.example .env
-uv sync --all-packages
-cd offline_indexation
-uv run python -m tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # поднимет Docker-базу и загрузит индекс
-uv run python -m tools.doctor         # проверка окружения
-cd .. && uv run qsearch               # консольный поиск
-```
-
-API-сервер: `cd backend && uv run uvicorn app.main:app --port 8000` → `http://localhost:8000/docs`.
-
-Служебные команды (одинаково на Mac и Windows, из `offline_indexation/`):
-
-| Команда | Что делает |
-|---|---|
-| `uv run python -m tools.index_io export` | дамп индекса в `data/export/index-<дата>.dump` (в git не коммитится) |
-| `uv run python -m tools.pipeline update` | обновить уже обойдённые сайты: замена изменённых документов, удаление пропавших |
-| `uv run python -m tools.pipeline full [--only crawler downloader]` | полный обход всех разрешённых сайтов (без chisinau.md — robots.txt) |
-
-`scripts/*.sh` — тонкие обёртки над этими командами для Mac/Linux.
-
-## Запуск
-
-### Offline Indexation Pipeline
-
-Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр SQLite (`offline_indexation/data/registry.sqlite`) и локальные директории хранения.
-
-#### Порядок выполнения и зависимости этапов:
-
-```mermaid
-graph TD
-    A[1. crawler] -->|URLs & metadata| B[2. downloader]
-    A -->|HTML pages| D[4. pages_parsing]
-    B -->|PDF/DOCX files| C[3. parsing]
-    C -->|parsed files JSON| E[5. chunking]
-    D -->|parsed pages JSON| E
-    F[6. docker compose] -->|pgvector DB| G[7. indexing]
-    E -->|JSONL chunks| G
-    G -->|indexed DB| H[8. search]
-```
-
-#### Сводная таблица этапов:
-
-| № | Модуль | Входные данные | Выходные данные | Сложность / Ресурсы | Назначение |
-|---|---|---|---|---|---|
-| **1** | `crawler` | `data/sources/sites.toml` | `registry.sqlite` | 🌐 Сеть (умеренно) | Обход муниципальных сайтов, сбор ссылок на акты и страниц |
-| **2** | `downloader` | `registry.sqlite` | `data/raw/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
-| **3** | `parsing` | `data/raw/` | `data/parsed/<sha>.json` | ⚡ **Тяжёлый** (CPU/RAM/OCR) | Оцифровка через Docling: текстовый слой, OCR сканов, bboxes, таблицы |
-| **4** | `pages_parsing` | `data/crawled/pages/` | `data/parsed/pages/*.json` | 🟢 Лёгкий (~секунды) | Парсинг текстовых страниц сайтов, очистка навигации, извлечение контактов |
-| **5** | `chunking` | `data/parsed/` | `data/chunks/*.jsonl` | 🟢 Лёгкий (~1-2 сек) | Семантическая нарезка: привязка заголовков, `legal_path`, слияние <150 симв. |
-| **6** | `docker compose` | `docker-compose.yml` | PostgreSQL порт 5432 | 🟢 Лёгкий | Запуск СУБД PostgreSQL 16 с расширением `pgvector` |
-| **7** | `indexing` | `data/chunks/` или `data/parsed/` | Таблицы `documents`, `chunks` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Загрузка мультиязычной модели `bge-m3` (~2.3 GB), генерация векторов (1024 dim) и FTS-индекса |
-| **8** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
+Built for the Primăria Chișinău challenge at DeepTech GigaHack 2026.
 
 ---
 
-#### Команды и флаги запуска каждого этапа:
+## The problem
 
-```bash
-cd offline_indexation
+The information people need is spread across many municipal websites: council decisions, mayor's dispositions, regulations, procedures, contacts, schedules. Much of it is published as PDFs, and many of those are scanned paper documents.
 
-# 1. Сбор ссылок (crawler)
-uv run python -m crawler --list                          # Список поддерживаемых сайтов
-uv run python -m crawler --max-depth 2 --max-pages 200   # Обход сайтов: страницы и документы
-uv run python -m crawler --resume                        # Докачка прерванного обхода
-uv run python -m crawler --site chisinau_decizii         # Обход конкретного источника
+A generic chatbot can't be trusted here. An answer that is incomplete, outdated or invented can mislead someone about their rights, obligations or the procedure they need to follow.
 
-# 2. Скачивание файлов (downloader)
-uv run python -m downloader                              # Скачать новые документы в data/raw/
-uv run python -m downloader --refresh                    # Проверить обновления (HTTP 304 Not Modified)
-uv run python -m downloader --limit 50                   # Скачать не более N файлов
+## What the assistant does
 
-# 3. Парсинг файлов (parsing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (Docling + OCR)
-uv run python -m parsing                                 # Полный парсинг документов из data/raw/
-uv run python -m parsing --rebuild                       # Быстрая пересборка JSON/MD из кэша без повторного OCR
-uv run python -m parsing --limit 10                      # Ограничить N документами
-uv run python -m parsing --file data/raw/sample.pdf      # Разобрать один файл
+Mapped one-to-one to the challenge brief.
 
-# 4. Парсинг HTML-страниц (pages_parsing)
-uv run python -m pages_parsing                           # Парсинг сохранённых HTML в data/parsed/pages/
-uv run python -m pages_parsing --limit 100               # Ограничение по числу страниц
+### Must-have
 
-# 5. Чанкинг корпуса (chunking) — БЫСТРАЯ ОПЕРАЦИЯ (~0.5 сек)
-uv run python -m chunking                                # Нарезка всех документов и страниц в data/chunks/
-uv run python -m chunking --files-only                   # Только файлы (PDF/DOCX)
-uv run python -m chunking --pages-only                   # Только веб-страницы
-uv run python -m chunking --limit 50                     # Лимит обработки
+| Requirement | How we meet it | Status |
+|---|---|---|
+| **Answer questions from a defined corpus** | The corpus is built only from the Annex 1 websites. Answers are generated only from passages retrieved from it, never from the model's general knowledge. | ✅ corpus pipeline<br>⏳ answering |
+| **Romanian and Russian** | Questions in either language, answer in the same language. Retrieval works across languages, so a Russian question can be answered from a Romanian-only document. | ✅ cross-lingual retrieval<br>⏳ answering |
+| **Cite the exact document and passage** | Every answer cites the act (type, number, date), the passage quoted verbatim, the page and point (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*), and links to the original on the City Hall website. Parsing already keeps page, section and point number for every block. | ✅ provenance in corpus<br>⏳ in answers |
+| **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing. | ⏳ |
+| **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. The registry already keeps document versions, and parsing extracts act numbers and dates. | ⏳ |
+| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. | ✅ page index<br>⏳ routing |
+| **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ⏳ |
 
-# 6. Запуск инфраструктуры хранения
-docker compose up -d                                     # Запуск PostgreSQL 16 + pgvector
+### Bonus
 
-# 7. Индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
-uv run python -m indexing                                # Генерация эмбеддингов BGE-M3 и загрузка в pgvector
-uv run python -m indexing --from-jsonl                   # Загрузить чанки из готовых data/chunks/*.jsonl
-uv run python -m indexing --recreate                     # Полный пересоздание схемы БД
-uv run python -m indexing --batch-size 32                # Размер батча эмбеддингов
-uv run python -m indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
+| Requirement | How | Status |
+|---|---|---|
+| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ⏳ |
+| **Innovative solution** | See [What's innovative](#whats-innovative). | partly ✅ |
 
-# 8. Проверка поиска (search)
-uv run python -m indexing.search --query "bugetul municipal 2026"
-uv run python -m indexing.search --query "компенсация за отопление" --lang ru --top-k 5
-uv run python -m indexing.search --query "plan urbanistic" --doc-type decizie
+## What's innovative
+
+- **Scanned acts become searchable and citable.** Most official acts on the sites, such as council decisions and mayor's dispositions, are published as scans with no text at all. The pipeline OCRs them and recovers their structure (points, tables), so they can be cited down to the point. A plain text extractor would find nothing in them. ✅
+- **Every quote is traceable.** Each passage carries its full provenance: the file, the page of the PDF, the point of the act, the website page where the document was published, and the link text used there. ✅
+- **Document lineage.** The registry keeps every version of a document, and act numbers and dates are extracted. Next, we parse "se modifică / se abrogă" references between acts. Then the assistant can warn that a point was changed by a later decision instead of quoting an outdated rule. ⏳
+- **Publication quality report for the City Hall.** Cross-checking the site against the documents reveals inconsistencies. We already found a link labelled "Dispoziția nr. 23/1" whose document is actually a *Decizie*. Collected into a report, these checks help the City Hall fix its own publications. ⏳
+- **Anti-hallucination guard.** Quotes in an answer are checked to appear verbatim in the cited passage. An answer whose quote can't be verified is not shown as sourced. ⏳
+
+## How it works
+
+The system has two halves. **Offline indexation** turns the City Hall websites into a searchable, citable corpus. The **online** part answers questions against that corpus.
+
+```
+                        OFFLINE INDEXATION                                        ONLINE
+┌───────────┐   ┌─────────┐   ┌────────────┐   ┌─────────┐   ┌────────────┐
+│ 42 public │──►│ crawler │──►│ downloader │──►│ parsing │──►│ chunking + │──► index ◄── backend ◄── frontend
+│ websites  │   └─────────┘   └────────────┘   └─────────┘   │  indexing  │             (retrieval,   (chat,
+└───────────┘   pages, doc    files, dedup     text, OCR,    └────────────┘              LLM answer    RO / RU)
+                links         by SHA-256       structure     Postgres+pgvector           with citations)
+                     └──────────────┴────────────────┴── SQLite registry ──┘
 ```
 
-**Backend** (http://localhost:8000, документация OpenAPI/Swagger — `/docs`):
-```bash
-# Запуск сервиса поиска и API
-uv run uvicorn backend.app.main:app --port 8000
-```
+### Offline indexation
 
-#### Примеры запросов через curl:
+Each stage is a separate command. The stages share one SQLite registry (`data/registry.sqlite`), so every stage is incremental and can be re-run on its own.
 
-1. **Проверка работоспособности (`GET /health`)**:
-```bash
-curl -s http://localhost:8000/health | jq .
-```
-Ответ:
+1. **Crawler.** Breadth-first crawl of the sites listed in Annex 1. It records every page and every link to a document (PDF, DOC/DOCX, XLS/XLSX, ODT, …), including where the link was found and its anchor text. This provenance is later used for citations. On WordPress sites it also reads the media library API, which finds files that no page links to. It respects `robots.txt` and rate limits, and can resume after an interruption.
+2. **Downloader.** Stores files by content hash (`data/raw/<sha256>.<ext>`). Deduplication happens at three levels:
+   - URLs already downloaded are skipped;
+   - re-checks use conditional HTTP requests, so unchanged files return `304 Not Modified` without a body;
+   - identical content found under different URLs is stored and parsed once.
+
+   A changed file keeps its previous version in the history.
+3. **Parsing.** Converts each file into a structured text representation using [Docling](https://github.com/docling-project/docling):
+   - layout analysis recovers headings, numbered points and tables;
+   - OCR (Apple Vision on macOS, Tesseract elsewhere) handles scanned pages. Most official acts on the sites are scans;
+   - text normalization fixes Romanian diacritics (ş/ţ → ș/ț) and mixed Latin/Cyrillic look-alike characters;
+   - metadata extraction pulls out act type, number, date and language (ro / ru / uk / en).
+4. **Chunking and indexing.** Splits documents into citable passages along their structure (article / point `legal_path`, headings attached) and into single **lines**, so a fact that lives in one line can be found and quoted on its own. Everything goes into Postgres 17 + pgvector:
+   - vector search with the multilingual `bge-m3` model (one space for Romanian and Russian), over passages and over lines;
+   - full-text search with Romanian and Russian stemming (unaccented), plus trigram `grep` for exact act numbers and street names;
+   - results are fused with weighted RRF; each hit carries a deep link to the PDF page (`#page=N`) or the exact text on the web page (`#:~:text=`).
+
+   Documents are keyed by their source URL: a changed file **replaces** the old version in the index (history stays in the registry), and a document missing from the site on two crawls in a row is removed. Unchanged text reuses its embeddings.
+5. **Agent tools.** `search`, `grep`, `toc` and `open` let the LLM walk the corpus like a file tree and quote lines by their id (available over HTTP at `/api/tools/*`, with OpenAI function-calling schemas).
+
+### Online
+
+- **Backend** (FastAPI; search and agent tools ✅, cited answers ⏳). Retrieves the most relevant passages, asks an LLM to answer only from them, verifies that quotes appear verbatim in the sources, and returns a structured answer.
+- **Frontend** (Next.js). Chat interface with a Romanian / Russian switch. It shows each answer with its sources and navigation links.
+
+## Parsed document format
+
+Each document becomes `data/parsed/<sha256>.json`, shortened here:
+
 ```json
 {
-  "status": "ok",
-  "device": "mps",
-  "models_loaded": true,
-  "chunks_count": 2269,
-  "pool_stats": {
-    "pool_size": 2,
-    "pool_available": 2,
-    "requests_waiting": 0
-  }
+  "metadata": {
+    "title": "Cu privire la aprobarea Planului de acțiuni pentru elaborarea ...",
+    "doc_type": "decizie", "number": "12/14", "date": "2020-07-28", "lang": "ro"
+  },
+  "sources": [{
+    "url": "https://dgaurf.md/storage/decizie-1214-din-28.07.2020-(1).pdf",
+    "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+    "found_on_title": "Documentații de urbanism",
+    "anchor_text": "Decizia CMC privind elaborarea PUG"
+  }],
+  "pages":  [{ "n": 1, "text_layer": false }, "..."],
+  "blocks": [
+    { "id": 7, "type": "list_item", "marker": "1.", "page": 1, "section": ["DECIZIE"], "lang": "ro",
+      "text": "1. Se aprobă Planul de acțiuni pentru elaborarea Planului de amenajare a teritoriului ..." },
+    { "id": 12, "type": "table", "page": 1, "header": ["Nr. crt.", "Nume și prenume", "Funcția", "Rol în grup"],
+      "rows": [["1", "...", "...", "Președinte"]] }
+  ]
 }
 ```
 
-2. **Быстрый гибридный поиск без реранкера (`POST /api/search`, p95 ~106 ms)**:
+The same content is also written as Markdown (`<sha256>.md`) for reading and debugging. The raw Docling output (`<sha256>.docling.json`) is cached so the corpus can be rebuilt without running OCR again.
+
+## Data sources
+
+The corpus is built from the websites listed in the challenge's Annex 1: 42 domains across transparency, urban mobility, architecture and utilities, education, healthcare, district administrations, and public services. The list, with per-site crawl settings, is in [`offline_indexation/data/sources/sites.toml`](offline_indexation/data/sources/sites.toml).
+
+> `chisinau.md` disallows all crawling in its `robots.txt`, so it is skipped by default. It can be enabled per site with `ignore_robots = true` once crawling has been agreed with the City Hall.
+
+## Repository layout
+
+The repository is a uv workspace (`offline_indexation`, `backend`, `packages/retrieval`) plus the separate Next.js frontend:
+
+| Directory | Stack | Purpose |
+|---|---|---|
+| [`offline_indexation/`](offline_indexation) | Python 3.14, uv, Docling | Corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, `eval`, `tools` (doctor, pipeline, index export/import) |
+| [`packages/retrieval/`](packages/retrieval) | Python 3.14, pgvector, bge-m3 | Shared search engine: hybrid retrieval, agent tools, `qsearch` console |
+| [`backend/`](backend) | Python 3.14, uv, FastAPI | Question answering API |
+| [`frontend/`](frontend) | Node, Next.js 16 | Chat UI |
+
+## Getting started
+
+**New here or testing on Mac / Windows: follow [docs/TESTER.md](docs/TESTER.md)** (in Russian): install, load the ready-made index dump, check the setup, test search in the console. Technical notes on every pipeline stage, eval and benchmarks: [docs/README.ru.md](docs/README.ru.md).
+
+Quick start with a ready index dump (Docker Desktop running):
+
 ```bash
-curl -s -X POST http://localhost:8000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "cum obtin autorizatie de constructie in chisinau",
-    "k": 5,
-    "rerank": false
-  }' | jq .
+cp .env.example .env                  # Windows: copy .env.example .env
+uv sync --all-packages
+cd offline_indexation
+uv run python -m tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # starts the DB container, loads the index
+uv run python -m tools.doctor                                           # environment check
+cd .. && uv run qsearch                                                 # console search (RO / RU)
 ```
 
-3. **Поиск с кросс-энкодер реранкером (`POST /api/search` + `bge-reranker-v2-m3`)**:
+Cross-platform maintenance commands (run in `offline_indexation/`; `scripts/*.sh` are thin wrappers for Mac/Linux):
+
+| Command | What it does |
+|---|---|
+| `uv run python -m tools.pipeline update` | refresh already crawled sites, replace changed documents, drop removed ones, re-index |
+| `uv run python -m tools.pipeline full [--only crawler downloader]` | full crawl of all allowed sites (never `chisinau.md`) |
+| `uv run python -m tools.index_io export` | dump the index to `data/export/` (not committed) |
+
+### Running stages by hand
+
+**Prerequisites:** [uv](https://docs.astral.sh/uv/), Node.js 20+. Parsing uses Apple Vision OCR on macOS. On Linux it falls back to Tesseract, which needs the `ron` and `rus` language packs installed.
+
+### Offline indexation
+
 ```bash
-curl -s -X POST http://localhost:8000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "компенсация за отопление в кишиневе документы",
-    "lang": "ru",
-    "k": 5,
-    "rerank": true
-  }' | jq .
+cd offline_indexation
+uv sync
+
+uv run python -m crawler --list                          # configured sites
+uv run python -m crawler --max-depth 2 --max-pages 200   # 1. crawl (quick pass); --resume continues an interrupted crawl
+uv run python -m downloader                              # 2. download new documents; --refresh re-checks known ones
+uv run python -m parsing                                 # 3. parse into data/parsed/; --rebuild re-derives output without OCR
+uv run python -m pages_parsing                           # 4. text of crawled HTML pages
+docker compose up -d                                     #    (from the repo root) Postgres + pgvector
+uv run python -m indexing                                # 5. chunk, embed and index (incremental)
 ```
 
-4. **Запрос без ответа в корпусе (`not_found: true`, threshold = 0.0093)**:
+Every command accepts `--help`. All generated data stays in `offline_indexation/data/` and is git-ignored.
+
+The first parsing run downloads Docling's layout and table models, which takes a few minutes. After that, parsing takes about 1–3 s per page, including OCR, on an Apple M4.
+
+### Backend
+
 ```bash
-curl -s -X POST http://localhost:8000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "tarife metrou chisinau abonament lunar",
-    "k": 5,
-    "rerank": true
-  }' | jq .
+cd backend
+uv run uvicorn app.main:app --reload --port 8000   # API docs at http://localhost:8000/docs
 ```
 
-#### Запуск бенчмарка задержек:
-```bash
-# Быстрый прогон без реранкера (48 запросов: 16 запросов x 3 прогона)
-uv run python backend/scripts/bench_search.py --skip-rerank
+### Frontend
 
-# Полный бенчмарк (с реранкером и без)
-uv run python backend/scripts/bench_search.py --runs 3
-```
-
-**Frontend** (http://localhost:3000):
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local
-npm run dev
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm run dev                  # http://localhost:3000
 ```
 
-## Контракт API
+## API
 
-- `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
-- `POST /api/search` → `{ query, lang, count, not_found, results: [...], timings_ms: { embed, vector_sql, fts_sql, rerank, total } }`.
-- `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
-Описан в [`backend/app/schemas.py`](backend/app/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+`POST /api/ask`
+
+```json
+{ "question": "Cum obțin certificatul de urbanism?", "lang": "ro" }
+```
+
+```json
+{
+  "status": "answered | not_found | conflict",
+  "lang": "ro",
+  "answer": "...",
+  "citations": [{ "document_title": "...", "url": "...", "passage": "...", "location": "pct. 3.2", "page": 4, "published": "2020-07-28" }],
+  "nav_links": [{ "title": "...", "url": "..." }]
+}
+```
+
+The contract is defined in [`backend/app/schemas.py`](backend/app/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+
+## Budget
+
+*To be written.* This section will compare:
+- an external LLM API against a self-hosted open model;
+- where each would be deployed;
+- the estimated monthly cost.
+
+The cost will be split into indexing (one-off plus incremental) and answering (per question).
+
+## Status
+
+| Part | State |
+|---|---|
+| Crawler, downloader, parsing (incl. OCR) | ✅ working, tested on a subset of the sites |
+| Chunking, line index, hybrid search (Postgres + pgvector) | ✅ 5 of 40 sites indexed so far, ~0.1–0.2 s per query |
+| Document updates (replace, not duplicate; removal of vanished documents) | ✅ |
+| Agent tools `search / grep / toc / open`, console `qsearch` for testers | ✅ |
+| Backend cited answers (`/api/ask` with GPT) | ⏳ next; search endpoints work, answering is a stub |
+| Mac / Windows setup, CI on Linux + Windows | ✅ |
+| Contradiction detection, navigation routing | ⏳ planned (the registry already tracks document versions and source pages) |
+| Chat UI | ✅ skeleton connected to the API |
+| Feedback on answers | ⏳ planned |
+| Legacy `.doc` files | ⏳ need LibreOffice for conversion |
+| Monthly maintenance budget | ⏳ to be written |
