@@ -220,23 +220,24 @@ def main() -> None:
         )
     print("=" * 80)
 
-    # Reranker score analysis for rejection threshold
-    rerank_metrics = next(m for m in all_metrics if m["mode"] == "CrossEncoder Rerank")
-    pos_scores = rerank_metrics["pos_top1_scores"]
-    neg_scores = rerank_metrics["neg_top1_scores"]
+    # Reranker score analysis for rejection threshold (if reranker was evaluated)
+    rerank_metrics = next((m for m in all_metrics if m["mode"] == "CrossEncoder Rerank"), None)
+    if rerank_metrics:
+        pos_scores = rerank_metrics["pos_top1_scores"]
+        neg_scores = rerank_metrics["neg_top1_scores"]
 
-    print("\nREJECTION THRESHOLD ANALYSIS (CrossEncoder Reranker)")
-    print("-" * 60)
-    if pos_scores:
-        print(
-            f"Positive queries top-1 scores: min={min(pos_scores):.4f}, median={statistics.median(pos_scores):.4f}, max={max(pos_scores):.4f}"
-        )
-    if neg_scores:
-        print(
-            f"Negative queries top-1 scores: min={min(neg_scores):.4f}, median={statistics.median(neg_scores):.4f}, max={max(neg_scores):.4f}"
-        )
-        threshold_candidate = (min(pos_scores) + max(neg_scores)) / 2.0 if pos_scores else max(neg_scores)
-        print(f"Recommended rejection threshold: {threshold_candidate:.4f}")
+        print("\nREJECTION THRESHOLD ANALYSIS (CrossEncoder Reranker)")
+        print("-" * 60)
+        if pos_scores:
+            print(
+                f"Positive queries top-1 scores: min={min(pos_scores):.4f}, median={statistics.median(pos_scores):.4f}, max={max(pos_scores):.4f}"
+            )
+        if neg_scores:
+            print(
+                f"Negative queries top-1 scores: min={min(neg_scores):.4f}, median={statistics.median(neg_scores):.4f}, max={max(neg_scores):.4f}"
+            )
+            threshold_candidate = (min(pos_scores) + max(neg_scores)) / 2.0 if pos_scores else max(neg_scores)
+            print(f"Recommended rejection threshold: {threshold_candidate:.4f}")
 
     print("\n" + "=" * 80)
     print("DETAILED RESULTS FOR SELECTED QUERIES (CrossEncoder Rerank)")

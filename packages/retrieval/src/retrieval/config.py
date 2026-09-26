@@ -18,7 +18,7 @@ RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "false").lower() in ("tru
 
 # Weighted RRF scores: W_VECTOR for chunk vector, W_FTS for full text, W_LINE for line vector
 W_VECTOR: float = float(os.getenv("RRF_W_VECTOR", "1.0"))
-W_FTS: float = float(os.getenv("RRF_W_FTS", "0.5"))
+W_FTS: float = float(os.getenv("RRF_W_FTS", "0.1"))
 W_LINE: float = float(os.getenv("RRF_W_LINE", "1.0"))
 
 # Tool response character limits (to prevent agent context overflow)
