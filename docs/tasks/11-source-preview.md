@@ -1,5 +1,11 @@
 # Task 11: source preview inside the answer: the page or PDF opens scrolled to the quote, highlighted
 
+> **For the backend dev, in short:** do Part A (`GET /api/preview/{doc_id}` + two new `Citation` fields + mocks + tests) and Part B (admin sources: auto-seed, add by URL only, one list call, admin mocks). The frontend (WebPreview, mobile chips, the single admin page) is ours; you only deliver the API, mocks and tests.
+>
+> **No paid AI in this task.** Nothing here may call OpenAI or any other paid API: not the code, not the tests, not the report, not the mock generation. Category detection is rules + keywords only (see B2.4). Tests that touch `/api/ask` use the existing fake/recorded LLM. If a pipeline stage started by a B2 job would call a paid model (e.g. lineage), skip that stage for jobs started from the admin, or put it behind a flag that is off by default. Embeddings (local bge-m3) are fine.
+>
+> **Heavy jobs:** don't start real full crawls on Natan's machine without him. Real `POST {url}` calls in the report use `start: false` or cancel the job right after the response.
+
 Read `docs/API.md` (Citation, `focus_citation_id`, `/api/documents/{doc_id}/file`), `backend/app/files.py`, `offline_indexation/common/registry.py` (`pages.html_file`), and the AI Elements component https://elements.ai-sdk.dev/components/web-preview (`frontend/src/components/ai-elements` after `npx ai-elements add web-preview`).
 
 ## Goal (what the user sees)
@@ -55,13 +61,13 @@ Query:
 **Unknown doc_id** → 404 `ApiError`. Everything else must return 200 with the best possible view, never an empty frame.
 
 **Headers**
-- `Content-Security-Policy`: `default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src *; script-src 'nonce-…' <pdf.js origin>; connect-src 'self'; frame-ancestors <CORS_ORIGINS>`.
+- `Content-Security-Policy`: `default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src *; script-src 'nonce-…' <pdf.js origin>; worker-src <pdf.js origin> blob:; connect-src 'self'; frame-ancestors <CORS_ORIGINS>`. The pdf.js worker needs `worker-src`; if pdf.js is vendored, use `'self'` instead of the CDN origin.
 - No `X-Frame-Options`.
 - `Cache-Control: private, max-age=600`.
 
 ### 2. Contract (`docs/API.md` + `frontend/src/lib/api.ts` + all mocks, one PR)
 `Citation` gains:
-- `preview_url: string`: always set, relative to API_URL, e.g. `/api/preview/<doc_id>?line=<line_id>&lang=ro`;
+- `preview_url: string`: always set. From the backend it is relative to API_URL, e.g. `/api/preview/<doc_id>?line=<line_id>&lang=ro`. In mocks it is a frontend path (`/mocks/preview/<id>.html`). Frontend rule: a URL starting with `/api/` gets API_URL prepended; anything else is used as is;
 - `preview_kind: "page" | "pdf" | "text"`.
 
 Nothing else changes. `focus_citation_id` (exists) = which citation the inline preview opens first. If it is null, the preview opens on the first citation when there is one, and only on click on mobile.
@@ -82,7 +88,7 @@ Generate static preview HTMLs **with your endpoint** for the citations used in `
    - DOCX text view;
    - headers (CSP with nonce, `frame-ancestors`, no XFO);
    - 404 for an unknown doc.
-2. **Contract**: every mock validates; every citation has `preview_url` and `preview_kind`; `/api/ask` responses include them.
+2. **Contract**: every mock validates; every citation has `preview_url` and `preview_kind`; `/api/ask` responses include them (checked with the fake/recorded LLM, never a real OpenAI call).
 3. **Browser end-to-end (Playwright, headless Chromium)**. A test page embeds `/api/preview/...` in an `<iframe>` exactly like `WebPreview` does, from another origin (a second local port) to mimic the frontend. Then it asserts:
    - the iframe loads without CSP/XFO errors (console clean);
    - `ready` arrives with `found != "none"`;
@@ -123,19 +129,20 @@ Problems reported by the team after task 09:
 
 ## B2. `POST /api/admin/sources` = `{ "url": "…" }`
 The body is only `url`. Keep the old optional fields accepted for compatibility, but the UI won't send them. The server:
-1. Normalizes the URL (scheme, `www.`, trailing slash) and fetches it: HEAD, then GET if needed, 8 s timeout, follow redirects.
+1. Normalizes the URL (scheme, `www.`, trailing slash). **First** reads the domain's `robots.txt` (and our EXCLUDED_SITES list); if crawling is forbidden, go straight to step 6 without fetching the page. Otherwise fetch the URL: HEAD, then GET if needed, 8 s timeout, follow redirects.
    - Unreachable / not http(s) → 422 with a clear message ("Сайт не отвечает" / "Site-ul nu răspunde" is on the UI side; the backend sends the English message + code).
 2. **Kind**: content-type or extension PDF/DOC/DOCX → `document`, otherwise `site`.
 3. **Same domain already a source:**
    - a site URL with a deeper path → add it to that source's `start_urls`, queue a crawl, return **200** with `merged_into: <id>`;
-   - the same document again → 409 "already indexed";
+   - the same document again, or the same site root again → 409 "already a source";
+   - the domain is `blocked` → the deeper path is saved into it but stays blocked, no job;
    - never create a second row for the same domain.
-4. **Category**, automatically, in this order:
+4. **Category**, automatically, **no LLM**. Use the category values that already exist in `sites.toml`; the names below are placeholders, map them to those. First match wins, checked against the full host:
    - domain rules (`dets|educ|scoal|gradinit|extrascolar` → education, `amt|sanat|spital` → healthcare, `pretura|botanica|ciocana|rascani|buiucani|centru` → district, `mobil|transport|autourban|rtec` → mobility, `salubr|apa|lift|termo` → urban_utilities, `chisinau.md` → city_hall);
-   - else one small-model call on `<title>` + meta description + domain, answer limited to the category list;
+   - else the same keyword lists matched against `<title>` + meta description (RO and RU keywords, e.g. `școală/школа`, `spital/больница`, `transport/транспорт`);
    - else `other`.
 
-   Store `category_source: "rule" | "llm" | "default"`.
+   Store `category_source: "rule" | "keywords" | "default"`. The admin can change the category afterwards with the existing PATCH.
 5. **Crawl settings**, automatically:
    - domain root → depth 4, max 2000 pages (sites.toml defaults);
    - a deeper path → depth 2, restricted to that path prefix;
@@ -147,7 +154,7 @@ The body is only `url`. Keep the old optional fields accepted for compatibility,
 ## B3. One list for the single admin page
 `GET /api/admin/sources` → every row has everything the table shows:
 - identity and settings: `id, kind, url, site_id, title, category, category_source, enabled, robots`;
-- `status`: `indexed | pending | running | queued | failed | blocked | disabled`;
+- `status`: `indexed | pending | running | queued | failed | blocked | disabled`. Precedence: `disabled` > `blocked` > `running` > `queued` > `failed` (last job failed) > `indexed` (has chunks) > `pending` (never indexed, no job);
 - counters: `pages, documents_found, documents_downloaded, chunks, lines, last_crawled`;
 - `progress`: `{job_id, stage, percent, eta_s}` or null. The UI polls every 2 s while any row is `running`/`queued`;
 - `last_error`: the last job's error, short.
@@ -171,14 +178,14 @@ Actions stay as they are: refresh (`POST /sources/{id}/jobs {kind:"refresh"}`), 
   - PDF by content-type; PDF by extension with wrong content-type;
   - site root; deeper path merged into an existing domain (200 + `merged_into`);
   - duplicate document 409; robots blocked; unreachable 422;
-  - category by rule and by LLM (fake LLM) and default.
+  - category by domain rule, by title/meta keywords, and default; assert no LLM client is created during B2 (patch it to raise).
 - B3 list contains `status` and `progress` for a running job (fake worker progress).
 - Contract/mocks validate.
 
 ## B report
 - Output of the seed on the current DB (40 / indexed 5).
 - 5 real `POST {url}` responses:
-  - `https://acc.md/`;
+  - `https://acc.md/` (with `start: false`, or cancel the job right away);
   - a deeper dgaurf.md page (merged);
   - a PDF link from dgaurf.md;
   - `https://www.chisinau.md/` (blocked);
