@@ -297,6 +297,10 @@ export interface PromptInputProps {
   onSpeechError?: (code: string) => void;
   /** project: never collapse to the small pill */
   alwaysExpanded?: boolean;
+  /** project: width to grow to while the input is in use (e.g. the message column); an empty input shrinks back on blur */
+  activeWidth?: number;
+  /** project: stay at activeWidth for good (a conversation started: it never shrinks after the first message) */
+  forceActive?: boolean;
 }
 
 export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
@@ -317,11 +321,16 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       onModelChange,
       model: controlledModel,
       alwaysExpanded = false,
+      activeWidth,
+      forceActive = false,
       onSpeechError,
     },
     ref
   ) => {
     const [expanded, setExpanded] = useState(alwaysExpanded);
+    // project: set by a click / key press, cleared when an empty input loses focus; forceActive (a conversation) keeps it wide
+    const [activated, setActivated] = useState(false);
+    const wide = activeWidth != null && (activated || forceActive);
     const [isSmoothResize, setIsSmoothResize] = useState(false);
     const [localValue, setLocalValue] = useState(defaultValue);
     const [localModel, setSelectedModel] = useState(models[0]);
@@ -638,6 +647,11 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
     const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
       if (internalContainerRef.current && internalContainerRef.current.contains(e.relatedTarget as Node)) return;
+      // project: before the conversation starts, leaving an empty input shrinks it back; forceActive keeps it wide
+      if (value.trim() === "" && !hasAttachments && !isRecording) {
+        setIsSmoothResize(false);
+        setActivated(false);
+      }
       if (!alwaysExpanded && value.trim() === "" && !hasAttachments && !isRecording) {
         setIsSmoothResize(false);
         setExpanded(false);
@@ -728,9 +742,12 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             internalContainerRef.current = node;
           }}
           onBlur={handleBlur}
+          // a real click or key press, not the autofocus on mount
+          onKeyDownCapture={() => !activated && setActivated(true)}
+          onPointerDownCapture={() => !activated && setActivated(true)}
           className={cn("relative flex flex-col w-full", className)}
           style={{
-            maxWidth: expanded ? 480 : 320,
+            maxWidth: wide ? activeWidth : expanded ? 480 : 320,
             transition: isSmoothResize ? "max-width 0.15s ease-out" : "max-width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
           }}
         >

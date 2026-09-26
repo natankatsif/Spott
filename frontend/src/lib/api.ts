@@ -549,7 +549,7 @@ export const adminFeedback = (token: string, maxRating = 2, limit = 50) =>
   adminCall<{ items: FeedbackItem[] }>(token, "GET", `/feedback?max_rating=${maxRating}&limit=${limit}`);
 export const adminFeedbackStats = (token: string) => adminCall<FeedbackStats>(token, "GET", "/feedback/stats");
 
-export const adminPinSuggestion = (token: string, question: string, lang: Lang) =>
-  adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned: true });
+export const adminPinSuggestion = (token: string, question: string, lang: Lang, pinned = true) =>
+  adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned });
 export const adminHideSuggestion = (token: string, id: number) =>
   adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);

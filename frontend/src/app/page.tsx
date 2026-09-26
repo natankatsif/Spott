@@ -15,7 +15,7 @@ import { AssistantAnswer } from "@/components/chat/assistant-answer";
 import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
-import { type ErrorCode, health, type Lang } from "@/lib/api";
+import { type ErrorCode, health, type Lang, suggestions as fetchSuggestions } from "@/lib/api";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
 import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
@@ -27,31 +27,60 @@ const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" }
 // Effort switch in the input: index 0 = fast (one retrieval), 1 = deep (agent). Read by the transport at send time.
 let askMode: "fast" | "deep" = "deep";
 
-/** docs/API.md, GET /health: while models_loaded=false (~20 s after a backend start) show "warming up". */
-function useWarmingUp(enabled: boolean): boolean {
-  const [warming, setWarming] = useState(false);
+/**
+ * Quick questions on the empty screen: only the ones an admin pinned (GET /api/suggestions, pinned come first).
+ * The rest are proposals for the admin to pick from. None pinned (or the English UI: answers are RO/RU only) = none shown.
+ */
+function useQuickQuestions(lang: UILang, mode: string): readonly string[] {
+  const [loaded, setLoaded] = useState<{ key: string; items: string[] } | null>(null);
+  const key = `${lang}-${mode}`;
+  useEffect(() => {
+    if (lang === "en") return;
+    let alive = true;
+    fetchSuggestions(lang, 20)
+      .then((r) => alive && setLoaded({ key, items: r.items.filter((s) => s.pinned).slice(0, 6).map((s) => s.question) }))
+      .catch(() => alive && setLoaded({ key, items: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [lang, key]);
+  return loaded?.key === key ? loaded.items : [];
+}
+
+type BackendStatus = "ok" | "warming" | "down";
+
+/**
+ * docs/API.md, GET /health: "warming up" while models_loaded=false (~20 s after a backend start), polled every 3 s
+ * only in that state. An unreachable backend is checked again when the tab gets focus, not polled in the background.
+ */
+function useBackendStatus(enabled: boolean): BackendStatus {
+  const [status, setStatus] = useState<BackendStatus>("ok");
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const check = async () => {
+      clearTimeout(timer);
       try {
         const h = await health();
         if (stopped) return;
-        setWarming(!h.models_loaded);
+        setStatus(h.models_loaded ? "ok" : "warming");
         if (!h.models_loaded) timer = setTimeout(check, 3000);
       } catch {
-        if (!stopped) setWarming(false); // backend down: the ask itself reports it
+        if (!stopped) setStatus("down");
       }
     };
+    const onFocus = () => void check();
     void check();
+    window.addEventListener("focus", onFocus);
     return () => {
       stopped = true;
       clearTimeout(timer);
-      setWarming(false);
+      window.removeEventListener("focus", onFocus);
+      setStatus("ok");
     };
   }, [enabled]);
-  return enabled && warming;
+  return enabled ? status : "ok";
 }
 
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
@@ -75,7 +104,8 @@ export default function Home() {
 
   // AskRequest.question is 1–2000 characters; say so here instead of a round trip to a 422
   const [tooLong, setTooLong] = useState(false);
-  const warming = useWarmingUp(mode === "live");
+  const backend = useBackendStatus(mode === "live");
+  const quickQuestions = useQuickQuestions(lang, mode);
 
   const ask = (text: string) => {
     const q = text.trim();
@@ -160,10 +190,10 @@ export default function Home() {
 
       <div className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
       <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
-        {messages.length === 0 && (
+        {messages.length === 0 && quickQuestions.length > 0 && (
           <div className="w-full max-w-[480px]">
             <Suggestions>
-              {t.suggestions.map((s) => (
+              {quickQuestions.map((s) => (
                 <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
               ))}
             </Suggestions>
@@ -171,7 +201,9 @@ export default function Home() {
         )}
         <PromptInput
           className="w-full"
+          activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
           alwaysExpanded
+          forceActive={messages.length > 0}
           efforts={[...t.efforts]}
           maxAttachments={0}
           model={lang.toUpperCase()}
@@ -185,7 +217,12 @@ export default function Home() {
           placeholder={t.placeholder}
           speechLang={SPEECH[lang]}
         />
-        {warming && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
+        {backend === "warming" && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
+        {backend === "down" && (
+          <p className="text-center text-muted-foreground text-xs" role="status">
+            {t.errors.unavailable}
+          </p>
+        )}
         {speechError && (
           <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
             {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}

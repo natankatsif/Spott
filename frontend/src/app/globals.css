@@ -31,6 +31,15 @@
   --warning: #b7791f;
   --warning-bg: #fff7e6;
   --success: #1f8a4c;
+  /* admin sidebar, in the page's palette */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #3b4250;
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef2f8;
+  --sidebar-accent-foreground: #0f2a4a;
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @theme inline {
@@ -64,6 +73,18 @@
 
   --animate-marquee: marquee var(--duration) infinite linear;
   --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  @keyframes stage-sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
   @keyframes marquee {
     from { transform: translateX(0); }
     to { transform: translateX(calc(-100% - var(--gap))); }
@@ -90,4 +111,15 @@
     radial-gradient(60% 120% at 12% 100%, rgb(214 206 240 / 0.95), transparent 70%),
     radial-gradient(70% 140% at 88% 100%, rgb(141 192 226 / 0.9), transparent 70%),
     linear-gradient(to top, rgb(178 208 232 / 0.85), rgb(245 246 248 / 0));
+}
+
+.dark {
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }

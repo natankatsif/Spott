@@ -1,0 +1,207 @@
+"use client";
+
+import { ChevronDownIcon, StarIcon } from "lucide-react";
+import { useState } from "react";
+import { EmptyState } from "@/components/admin/empty-state";
+import { PageHeader } from "@/components/admin/page-header";
+import { StarBars, Stars } from "@/components/admin/stars";
+import { StatCard } from "@/components/admin/stat-card";
+import { Badge } from "@/components/spell/badge";
+import { Chart } from "@/components/spell/chart";
+import { CopyButton } from "@/components/spell/copy-button";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
+import { admin, useAdminQuery } from "@/lib/admin";
+import { errorText } from "@/lib/admin-errors";
+import { number, shortDay, timeAgo } from "@/lib/admin-format";
+import { ADMIN_UI, type AdminText } from "@/lib/admin-i18n";
+import type { FeedbackItem } from "@/lib/api";
+import type { UILang } from "@/lib/i18n";
+import { useUILang } from "@/lib/lang";
+import { useApiMode } from "@/lib/mode";
+import { cn } from "@/lib/utils";
+
+export default function FeedbackPage() {
+  const lang = useUILang();
+  const t = ADMIN_UI[lang];
+  const mode = useApiMode();
+  const [maxRating, setMaxRating] = useState(2);
+  const stats = useAdminQuery(`fb-stats-${mode}`, admin.feedbackStats, () => 30000);
+  const items = useAdminQuery(`fb-items-${mode}-${maxRating}`, () => admin.feedback(maxRating));
+
+  const s = stats.data;
+  const low = s ? (s.per_star["1"] ?? 0) + (s.per_star["2"] ?? 0) : 0;
+
+  return (
+    <>
+      <PageHeader subtitle={t.feedback.subtitle} title={t.feedback.title} />
+
+      {stats.error && !s ? (
+        <EmptyState
+          action={<Button onClick={stats.reload} variant="outline">{t.common.retry}</Button>}
+          hint={errorText(stats.error, lang)}
+          icon={StarIcon}
+          title={t.common.loadError}
+        />
+      ) : !s ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Skeleton className="h-24 rounded-2xl" key={i} />
+          ))}
+          <Skeleton className="h-64 rounded-2xl sm:col-span-3" />
+        </div>
+      ) : s.count === 0 ? (
+        <EmptyState icon={StarIcon} title={t.feedback.noData} />
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard label={t.feedback.count} value={number(s.count, lang)} />
+            <StatCard
+              aside={s.average != null && <Stars size={16} value={s.average} />}
+              label={t.feedback.average}
+              value={s.average != null ? s.average.toFixed(1) : "—"}
+            />
+            <StatCard
+              className={low > 0 ? "border-destructive/25" : undefined}
+              hint={`${Math.round((low / s.count) * 100)}%`}
+              label={t.feedback.low}
+              value={number(low, lang)}
+            />
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-5">
+            <section className="rounded-2xl border bg-card p-4 lg:col-span-3">
+              <h2 className="mb-1 font-medium text-sm">{t.feedback.trend}</h2>
+              {s.by_day.length > 1 ? (
+                <Chart
+                  className="-mx-1"
+                  color="#1d5fae"
+                  data={s.by_day.map((d) => d.average)}
+                  formatValue={(v, i) => `${v.toFixed(1)} ★ · ${s.by_day[i].count} ${t.feedback.trendCount}`}
+                  labels={s.by_day.map((d) => shortDay(d.day, lang))}
+                  name={t.feedback.average}
+                  tickCount={Math.min(6, s.by_day.length)}
+                />
+              ) : (
+                <p className="py-10 text-center text-muted-foreground text-sm">—</p>
+              )}
+            </section>
+            <div className="flex flex-col gap-3 lg:col-span-2">
+              <section className="rounded-2xl border bg-card p-4">
+                <h2 className="mb-3 font-medium text-sm">{t.feedback.perStar}</h2>
+                <StarBars perStar={s.per_star} />
+              </section>
+              <section className="rounded-2xl border bg-card p-4">
+                <h2 className="mb-3 font-medium text-sm">{t.feedback.tags}</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {s.top_tags.map((tag) => (
+                    <Badge className="gap-1.5 rounded-full px-2.5 py-1" key={tag.tag} variant={tag.tag === "helpful" ? "emerald" : "slate"}>
+                      {t.tags[tag.tag] ?? tag.tag}
+                      <span className="tabular-nums opacity-60">{tag.count}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </div>
+        </>
+      )}
+
+      <section className="mt-8">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-lg tracking-tight">{t.feedback.list}</h2>
+          <div className="flex rounded-full bg-muted/80 p-0.5 text-xs" role="radiogroup">
+            {[1, 2, 3].map((n) => (
+              <button
+                aria-checked={maxRating === n}
+                className={cn(
+                  "rounded-full px-3 py-1 font-medium transition-colors",
+                  maxRating === n ? "bg-card text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground/80",
+                )}
+                key={n}
+                onClick={() => setMaxRating(n)}
+                role="radio"
+                type="button"
+              >
+                {t.feedback.maxRating(n)}
+              </button>
+            ))}
+          </div>
+        </div>
+        {items.loading ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 3 }, (_, i) => (
+              <Skeleton className="h-16 rounded-2xl" key={i} />
+            ))}
+          </div>
+        ) : items.data?.length === 0 ? (
+          <EmptyState icon={StarIcon} title={t.feedback.empty} />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {items.data?.map((item) => (
+              <FeedbackRow item={item} key={`${item.answer_id}-${item.updated_at}`} lang={lang} t={t} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+function FeedbackRow({ item, t, lang }: { item: FeedbackItem; t: AdminText; lang: UILang }) {
+  return (
+    <li>
+      <Collapsible className="group/fb rounded-2xl border bg-card">
+        <CollapsibleTrigger className="flex w-full items-start gap-3 p-4 text-left">
+          <Stars className="mt-0.5 shrink-0" value={item.rating} />
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 font-medium text-sm">{item.question ?? "—"}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {item.status && <Badge variant={item.status === "answered" ? "blue" : "amber"}>{t.answerStatus[item.status] ?? item.status}</Badge>}
+              {item.tags.map((tag) => (
+                <Badge key={tag} variant="slate">
+                  {t.tags[tag] ?? tag}
+                </Badge>
+              ))}
+              <span className="text-muted-foreground text-xs">{timeAgo(item.updated_at, lang)}</span>
+            </div>
+          </div>
+          <ChevronDownIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/fb:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="flex flex-col gap-4 border-t px-4 py-4 text-sm">
+            {item.comment && (
+              <div className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
+                <p className="font-medium text-xs">{t.feedback.comment}</p>
+                <p className="mt-0.5">“{item.comment}”</p>
+              </div>
+            )}
+            <div>
+              <p className="text-muted-foreground text-xs">{t.feedback.answer}</p>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{item.answer ?? "—"}</p>
+            </div>
+            {item.doc_ids.length > 0 && (
+              <div>
+                <p className="text-muted-foreground text-xs">{t.feedback.sources}</p>
+                <ul className="mt-1 flex flex-col gap-1">
+                  {item.doc_ids.map((id) => (
+                    <li className="flex items-center gap-1 font-mono text-xs" key={id}>
+                      <span className="truncate">{id}</span>
+                      <CopyButton className="size-6 shrink-0" size="sm" value={id} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="flex items-center gap-1 text-muted-foreground text-xs">
+              {item.answer_id}
+              <CopyButton className="size-6" size="sm" value={item.answer_id} />
+              {item.path && <span>· {t.feedback.path}: {item.path}</span>}
+            </p>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  );
+}
