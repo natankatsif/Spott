@@ -48,7 +48,9 @@ export const UI = {
     modeHint: "Sursa răspunsurilor: date demo (Mock) sau serverul real (Live)",
     errors: {
       validation_error: "Întrebarea este prea lungă sau goală.",
+      unauthorized: "Nu aveți permisiunea de a efectua această acțiune.",
       not_found: "Documentul nu a fost găsit.",
+      conflict: "Solicitarea intră în conflict cu starea curentă.",
       rate_limited: "Prea multe întrebări. Încercați peste câteva secunde.",
       unavailable: "Serviciul nu este disponibil acum. Încercați mai târziu.",
       not_implemented: "Funcția nu este încă disponibilă.",
@@ -102,7 +104,9 @@ export const UI = {
     modeHint: "Источник ответов: демо-данные (Mock) или реальный сервер (Live)",
     errors: {
       validation_error: "Вопрос слишком длинный или пустой.",
+      unauthorized: "У вас нет разрешения на выполнение этого действия.",
       not_found: "Документ не найден.",
+      conflict: "Запрос конфликтует с текущим состоянием.",
       rate_limited: "Слишком много вопросов. Попробуйте через несколько секунд.",
       unavailable: "Сервис сейчас недоступен. Попробуйте позже.",
       not_implemented: "Функция пока недоступна.",
@@ -156,7 +160,9 @@ export const UI = {
     modeHint: "Answer source: demo data (Mock) or the real server (Live)",
     errors: {
       validation_error: "The question is too long or empty.",
+      unauthorized: "You are not authorized to perform this action.",
       not_found: "Document not found.",
+      conflict: "The request conflicts with the current state.",
       rate_limited: "Too many questions. Try again in a few seconds.",
       unavailable: "The service is unavailable right now. Try again later.",
       not_implemented: "This feature is not available yet.",

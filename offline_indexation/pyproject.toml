@@ -2,7 +2,7 @@
 name = "offline-indexation"
 description = "Crawls the Annex 1 sites and builds the document corpus"
 version = "0.1.0"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "docling>=2.130.0",
     "httpx>=0.28.1",
