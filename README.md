@@ -131,6 +131,19 @@ The repository is a uv workspace (`offline_indexation`, `backend`, `packages/ret
 | [`backend/`](backend) | Python 3.14, uv, FastAPI | Question answering API |
 | [`frontend/`](frontend) | Node, Next.js 16 | Chat UI |
 
+## Run the backend in Docker (one command)
+
+Needs only Docker. Put the index dump (`index-YYYY-MM-DD.dump`, made with `tools.index_io export` on the machine that has the index) into `data/export/`, then:
+
+```bash
+./start.sh            # database + API + admin worker → http://localhost:8000
+./start.sh --public   # also a public https://….trycloudflare.com address (for the Vercel frontend), no server needed
+./start.sh --https    # on a server with its own domain: Caddy + Let's Encrypt for DOMAIN from .env
+./start.sh --stop
+```
+
+The first run asks for the OpenAI key and writes `.env` (random database and admin passwords, printed once); the first build downloads ~3 GB (CPU-only torch, the bge-m3 model baked into the image). On start the API container creates the schema, restores the dump into an empty database, fills the sources and builds the contact cards. A server that should update itself on every push to `main`: set the `DEPLOY_*` secrets described in `.github/workflows/ci.yml`.
+
 ## Getting started
 
 **New here or testing on Mac / Windows: follow [docs/TESTER.md](docs/TESTER.md)** (in Russian): install, load the ready-made index dump, check the setup, test search in the console. Technical notes on every pipeline stage, eval and benchmarks: [docs/README.ru.md](docs/README.ru.md).

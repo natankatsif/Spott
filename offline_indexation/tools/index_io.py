@@ -92,6 +92,33 @@ def import_dump(dump: Path) -> None:
     print(counts(env["user"], env["db"]))
 
 
+def restore_direct(dump: Path) -> None:
+    """The same import over the network, with the local pg_restore: inside the server's containers (no docker
+    there). Connection from POSTGRES_HOST / _PORT / _USER / _PASSWORD / _DB."""
+    import os
+
+    from retrieval.db import (
+        POSTGRES_DB,
+        POSTGRES_HOST,
+        POSTGRES_PASSWORD,
+        POSTGRES_PORT,
+        POSTGRES_USER,
+        get_connection,
+        init_db,
+    )
+
+    init_db()
+    r = subprocess.run(["pg_restore", "-h", POSTGRES_HOST, "-p", str(POSTGRES_PORT), "-U", POSTGRES_USER,
+                        "-d", POSTGRES_DB, "--clean", "--if-exists", "--no-owner", "--no-privileges", str(dump)],
+                       env={**os.environ, "PGPASSWORD": POSTGRES_PASSWORD}, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        print("pg_restore предупреждения:\n" + "\n".join(r.stderr.splitlines()[-10:]))
+    init_db()
+    with get_connection() as conn:
+        conn.execute(ORD_BACKFILL)
+
+
 def main(argv: list[str] | None = None) -> None:
     utf8_console()
     p = argparse.ArgumentParser(description="Экспорт / импорт индекса")

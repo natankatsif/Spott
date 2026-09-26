@@ -1,0 +1,7 @@
+# HTTPS in front of the API. DOMAIN in .env (e.g. api.example.md) → Let's Encrypt certificate; empty → plain :80.
+{$DOMAIN::80} {
+	encode gzip
+	reverse_proxy api:8000 {
+		flush_interval -1  # /api/ask/stream: pass every SSE event through at once
+	}
+}

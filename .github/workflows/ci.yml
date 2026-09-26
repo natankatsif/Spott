@@ -1,5 +1,14 @@
 # Lint + unit tests on Linux and Windows. Windows runs without PYTHONUTF8 on purpose:
 # the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
+#
+# A push to main with green tests updates the server: it pulls and restarts what changed (docker/deploy.sh).
+# The frontend is deployed by Vercel itself (project Root Directory = frontend).
+# Deploy needs these repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST     server address
+#   DEPLOY_USER     user that can run docker there
+#   DEPLOY_SSH_KEY  private key whose public half is in that user's ~/.ssh/authorized_keys
+#   DEPLOY_PATH     where the repo is cloned on the server, e.g. /opt/Spott
+# Without DEPLOY_HOST the deploy job is skipped.
 name: ci
 
 on:
@@ -34,3 +43,28 @@ jobs:
           cd offline_indexation
           uv run python -m tools.pipeline update --dry-run
           uv run python -m tools.index_io --help
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - name: Secrets set?
+        id: check
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then echo "DEPLOY_HOST not set: skipping deploy"; echo "run=false" >> "$GITHUB_OUTPUT"
+          else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Deploy over SSH
+        if: steps.check.outputs.run == 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 40m
+          script: sh "${{ secrets.DEPLOY_PATH }}/docker/deploy.sh"

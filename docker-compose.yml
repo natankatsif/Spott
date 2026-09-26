@@ -1,10 +1,31 @@
+# Easiest: ./start.sh (asks for the OpenAI key once, starts everything, prints the addresses).
+#
+# `docker compose up -d` alone starts only the database (local development, as before). Profiles add:
+#   server  the API (port 8000) and the admin worker
+#   public  a Cloudflare quick tunnel: a public https://….trycloudflare.com address for the API, no server needed
+#   https   Caddy with a Let's Encrypt certificate for DOMAIN (a server with its own domain)
+# The index dump goes into data/export/ (tools.index_io export on the machine with the index); the api container
+# restores it into an empty database by itself.
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: chisinau-assistant:latest
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    db:
+      condition: service_healthy
+  volumes:
+    - oidata:/app/offline_indexation/data  # registry, downloaded and parsed files: shared by api and worker
+
 services:
   db:
     image: pgvector/pgvector:pg17
     container_name: qwerty-pgvector
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"  # reachable from this machine only
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-qwerty}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qwerty_secret}
@@ -17,5 +38,58 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    <<: *app
+    profiles: [server]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    volumes:
+      - oidata:/app/offline_indexation/data
+      - ./data/export:/dumps:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/health | grep -q '\"models_loaded\":true'"]
+      interval: 15s
+      timeout: 5s
+      start_period: 300s
+      retries: 5
+
+  worker:
+    <<: *app
+    profiles: [server]
+    command: ["python", "-m", "worker"]
+    working_dir: /app/offline_indexation
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      HF_HUB_OFFLINE: "0"  # Docling downloads its layout models on the first parse
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: [public]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://api:8000"]
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      - api
+
 volumes:
   pgdata:
+  oidata:
+  caddydata:
