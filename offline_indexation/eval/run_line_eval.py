@@ -44,7 +44,7 @@ def evaluate_mode(
     w_fts: float,
     k: int = 10,
 ) -> dict[str, Any]:
-    positives = [q for q in queries if not q.get("is_negative")]
+    positives = [q for q in queries if not q.get("is_negative") and not q.get("exclude_from_metric")]
     negatives = [q for q in queries if q.get("is_negative")]
 
     line_hits_1 = 0
@@ -146,9 +146,10 @@ def main() -> None:
     args = p.parse_args()
 
     queries = load_dataset(args.dataset)
-    positives = [q for q in queries if not q.get("is_negative")]
+    positives = [q for q in queries if not q.get("is_negative") and not q.get("exclude_from_metric")]
+    excluded = [q for q in queries if q.get("exclude_from_metric")]
     negatives = [q for q in queries if q.get("is_negative")]
-    print(f"Loaded {len(queries)} queries ({len(positives)} positive, {len(negatives)} negative) from {args.dataset}")
+    print(f"Loaded {len(queries)} queries ({len(positives)} positive, {len(negatives)} negative, {len(excluded)} excluded) from {args.dataset}")
 
     configurations = [
         ("1. Chunks-vector only", 1.0, 0.0, 0.0),

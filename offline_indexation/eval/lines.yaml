@@ -4,33 +4,28 @@
   line_lang: ro
   gold_line_id: 3c1262a378433fd623b4187017d5ff7184c1d5b5
   gold_chunk_id: 4b7adc1ea236075fc6bc92a936359d8890705d51
-  gold_line_text: 'Propunerea grupului de lucru, acceptată de CMC: achiziționarea
-    în 2020 a 100 autobuze, asamblarea a 30 troleibuze și achiziționarea a 18 unități
-    de transport articulat.'
+  gold_line_text: 'Propunerea grupului de lucru, acceptată de CMC: achiziționarea în 2020 a 100 autobuze, asamblarea a 30
+    troleibuze și achiziționarea a 18 unități de transport articulat.'
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-02
-  query: Что планируется установить рядом со станцией ожидания пассажиров для улучшения
-    благоустройства?
+  query: Что планируется установить рядом со станцией ожидания пассажиров для улучшения благоустройства?
   query_lang: ru
   line_lang: ro
   gold_line_id: 3b15258bde3c35c0698066483a1d9135a2ff02ea
   gold_chunk_id: d3f98365c76a081be40eaadbc695b2fcd31d16b5
-  gold_line_text: S-a amenajat și teritoriul stației de așteptare a pasagerilor, precum
-    și spațiul de agrement lateral trotuarului, care urmează să fie completat cu grupuri
-    de mobilier urban, bănci, urne și leagăne.
+  gold_line_text: S-a amenajat și teritoriul stației de așteptare a pasagerilor, precum și spațiul de agrement lateral trotuarului,
+    care urmează să fie completat cu grupuri de mobilier urban, bănci, urne și leagăne.
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-03
-  query: Cum poate fi folosit Digital Twin pentru a testa diferite scenarii de dezvoltare
-    urbană în Chișinău?
+  query: Cum poate fi folosit Digital Twin pentru a testa diferite scenarii de dezvoltare urbană în Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: e76571cec59a7da366d2862e82206dd4b488ced6
   gold_chunk_id: 881cfd0cec74bb0089bc6e3ae552017220267000
-  gold_line_text: Este o reprezentare dinamică și vie a orașului — construită din
-    date reale (senzori IoT, imagini satelitare, date cadastrale, fluxuri de trafic,
-    consum energetic) și actualizată continuu. Pe această reprezentare poți rula simulări,
+  gold_line_text: Este o reprezentare dinamică și vie a orașului — construită din date reale (senzori IoT, imagini satelitare,
+    date cadastrale, fluxuri de trafic, consum energetic) și actualizată continuu. Pe această reprezentare poți rula simulări,
     poți testa scenarii, poți lua decizii — fără risc și fără costuri de experimentare.
   site: dgaurf.md
   is_cross_lingual: false
@@ -49,13 +44,11 @@
   line_lang: ro
   gold_line_id: 7a108766d154d6236f7d2a61f4247fb82b0fada6
   gold_chunk_id: 81df45a7bc640bd724df48e3459f663374607bf5
-  gold_line_text: '| 23 | Centru | LT „M. Kotiubinski" (022 223551) | 29 | 11 | 15
-    |  | 58 | 31 |'
+  gold_line_text: '| 23 | Centru | LT „M. Kotiubinski" (022 223551) | 29 | 11 | 15 |  | 58 | 31 |'
   site: help.chisinau.md
   is_cross_lingual: false
 - id: line-06
-  query: Какой детский сад в Кишиневе можно посетить для получения информации о зачислении
-    детей из Украины?
+  query: Какой детский сад в Кишиневе можно посетить для получения информации о зачислении детей из Украины?
   query_lang: ru
   line_lang: ro
   gold_line_id: c734d69a532790e7e5263d7bd7d94ea5e5cfc888
@@ -73,15 +66,13 @@
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-08
-  query: Как качество инфраструктуры, такой как водоснабжение и электроснабжение,
-    влияет на развитие нашего города?
+  query: Как качество инфраструктуры, такой как водоснабжение и электроснабжение, влияет на развитие нашего города?
   query_lang: ru
   line_lang: ro
   gold_line_id: 46c9c7f8b11f9f4cf573815ca61d7fe53431d203
   gold_chunk_id: d04dd0e75db8c0db79ca0f0af84a49b0cec32385
-  gold_line_text: Apa care ajunge la robinet, canalizarea, energia, rețelele tehnice
-    și sistemele care susțin fiecare clădire sunt elemente pe care, de cele mai multe
-    ori, nu le observăm. Totuși, ele determină în mare măsură cât de bine poate funcționa
+  gold_line_text: Apa care ajunge la robinet, canalizarea, energia, rețelele tehnice și sistemele care susțin fiecare clădire
+    sunt elemente pe care, de cele mai multe ori, nu le observăm. Totuși, ele determină în mare măsură cât de bine poate funcționa
     și cât de mult se poate dezvolta un oraș.
   site: dgaurf.md
   is_cross_lingual: true
@@ -95,93 +86,67 @@
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-10
-  query: Какие виды и объемы гуманитарной помощи были распределены в Центре размещения
-    Patria Lukoil с момента его открытия?
+  query: Какие виды и объемы гуманитарной помощи были распределены в Центре размещения Patria Lukoil с момента его открытия?
   query_lang: ru
   line_lang: ro
   gold_line_id: da0bd66d3e0d2a47bdba119ed9d283274e432df2
   gold_chunk_id: 87e105a294f842b48a6717c9c7150f0b262566c2
-  gold_line_text: Categoriile și cantitatea de ajutoare umanitare distribuite la depozitul
-    Categoriile și cantitatea de ajutoare umanitare distribuite la depozitul Centrului
-    de plasament Patria Lukoil de la deschidere (16 martie 2022) Centrului de plasament
-    Patria Lukoil de la deschidere (16 martie 2022)
+  gold_line_text: Categoriile și cantitatea de ajutoare umanitare distribuite la depozitul Categoriile și cantitatea de ajutoare
+    umanitare distribuite la depozitul Centrului de plasament Patria Lukoil de la deschidere (16 martie 2022) Centrului de
+    plasament Patria Lukoil de la deschidere (16 martie 2022)
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-11
-  query: Ce măsuri au fost luate pentru a îmbunătăți accesul copiilor refugiați la
-    servicii medicale și educaționale în Chișinău?
+  query: Ce măsuri au fost luate pentru a îmbunătăți accesul copiilor refugiați la servicii medicale și educaționale în Chișinău?
   query_lang: ro
   line_lang: ru
   gold_line_id: b85d95fec178482c1061252fef6c626c946c90ef
   gold_chunk_id: 0347ef43a08913c5e40967ed8fa97a02d4de3483
-  gold_line_text: Чтобы лучше реагировать на потребности детей-беженцев, были мобилизованы
-    соответствующие муниципальные управления, что позволило кампании расширить доступ
-    к медицинским и образовательным услугам.
+  gold_line_text: Чтобы лучше реагировать на потребности детей-беженцев, были мобилизованы соответствующие муниципальные управления,
+    что позволило кампании расширить доступ к медицинским и образовательным услугам.
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-12
-  query: Какой медицинской помощью могли воспользоваться беременные женщины и дети
-    до 27 мая 2022 года?
+  query: Какой медицинской помощью могли воспользоваться беременные женщины и дети до 27 мая 2022 года?
   query_lang: ru
   line_lang: uk
   gold_line_id: 0dd32bea65488ce9576c39578d6874a425cb7e7b
   gold_chunk_id: 87dec1c41fb9b2b637d5aa014939759fde8cb257
-  gold_line_text: ДІТЯМ ТА 116 116 116 ВАГІТНИМ ДО 27 ТРАВНЯ 2022 РОКУ, БУЛА НАДАНО
-    МЕДИЧНУ ДопомогУ. ВАГІТНИМ ДО 27 тРАвНЯ 2022 РОКУ, БУЛА НАДАНО МЕДИЧНУ ДопомогУ.
-    ВАГІТНИМ ДО 27 ТРАВНЯ 2022 РОКУ, БУЛА НАДАНО МЕДИЧНУ допомогу.
+  gold_line_text: ДІТЯМ ТА 116 116 116 ВАГІТНИМ ДО 27 ТРАВНЯ 2022 РОКУ, БУЛА НАДАНО МЕДИЧНУ ДопомогУ. ВАГІТНИМ ДО 27 тРАвНЯ
+    2022 РОКУ, БУЛА НАДАНО МЕДИЧНУ ДопомогУ. ВАГІТНИМ ДО 27 ТРАВНЯ 2022 РОКУ, БУЛА НАДАНО МЕДИЧНУ допомогу.
   site: help.chisinau.md
   is_cross_lingual: true
+  lang: uk
+  exclude_from_metric: true
 - id: line-13
   query: Какие функции выполняет отдел учета и экономического анализа в нашем городе?
   query_lang: ru
   line_lang: ro
   gold_line_id: ab468598f947cdc1862038a785d4152a7942af41
   gold_chunk_id: 35e7b580de0e58c1efaa2f7b5aeb94baa9900d95
-  gold_line_text: '| Secția evidență contabilă și analiză economică | - Planificarea
-    și bugetarea activității - Control bugetar - Calculul plăților de retribuire a
-    muncii - Evidența plăților și încasărilor - Evidența imobilizărilor | Management
-    | Șef DEF Șef SECAE |'
+  gold_line_text: '| Secția evidență contabilă și analiză economică | - Planificarea și bugetarea activității - Control bugetar
+    - Calculul plăților de retribuire a muncii - Evidența plăților și încasărilor - Evidența imobilizărilor | Management |
+    Șef DEF Șef SECAE |'
   site: mobilitatechisinau.md
   is_cross_lingual: true
-- id: line-14
-  query: Care este numărul de telefon al consultantului menționat în document?
-  query_lang: ro
-  line_lang: ro
-  gold_line_id: d375f95fb193d654da4e9146847d38feb75fd019
-  gold_chunk_id: 9c918b5e6ca2faa7cb89734412eef6660c9a7355
-  gold_line_text: '| 13. | Billbar fgre Corsultant IilRigiahikioh 068946333 |  |  |  |  |'
-  site: autosalubritate.md
-  is_cross_lingual: false
-- id: line-15
-  query: Care sunt principalele măsuri propuse pentru gestionarea deșeurilor solide
-    în Chișinău?
-  query_lang: ro
-  line_lang: ro
-  gold_line_id: 8bed59e53d3de3fc56c69799394328cb55d4f13c
-  gold_chunk_id: e538125da904a84f2d9f78bff4a1fd5a79ef2021
-  gold_line_text: ____________________________________________________________________________________________
-  site: autosalubritate.md
-  is_cross_lingual: false
 - id: line-16
   query: Кто отвечает за подготовку повестки дня на заседаниях и как она утверждается?
   query_lang: ru
   line_lang: ro
   gold_line_id: a055fcb2b0e5d1aacae1012d0d8907b7cf36c527
   gold_chunk_id: 5d8d8ca7f0d3f6aaeb186d73272d4c66bb570781
-  gold_line_text: Ordinea de zi se elaborează de secretariatul tehnic în colaborare
-    cu președintele și se aprobã la deschiderea ședinței de către membrii prezenți,
-    cu majoritate simplă.
+  gold_line_text: Ordinea de zi se elaborează de secretariatul tehnic în colaborare cu președintele și se aprobã la deschiderea
+    ședinței de către membrii prezenți, cu majoritate simplă.
   site: dgaurf.md
   is_cross_lingual: true
 - id: line-17
-  query: Ce tipuri de spații verzi sunt incluse în planurile de dezvoltare ale orașului
-    Chișinău?
+  query: Ce tipuri de spații verzi sunt incluse în planurile de dezvoltare ale orașului Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: 225d69d62741a88f23e7004c027fe1965b6cf5ae
   gold_chunk_id: 4b078c79d2dab536c207d38173ca665a98cf6c24
-  gold_line_text: verzi – parcuri, grădini publice, scuaruri, precum și spațiile verzi
-    din curțile blocurilor, arbori solitari etc.
+  gold_line_text: verzi – parcuri, grădini publice, scuaruri, precum și spațiile verzi din curțile blocurilor, arbori solitari
+    etc.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-18
@@ -194,8 +159,7 @@
   site: mobilitatechisinau.md
   is_cross_lingual: true
 - id: line-19
-  query: Ce responsabilități are administrația publică locală conform legislației
-    în vigoare?
+  query: Ce responsabilități are administrația publică locală conform legislației în vigoare?
   query_lang: ro
   line_lang: ro
   gold_line_id: 69d1c3dc7792e389e05291d3c308791986b4ebef
@@ -204,27 +168,24 @@
   site: dgaurf.md
   is_cross_lingual: false
 - id: line-20
-  query: Какие населённые пункты входят в состав сектора Центр и соседних районов
-    в Чишинау?
+  query: Какие населённые пункты входят в состав сектора Центр и соседних районов в Чишинау?
   query_lang: ru
   line_lang: ro
   gold_line_id: 065106cc5be25ee7aac1a52b87aff0d5b7d9e0d1
   gold_chunk_id: 85d984db6a896c8563e2e65d6a32226ae9650a5a
-  gold_line_text: Bulucani, sectorul Centru, sectorul Ciocana, sectorul Rișcani, orasele
-    Duriesti, Vatra, Codru, Vadul lui Voda, Cricova, Sîngera, satele (comuna) Bacioi,
-    Condrița, Ghidighici, Trușeni, Bubueci, Budesti, Colonița, Cruzești, Tohatin,
+  gold_line_text: Bulucani, sectorul Centru, sectorul Ciocana, sectorul Rișcani, orasele Duriesti, Vatra, Codru, Vadul lui
+    Voda, Cricova, Sîngera, satele (comuna) Bacioi, Condrița, Ghidighici, Trușeni, Bubueci, Budesti, Colonița, Cruzești, Tohatin,
     Ciorescu, Grătiești, Stăuceni.
   site: dgaurf.md
   is_cross_lingual: true
 - id: line-21
-  query: Ce măsuri au fost luate pentru a îmbunătăți starea drumului de pe strada
-    Miorița?
+  query: Ce măsuri au fost luate pentru a îmbunătăți starea drumului de pe strada Miorița?
   query_lang: ro
   line_lang: ro
   gold_line_id: e820288fb0396bc4a733c84db14fc0e36bf21ded
   gold_chunk_id: ddb92ebb56fbd7637f606738c0305696d61aee7f
-  gold_line_text: La fel, pe strada Miorița, a fost aplicat „Slurry Seal”, care va
-    asigura o durată de exploatare mai lungă a drumului.
+  gold_line_text: La fel, pe strada Miorița, a fost aplicat „Slurry Seal”, care va asigura o durată de exploatare mai lungă
+    a drumului.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-22
@@ -242,10 +203,8 @@
   line_lang: ro
   gold_line_id: 6e5dedcf6b824b36a22986cec0f1806391e5420f
   gold_chunk_id: a4b0a571d0de3899c544b83730fe3ae5d5cf39c8
-  gold_line_text: Unele grădinițe din sector au beneficiat de reabilitarea acoperișurilor,
-    fațadelor, și a rețelelor inginerești, altora le-au fost schimbate geamurile,
-    reparate blocurile sanitare sau alimentare, tavanul, sistemul de iluminat sau
-    încăperi.
+  gold_line_text: Unele grădinițe din sector au beneficiat de reabilitarea acoperișurilor, fațadelor, și a rețelelor inginerești,
+    altora le-au fost schimbate geamurile, reparate blocurile sanitare sau alimentare, tavanul, sistemul de iluminat sau încăperi.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-24
@@ -258,37 +217,32 @@
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-25
-  query: Как будет организована система учета рекомендаций и протокол проведения общественных
-    консультаций?
+  query: Как будет организована система учета рекомендаций и протокол проведения общественных консультаций?
   query_lang: ru
   line_lang: ro
   gold_line_id: 35ff795b1bc9da00675650c27e1265090e313161
   gold_chunk_id: 882d281a2d024a941344b9438b626b87fa781c06
-  gold_line_text: 3.6. Sistematizarea recomandărilor, întocmirea poceselului-verbal
-    al consultărilor publice și a tabelului de divergențe.
+  gold_line_text: 3.6. Sistematizarea recomandărilor, întocmirea poceselului-verbal al consultărilor publice și a tabelului
+    de divergențe.
   site: dgaurf.md
   is_cross_lingual: true
 - id: line-26
-  query: Câte persoane din Ucraina au fost angajate oficial în Chișinău până pe 27
-    mai 2022?
+  query: Câte persoane din Ucraina au fost angajate oficial în Chișinău până pe 27 mai 2022?
   query_lang: ro
   line_lang: ru
   gold_line_id: fe45a0e7f6f9d644bf0543cd0f8426b7fe962a16
   gold_chunk_id: 46b1115a37e7a66dfa1b95061631679cad5f9285
-  gold_line_text: 355 ГРАЖДАН ИЗ УКРАИНЫ БЫЛИ ОФИЦИАЛЬНО ТРУДОУСТРОЕНЫ до 27 мАя 2022,
-    В МУНИЦИПИИ КИШИНЕВ.
+  gold_line_text: 355 ГРАЖДАН ИЗ УКРАИНЫ БЫЛИ ОФИЦИАЛЬНО ТРУДОУСТРОЕНЫ до 27 мАя 2022, В МУНИЦИПИИ КИШИНЕВ.
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-27
-  query: Какова процедура участия граждан в разработке и изменении правил градостроительства
-    в нашем городе?
+  query: Какова процедура участия граждан в разработке и изменении правил градостроительства в нашем городе?
   query_lang: ru
   line_lang: ro
   gold_line_id: c45b94f8dc05d3615e298c70291545d30c59a216
   gold_chunk_id: a3eb179f4ef112a15913e598ebd75075351ea5ff
-  gold_line_text: 310/2025 „Privind aprobarea Regulamentului privind implicarea publicului
-    în elaborarea, modificarea și monitorizarea implementării documentației de amenajare
-    a teritoriului și de urbanism", ", în temeiul art.
+  gold_line_text: 310/2025 „Privind aprobarea Regulamentului privind implicarea publicului în elaborarea, modificarea și monitorizarea
+    implementării documentației de amenajare a teritoriului și de urbanism", ", în temeiul art.
   site: dgaurf.md
   is_cross_lingual: true
 - id: line-28
@@ -300,110 +254,76 @@
   gold_line_text: ADRESA MD-2004, municipiul Chișinău, Str. Serghei Lazo, 18
   site: mobilitatechisinau.md
   is_cross_lingual: false
-- id: line-29
-  query: Какие документы необходимы для подтверждения права собственности на земельный
-    участок в Кишиневе?
-  query_lang: ru
-  line_lang: ro
-  gold_line_id: 5a06cdbf9214f3ac092d02eac6e6029af42538d8
-  gold_chunk_id: 94b33f2ddaeec47caa12fb2e387c1a577dde90ed
-  gold_line_text: proprietate asupra terenului.</p></li><li><p>Copia Raportului lucrărilor
-    cadastrale.</p></li><li><p>Copia Studiului topografic sc.
-  site: dgaurf.md
-  is_cross_lingual: true
 - id: line-30
-  query: Ce detalii sunt disponibile despre proiectul stației de transfer a deșeurilor
-    solide din Ciocana?
+  query: Ce detalii sunt disponibile despre proiectul stației de transfer a deșeurilor solide din Ciocana?
   query_lang: ro
   line_lang: ro
   gold_line_id: 9999165c627b27c01f7168bcba5dae57a3480ca0
   gold_chunk_id: dfae94cf00e60a02bd13194a362066d65483c8da
-  gold_line_text: specific pentru construcția stației de transfer al deșeurilor solide
-    de la Ciocana la etapa de proiectare de către consultantul de proiectare.
+  gold_line_text: specific pentru construcția stației de transfer al deșeurilor solide de la Ciocana la etapa de proiectare
+    de către consultantul de proiectare.
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-31
-  query: Будет ли проводиться аудио- и видеозапись мероприятия, и смогут ли жители
-    смотреть его онлайн?
+  query: Будет ли проводиться аудио- и видеозапись мероприятия, и смогут ли жители смотреть его онлайн?
   query_lang: ru
   line_lang: ro
   gold_line_id: f1744c27fadcf0b90fc02458ca2053a48fcb5ef3
   gold_chunk_id: 882d281a2d024a941344b9438b626b87fa781c06
-  gold_line_text: 5.2. Înregistrarea audio/video a evenimentului și translarea prin
-    intermediul rețelei internet;
+  gold_line_text: 5.2. Înregistrarea audio/video a evenimentului și translarea prin intermediul rețelei internet;
   site: dgaurf.md
   is_cross_lingual: true
-- id: line-32
-  query: Сколько всего человек приняло участие в мероприятии?
-  query_lang: ru
-  line_lang: ro
-  gold_line_id: ffe67dc4151997003a9322d3813ba54c0dd2259a
-  gold_chunk_id: 2e427c195a1babc8f3e256255147929adde30f73
-  gold_line_text: 'Numărul total de participanți a fost de 21 persoane, dintre care:'
-  site: autosalubritate.md
-  is_cross_lingual: true
 - id: line-33
-  query: Ce măsuri de igienă sunt prevăzute pentru închiderea gropii de gunoi de la
-    Ciocana?
+  query: Ce măsuri de igienă sunt prevăzute pentru închiderea gropii de gunoi de la Ciocana?
   query_lang: ro
   line_lang: ro
   gold_line_id: 16b1304a0ed002cb22c949b3e2b058a90c70846f
   gold_chunk_id: 8e19f19aba4133d78769307d3a7a601687ae4e3f
-  gold_line_text: 3.2.3 Aspecte sanitare pentru închiderea gropii existente de la
-    Ciocana
+  gold_line_text: 3.2.3 Aspecte sanitare pentru închiderea gropii existente de la Ciocana
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-34
-  query: Где я могу изучить и скачать мемориал объяснений по плану застройки улицы
-    Албишоара?
+  query: Где я могу изучить и скачать мемориал объяснений по плану застройки улицы Албишоара?
   query_lang: ru
   line_lang: ro
   gold_line_id: 10c83db4b88a7d413c79482b24dcb269f119ba0a
   gold_chunk_id: 788096ead48895b8e675b8cb96a5c2c129aab148
-  gold_line_text: Memoriul Explicativ al PUZ - Albișoara poate fi studiat și descărcat
-    AICI
+  gold_line_text: Memoriul Explicativ al PUZ - Albișoara poate fi studiat și descărcat AICI
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-35
-  query: Cum pot obține informații detaliate despre traseul și stațiile mijloacelor
-    de transport public din Chișinău?
+  query: Cum pot obține informații detaliate despre traseul și stațiile mijloacelor de transport public din Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: 2f9ec8ba5f36ba264ed0e0cfcc1741c6cdc4641d
   gold_chunk_id: d3a50e5d5dc1c4592c1aeb78755014b0708f72fa
-  gold_line_text: '- Elaborarea, actualizarea, aprobarea la CMC și evidența tehnică
-    a "Pașaportului rutei" (per fiecare rută): traseul, itinerarul (străzile), stațiile
-    și denumirile lor, lungimea rutei, timpul de parcurgere, stațiile tehnice, benzi
+  gold_line_text: '- Elaborarea, actualizarea, aprobarea la CMC și evidența tehnică a "Pașaportului rutei" (per fiecare rută):
+    traseul, itinerarul (străzile), stațiile și denumirile lor, lungimea rutei, timpul de parcurgere, stațiile tehnice, benzi
     dedicate;'
   site: mobilitatechisinau.md
   is_cross_lingual: false
 - id: line-36
-  query: Когда планируется укладка тротуарной плитки и обустройство зелёного пространства
-    вдоль тротуаров?
+  query: Когда планируется укладка тротуарной плитки и обустройство зелёного пространства вдоль тротуаров?
   query_lang: ru
   line_lang: ro
   gold_line_id: 3c1711949cb0a7aa7d0ad219d155730453a481b4
   gold_chunk_id: 6f1a1ff2d51254430bf09b358a74495281399238
-  gold_line_text: '- Urmează să fie montate pavelele în trei culori și să fie amenajat
-    un spațiu verde de-a lungul trotuarelor, completând astfel reabilitarea acestui
-    tronson.'
+  gold_line_text: '- Urmează să fie montate pavelele în trei culori și să fie amenajat un spațiu verde de-a lungul trotuarelor,
+    completând astfel reabilitarea acestui tronson.'
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-37
-  query: Ce măsuri pot fi luate împotriva angajaților care nu respectă regulile stabilite
-    de lege?
+  query: Ce măsuri pot fi luate împotriva angajaților care nu respectă regulile stabilite de lege?
   query_lang: ro
   line_lang: ro
   gold_line_id: 3c7a687b953c8567e52771aa6921888c53a32438
   gold_chunk_id: fb5dfac66ecd7bb6288085bae1c8cc16fdd6d6b0
-  gold_line_text: 8) să tragă angajații la răspundere disciplinară și materială în
-    modul stabilit de Legea nr. 158/2008, Codul muncii și de alte acte normative în
-    vigoare;
+  gold_line_text: 8) să tragă angajații la răspundere disciplinară și materială în modul stabilit de Legea nr. 158/2008, Codul
+    muncii și de alte acte normative în vigoare;
   site: mobilitatechisinau.md
   is_cross_lingual: false
 - id: line-38
-  query: Какие меры предпринимаются для улучшения туристической инфраструктуры и культурного
-    окружения в Кишинёве?
+  query: Какие меры предпринимаются для улучшения туристической инфраструктуры и культурного окружения в Кишинёве?
   query_lang: ru
   line_lang: ro
   gold_line_id: 9e36ad338de52c9123ca6e568277aed81ec98722
@@ -411,32 +331,8 @@
   gold_line_text: '- analiza infrastructurii turistice, a cadrului cultural;'
   site: dgaurf.md
   is_cross_lingual: true
-- id: line-39
-  query: Care este adresa și numerele de contact pentru proiectul de gestionare a
-    deșeurilor solide din Chișinău?
-  query_lang: ro
-  line_lang: ro
-  gold_line_id: 538283d8c754876272faeba12fb1eb4d66739e89
-  gold_chunk_id: 16c177e9b05fb77b56b5ff162b0b3057cf8072f4
-  gold_line_text: 'st: 27 Matie 1918, rr. 14, municipiul Chișinig, Republca Moldova,
-    MD-2099; td: ((22)746-842, tel: (022) 740919; omil: antameac@ulml'
-  site: autosalubritate.md
-  is_cross_lingual: false
-- id: line-40
-  query: Как будет обеспечена защита моих персональных данных в рамках проекта по
-    управлению твердыми отходами в Кишиневе?
-  query_lang: ru
-  line_lang: ro
-  gold_line_id: 16fb7409f227c2ffbe22a4b33143dcaac1dbf903
-  gold_chunk_id: 48642f6f808795aaff3a33ae17e53d9f01e99893
-  gold_line_text: 'Atențiel Documentul conține date cu caracter personal. Prelucrarea
-    acestora va fl efectuată in condițlle Legll nr.133 din 08.07.2011. Numar de Identificare
-    unic: 0000293'
-  site: autosalubritate.md
-  is_cross_lingual: true
 - id: line-41
-  query: Какой документ содержит контрольные списки для оценки экологических и социальных
-    аспектов в нашем городе?
+  query: Какой документ содержит контрольные списки для оценки экологических и социальных аспектов в нашем городе?
   query_lang: ru
   line_lang: ro
   gold_line_id: 74a96a33944ae56f82111e0a67a992fb713f1e5e
@@ -445,15 +341,13 @@
   site: autosalubritate.md
   is_cross_lingual: true
 - id: line-42
-  query: Cum se va asigura că infrastructura din zona noastră va putea susține noile
-    proiecte de dezvoltare planificate?
+  query: Cum se va asigura că infrastructura din zona noastră va putea susține noile proiecte de dezvoltare planificate?
   query_lang: ro
   line_lang: ro
   gold_line_id: 02b2803cc88f1c046c201a44c6fbea00d9f94dde
   gold_chunk_id: 347a2ae636cee45bf01f8f9a15093c0f0a4ff94b
-  gold_line_text: Astfel, atunci când se planifică dezvoltarea unei zone, trebuie
-    analizat și dacă infrastructura existentă poate deservi populația și activitățile
-    care vor apărea acolo.
+  gold_line_text: Astfel, atunci când se planifică dezvoltarea unei zone, trebuie analizat și dacă infrastructura existentă
+    poate deservi populația și activitățile care vor apărea acolo.
   site: dgaurf.md
   is_cross_lingual: false
 - id: line-43
@@ -462,14 +356,12 @@
   line_lang: ro
   gold_line_id: 3f412cd643ccc9778c4e2655a14147aafd643e40
   gold_chunk_id: 6b620b9ec7930ecb9f59f08ac9ebf82334197844
-  gold_line_text: 'Ocupațiile în cadrul cercurilor au cuprins: lecții de desen, aplicații,
-    design, floristică, grădinărit, acvariumistică, îngrijirea animalelor de companie,
-    teatru ecologic, arte plastice, lecții de fotografie, și de calculator.'
+  gold_line_text: 'Ocupațiile în cadrul cercurilor au cuprins: lecții de desen, aplicații, design, floristică, grădinărit,
+    acvariumistică, îngrijirea animalelor de companie, teatru ecologic, arte plastice, lecții de fotografie, și de calculator.'
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-44
-  query: Ce instituție se ocupă de protecția drepturilor copiilor în cadrul crizei
-    refugiaților din Chișinău?
+  query: Ce instituție se ocupă de protecția drepturilor copiilor în cadrul crizei refugiaților din Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: 6b2132d82dbdb3b66f62317815e263780f6fdc47
@@ -483,8 +375,8 @@
   line_lang: ro
   gold_line_id: bc6c83a15dfc6b406eb83ae2e857235b1d5048d4
   gold_chunk_id: 698d97f0c5d480937914e78b952eb562b867b46b
-  gold_line_text: Promovarea unui mediu urban sustenabil prin monitorizarea utilizării
-    terenurilor și organizarea proceselor de atribuire și arendare.
+  gold_line_text: Promovarea unui mediu urban sustenabil prin monitorizarea utilizării terenurilor și organizarea proceselor
+    de atribuire și arendare.
   site: dgaurf.md
   is_cross_lingual: true
 - id: line-46
@@ -493,25 +385,23 @@
   line_lang: ro
   gold_line_id: b8c037b8fed6cf6ebab971e25344730d8729f2a2
   gold_chunk_id: 6dec6a8fa13f77df6c9cde070b35234c0184edb8
-  gold_line_text: Urmează elaborarea planurilor de acțiuni pentru fiecare locație
-    în parte cu analiza exemplelor de bune practici și pregătirea documentației pentru
-    un proiect pilot.
+  gold_line_text: Urmează elaborarea planurilor de acțiuni pentru fiecare locație în parte cu analiza exemplelor de bune practici
+    și pregătirea documentației pentru un proiect pilot.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-47
-  query: Где я могу найти список всех филиалов, которые работают с беженцами в нашем
-    городе?
+  query: Где я могу найти список всех филиалов, которые работают с беженцами в нашем городе?
   query_lang: ru
   line_lang: uk
   gold_line_id: c2ce49c2af51c4b8f56bc0c22bec0d3e2c02a15f
   gold_chunk_id: 42719ae58303e885021f89351d0226dc7d0d1fdb
-  gold_line_text: 'Щоб переглянути список усіх 27 філій, відскануйте QR-код праворуч
-    і відкрийте відповідне посилання:'
+  gold_line_text: 'Щоб переглянути список усіх 27 філій, відскануйте QR-код праворуч і відкрийте відповідне посилання:'
   site: help.chisinau.md
   is_cross_lingual: true
+  lang: uk
+  exclude_from_metric: true
 - id: line-48
-  query: Ce experiență ați avut în legătură cu îngrijirea medicală primită la naștere
-    în Chișinău?
+  query: Ce experiență ați avut în legătură cu îngrijirea medicală primită la naștere în Chișinău?
   query_lang: ro
   line_lang: ru
   gold_line_id: 1db8c4b99871e42870bac58afd960f990435831e
@@ -520,38 +410,32 @@
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-49
-  query: Сколько беженцев в Кишиневе получили срочную помощь и были под наблюдением
-    специалистов?
+  query: Сколько беженцев в Кишиневе получили срочную помощь и были под наблюдением специалистов?
   query_lang: ru
   line_lang: ro
   gold_line_id: a8f32b8e6838b0183094633adbfa88f6bb40e49f
   gold_chunk_id: cbee61870951bb6d30c36a2cf95840d371e0032e
-  gold_line_text: Dintre aceștia, 252 au fost identificați în situație de risc, cărora
-    le-a fost acord imediat suportul necesar și ulterior au fost monitorizați de către
-    specialiștii din cadrul direcției.
+  gold_line_text: Dintre aceștia, 252 au fost identificați în situație de risc, cărora le-a fost acord imediat suportul necesar
+    și ulterior au fost monitorizați de către specialiștii din cadrul direcției.
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-50
-  query: Ce măsuri sunt incluse în procesul de actualizare a infrastructurii pentru
-    gestionarea deșeurilor solide din Chișinău?
+  query: Ce măsuri sunt incluse în procesul de actualizare a infrastructurii pentru gestionarea deșeurilor solide din Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: f44db7de97d92d394564f0b83270706c3923ac13
   gold_chunk_id: 0965e8da5e71a6e9ee68a9cdb4947595428b900f
-  gold_line_text: Lista de verificare de mediu și socială pentru modernizarea infrastructurii
-    pentru deșeurile solide
+  gold_line_text: Lista de verificare de mediu și socială pentru modernizarea infrastructurii pentru deșeurile solide
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-51
-  query: Какие материалы были использованы для информирования граждан о проекте "Твердые
-    отходы в Кишиневе"?
+  query: Какие материалы были использованы для информирования граждан о проекте "Твердые отходы в Кишиневе"?
   query_lang: ru
   line_lang: ro
   gold_line_id: ce2948dcc585b4132b9a6c9f908e729e3f54ede3
   gold_chunk_id: 5ae3b91e2191260858152a5bd20147944e67ad1c
-  gold_line_text: Pentru evenimentul Consultărilor Publice a fost utilizate pliante
-    și panou informativ cu informația specifică despre Proiectul 'Deșeuri Solide Chișinău'
-    și părțile interesate responsabile de finanțarea Proiectului și implementarea
+  gold_line_text: Pentru evenimentul Consultărilor Publice a fost utilizate pliante și panou informativ cu informația specifică
+    despre Proiectul 'Deșeuri Solide Chișinău' și părțile interesate responsabile de finanțarea Proiectului și implementarea
     lui.
   site: autosalubritate.md
   is_cross_lingual: true
@@ -561,32 +445,27 @@
   line_lang: ro
   gold_line_id: 25c06a2cf3664ac57b31dc13adee0abc35894dbf
   gold_chunk_id: 6f33e495563ed4ddcafc9e5d1b7a61061f46bccd
-  gold_line_text: Mai mult TROTUAR PE STRADA NICOLAE COSTIN Anterior în acest loc,
-    trotuar nu exista, iar oamenii erau nevoiți să meargă pe spațiu verde, inclusiv
-    cu copii în cărucioare.
+  gold_line_text: Mai mult TROTUAR PE STRADA NICOLAE COSTIN Anterior în acest loc, trotuar nu exista, iar oamenii erau nevoiți
+    să meargă pe spațiu verde, inclusiv cu copii în cărucioare.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-53
-  query: Какие меры принимаются для помощи детям, которые находятся в Чишинау без
-    родителей или законных представителей?
+  query: Какие меры принимаются для помощи детям, которые находятся в Чишинау без родителей или законных представителей?
   query_lang: ru
   line_lang: ro
   gold_line_id: 1925ebb8b09713972eb3536ee133c59da35c3c40
   gold_chunk_id: deabe5d4f67e8ccc1d38e1da31b50440d6c52778
-  gold_line_text: '- Copil neînsoțit; - Copil separat de părinți sau reprezentant
-    legal.'
+  gold_line_text: '- Copil neînsoțit; - Copil separat de părinți sau reprezentant legal.'
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-54
-  query: Ce măsuri sunt prevăzute pentru îmbunătățirea infrastructurii rutiere și
-    a transportului în Chișinău?
+  query: Ce măsuri sunt prevăzute pentru îmbunătățirea infrastructurii rutiere și a transportului în Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: ba7df40960f0babe7395c4ab39bd0833d72ef439
   gold_chunk_id: 64aa59546f0de28234838ac9caf8e91ee67f0a19
-  gold_line_text: Aceasta implică reparația și întreținerea drumurilor, amenajarea
-    parcărilor, întreținerea și modernizarea iluminatului public, asigurarea transportului
-    accesibil, confortabil și sustenabil, managementul și siguranța traficului.
+  gold_line_text: Aceasta implică reparația și întreținerea drumurilor, amenajarea parcărilor, întreținerea și modernizarea
+    iluminatului public, asigurarea transportului accesibil, confortabil și sustenabil, managementul și siguranța traficului.
   site: mobilitatechisinau.md
   is_cross_lingual: false
 - id: line-55
@@ -598,6 +477,8 @@
   gold_line_text: 'Якщо ваша дитина навчається онлайн в Українській школі:'
   site: help.chisinau.md
   is_cross_lingual: true
+  lang: uk
+  exclude_from_metric: true
 - id: line-56
   query: Cine este responsabil de controlul parcărilor în Chișinău?
   query_lang: ro
@@ -613,52 +494,37 @@
   line_lang: ro
   gold_line_id: cfb3508a10509c312bbb6a465400a4dcef5597e8
   gold_chunk_id: ce0d8612530f1597a4dd15c41c8b6160510cc7f9
-  gold_line_text: din care se realizează comercializarea băuturilor răcoritoare și
-    fierbinți, produselor de patiserie și înghețatei în parcuri, scuaruri, grădini
-    publice, pe străzile și bulevardele principale ale orașului întru asigurarea expunerii
-    acestora la licitațiile cu strigare organizate în acest sens.
+  gold_line_text: din care se realizează comercializarea băuturilor răcoritoare și fierbinți, produselor de patiserie și înghețatei
+    în parcuri, scuaruri, grădini publice, pe străzile și bulevardele principale ale orașului întru asigurarea expunerii acestora
+    la licitațiile cu strigare organizate în acest sens.
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-58
-  query: Где находится центр "Бабочка" для детей, где предлагаются занятия музыкой
-    и рисованием?
+  query: Где находится центр "Божья коровка" для детей, где предлагаются занятия музыкой и рисованием?
   query_lang: ru
   line_lang: ro
   gold_line_id: 301bdb0f5c92d00fc3b1f5b49fbefd179190e09b
   gold_chunk_id: cd641f62c9df6d173b5fc7072572c679bea476cc
-  gold_line_text: '| „Buburuza" | Muzică, Desen | str. Gh. Asachi 52, tel. 068486544
-    |'
+  gold_line_text: '| „Buburuza" | Muzică, Desen | str. Gh. Asachi 52, tel. 068486544 |'
   site: help.chisinau.md
   is_cross_lingual: true
 - id: line-59
-  query: Какой объем работ и бюджет предусмотрены для улицы Бутукулуй в плане интервенций
-    2022 года?
+  query: Какой объем работ и бюджет предусмотрены для улицы Бутукулуй в плане интервенций 2022 года?
   query_lang: ru
   line_lang: ro
   gold_line_id: 934ffecc85758154540ae626fefc29628a064396
   gold_chunk_id: 4fa8f3c01933f8481da7203af8facaf8cff226d8
-  gold_line_text: '| l4 | Str. Butucului | 42OOm2plc 6o0bord. mari Sfint. inst. 7gril.inst.
-    342,OBt str. egaliz. 900bord. mici 900m2 tr. | 3 862 838 |'
+  gold_line_text: '| l4 | Str. Butucului | 42OOm2plc 6o0bord. mari Sfint. inst. 7gril.inst. 342,OBt str. egaliz. 900bord.
+    mici 900m2 tr. | 3 862 838 |'
   site: mobilitatechisinau.md
   is_cross_lingual: true
-- id: line-60
-  query: Ce măsuri sunt luate pentru a asigura accesul participanților și suportul
-    necesar în cadrul evenimentelor organizate în oraș?
-  query_lang: ro
-  line_lang: ro
-  gold_line_id: 73a457f9bcb782b269b45ec8f554117287ae5d57
-  gold_chunk_id: 882d281a2d024a941344b9438b626b87fa781c06
-  gold_line_text: 4.2. Accesul participanților și suportul logistic necesar;
-  site: dgaurf.md
-  is_cross_lingual: false
 - id: line-61
   query: Когда будет проведен первый отчет по реализации Плана интегритета?
   query_lang: ru
   line_lang: ro
   gold_line_id: e5638821c6f0af126701df09fd003654181d0276
   gold_chunk_id: 628a61ec7594e531d80a1651a753c2a0f230115d
-  gold_line_text: '| Permanent, cu raportare semestrială | Sem. I anul 2025 |  | Sem.
-    I anul 2025 | Anual |'
+  gold_line_text: '| Permanent, cu raportare semestrială | Sem. I anul 2025 |  | Sem. I anul 2025 | Anual |'
   site: mobilitatechisinau.md
   is_cross_lingual: true
 - id: line-62
@@ -667,36 +533,31 @@
   line_lang: ro
   gold_line_id: 32936300b7c8ecbfd180316f976742aaae9147a4
   gold_chunk_id: 3997a16160f2394046b441420dd591474c43deea
-  gold_line_text: Continuăm să îmbunătățim infrastructura orașului prin reabilitarea
-    trotuarului de pe partea pară a străzii M. Kogălniceanu, în perimetrul străzilor
-    Al. Pușkin și M. Eminescu.
+  gold_line_text: Continuăm să îmbunătățim infrastructura orașului prin reabilitarea trotuarului de pe partea pară a străzii
+    M. Kogălniceanu, în perimetrul străzilor Al. Pușkin și M. Eminescu.
   site: proiecte.chisinau.md
   is_cross_lingual: false
 - id: line-63
-  query: Когда будут продолжаться работы по ремонту и обслуживанию дорожной инфраструктуры
-    в нашем городе?
+  query: Когда будут продолжаться работы по ремонту и обслуживанию дорожной инфраструктуры в нашем городе?
   query_lang: ru
   line_lang: ro
   gold_line_id: edc473e3d3dc311e19f11f0d116ece485d3c190f
   gold_chunk_id: 91014d656aa0d0b0238547e5fe60690f4049d05f
-  gold_line_text: Lucrările de reparație și întreținere a infrastructurii vor continua
-    și în săptămâna curentă.
+  gold_line_text: Lucrările de reparație și întreținere a infrastructurii vor continua și în săptămâna curentă.
   site: mobilitatechisinau.md
   is_cross_lingual: true
 - id: line-64
-  query: Ce lucrări de reparație la drumuri au fost efectuate în Chișinău săptămâna
-    trecută?
+  query: Ce lucrări de reparație la drumuri au fost efectuate în Chișinău săptămâna trecută?
   query_lang: ro
   line_lang: ro
   gold_line_id: d00d138bf09c6ed49ce73d0172ff6eb678ea4f41
   gold_chunk_id: 2146121620ee96e19d61132891e7bfcbefc3dcd3
-  gold_line_text: Prima pagină » Lucrări de reparație și întreținere a infrastructurii
-    rutiere municipale executate pe parcursul săptămânii trecute
+  gold_line_text: Prima pagină » Lucrări de reparație și întreținere a infrastructurii rutiere municipale executate pe parcursul
+    săptămânii trecute
   site: mobilitatechisinau.md
   is_cross_lingual: false
 - id: line-65
-  query: Как я могу связаться с Управлением городской мобильности для получения информации
-    о закупках на 2026 год?
+  query: Как я могу связаться с Управлением городской мобильности для получения информации о закупках на 2026 год?
   query_lang: ru
   line_lang: ro
   gold_line_id: 4cc329046cc13a7b5212ac0e321f8c37649f1774
@@ -714,8 +575,7 @@
   site: mobilitatechisinau.md
   is_cross_lingual: false
 - id: line-67
-  query: Где находится остановка общественного транспорта на улице Сергеева Лазо в
-    Чишинеу?
+  query: Где находится остановка общественного транспорта на улице Сергеева Лазо в Чишинеу?
   query_lang: ru
   line_lang: ro
   gold_line_id: 6850a52cfee7fd5477d98f9ba335cda34aa138b0
@@ -724,14 +584,13 @@
   site: mobilitatechisinau.md
   is_cross_lingual: true
 - id: line-68
-  query: De ce este necesară stocarea preferințelor utilizatorilor în cadrul serviciilor
-    de salubritate?
+  query: De ce este necesară stocarea preferințelor utilizatorilor în cadrul serviciilor de salubritate?
   query_lang: ro
   line_lang: ro
   gold_line_id: c52a7de4616219ae6b2bbce2c22da8db11425988
   gold_chunk_id: 8b53e1813f7a19aecf79bce545bc6ce6134b3b4c
-  gold_line_text: Stocarea tehnică sau accesul este necesară în scop legitim pentru
-    stocarea preferințelor care nu sunt cerute de abonat sau utilizator.
+  gold_line_text: Stocarea tehnică sau accesul este necesară în scop legitim pentru stocarea preferințelor care nu sunt cerute
+    de abonat sau utilizator.
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-69
@@ -740,46 +599,31 @@
   line_lang: ro
   gold_line_id: d6652e251636114cb2ad9f80ebb563d504d7dbc3
   gold_chunk_id: 01ea03113772a1c8360d4c32d6d8a99e88bebb80
-  gold_line_text: Mai mult Proiect de termoizolare LT "Spiru Haret" În anul 2020,
-    exteriorul clădirii liceului ”Spiru Haret” din capitală a fost supus unor liucrări
-    de termoizolare cu sprijinul Primăriei municipiului Chișinău.
+  gold_line_text: Mai mult Proiect de termoizolare LT "Spiru Haret" În anul 2020, exteriorul clădirii liceului ”Spiru Haret”
+    din capitală a fost supus unor liucrări de termoizolare cu sprijinul Primăriei municipiului Chișinău.
   site: proiecte.chisinau.md
   is_cross_lingual: true
 - id: line-70
-  query: Cum va fi implicată comunitatea în procesul de modernizare a infrastructurii
-    pentru deșeurile solide din Chișinău?
+  query: Cum va fi implicată comunitatea în procesul de modernizare a infrastructurii pentru deșeurile solide din Chișinău?
   query_lang: ro
   line_lang: ro
   gold_line_id: 4e4221eaed693c24d1331dd337b8f3974901047c
   gold_chunk_id: c3e35ee3e628e8f7de265ca2fe6d612fe06ed2ed
-  gold_line_text: MCP general și specific aplicabil pentru ciclul de viață al proiectului
-    (pre-construcție, construcție, exploatare și dezafectare etc.) va fi utilizat
-    ca instrument de consultare pentru toți angajații proiectului și comunitatea care
+  gold_line_text: MCP general și specific aplicabil pentru ciclul de viață al proiectului (pre-construcție, construcție, exploatare
+    și dezafectare etc.) va fi utilizat ca instrument de consultare pentru toți angajații proiectului și comunitatea care
     ar putea fi afectați de activitățile proiectului.
   site: autosalubritate.md
   is_cross_lingual: false
 - id: line-71
-  query: Какие изменения произошли в отделении реанимации и интенсивной терапии в
-    больнице для детей на улице С. Лазо?
+  query: Какие изменения произошли в отделении реанимации и интенсивной терапии в больнице для детей на улице С. Лазо?
   query_lang: ru
   line_lang: ro
   gold_line_id: b7f3d95f23293255c463e11a1c37d7f81ce6693b
   gold_chunk_id: 8972dff19b37330344bc30e785c0fa9c2278120b
-  gold_line_text: Detalii vezi AICI Secția de Reanimare și Terapie Intensivă a Spitalului
-    Clinic Municipal pentru Copii nr. 1 din strada S. Lazo a fost renovată capital
-    și dotată cu utilaj medical de ultimă generație.
+  gold_line_text: Detalii vezi AICI Secția de Reanimare și Terapie Intensivă a Spitalului Clinic Municipal pentru Copii nr.
+    1 din strada S. Lazo a fost renovată capital și dotată cu utilaj medical de ultimă generație.
   site: proiecte.chisinau.md
   is_cross_lingual: true
-- id: line-72
-  query: Cine este persoana de contact pentru proiectul 'Deșeuri Solide Chișinău'?
-  query_lang: ro
-  line_lang: ro
-  gold_line_id: 9e144670a2a2c7a295c28edd60187cf84f9af515
-  gold_chunk_id: 91e354b4bd11c38ce4dfa297eb525276d13dd83f
-  gold_line_text: '| 17. | ISIVOL Veaceslar | vertie | speceeis- "sa Chess- | 067957043
-    |  |'
-  site: autosalubritate.md
-  is_cross_lingual: false
 - id: line-73
   query: Где находится медицинское учреждение в районе Дача?
   query_lang: ru
@@ -790,8 +634,7 @@
   site: help.chisinau.md
   is_cross_lingual: true
 - id: neg-01
-  query: Cum pot solicita autorizație pentru aterizarea elicopterelor private pe acoperișul
-    Primăriei Chișinău?
+  query: Cum pot solicita autorizație pentru aterizarea elicopterelor private pe acoperișul Primăriei Chișinău?
   query_lang: ro
   gold_line_id: null
   gold_chunk_id: null
@@ -807,8 +650,7 @@
   site: null
   is_negative: true
 - id: neg-03
-  query: Care sunt tarifele pentru parcarea rachetelor cosmice pe teritoriul parcului
-    La Izvor?
+  query: Care sunt tarifele pentru parcarea rachetelor cosmice pe teritoriul parcului La Izvor?
   query_lang: ro
   gold_line_id: null
   gold_chunk_id: null
@@ -824,8 +666,7 @@
   site: null
   is_negative: true
 - id: neg-05
-  query: Când începe construcția primei linii de metrou subteran între Aeroport și
-    Buiucani?
+  query: Când începe construcția primei linii de metrou subteran între Aeroport și Buiucani?
   query_lang: ro
   gold_line_id: null
   gold_chunk_id: null
@@ -841,8 +682,7 @@
   site: null
   is_negative: true
 - id: neg-07
-  query: Care este orarul curselor feroviare de mare viteză Shinkansen Chișinău -
-    Tokyo?
+  query: Care este orarul curselor feroviare de mare viteză Shinkansen Chișinău - Tokyo?
   query_lang: ro
   gold_line_id: null
   gold_chunk_id: null
@@ -850,8 +690,7 @@
   site: null
   is_negative: true
 - id: neg-08
-  query: Где подать заявку на установку частной атомной электростанции на дачном участке
-    в Трушенах?
+  query: Где подать заявку на установку частной атомной электростанции на дачном участке в Трушенах?
   query_lang: ru
   gold_line_id: null
   gold_chunk_id: null
@@ -875,8 +714,7 @@
   site: null
   is_negative: true
 - id: neg-11
-  query: Care sunt actele necesare pentru înregistrarea unei ferme de canguri în sectorul
-    Râșcani?
+  query: Care sunt actele necesare pentru înregistrarea unei ferme de canguri în sectorul Râșcani?
   query_lang: ro
   gold_line_id: null
   gold_chunk_id: null
@@ -884,8 +722,7 @@
   site: null
   is_negative: true
 - id: neg-12
-  query: Как получить муниципальный грант на поиск следов инопланетной цивилизации
-    в парке Валя Морилор?
+  query: Как получить муниципальный грант на поиск следов инопланетной цивилизации в парке Валя Морилор?
   query_lang: ru
   gold_line_id: null
   gold_chunk_id: null

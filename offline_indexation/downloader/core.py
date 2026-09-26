@@ -136,9 +136,13 @@ class Downloader:
                     return "not_modified"
                 if status in RETRY_STATUSES:
                     raise RetryableStatus(status)
+                if status in (404, 410):
+                    is_removed = self.registry.record_download_missing(key, status)
+                    return "removed" if is_removed else "missing"
                 if status >= 400:
                     self.registry.mark_checked(key, "failed", http_status=status)
                     return "failed"
+
                 ctype = content_type(resp)
                 if ctype in HTML_TYPES:
                     # A page, not a file: legis.md acts, Drive folders, dead links redirecting home.

@@ -96,7 +96,13 @@ class SiteCrawler:
         finally:
             self._save_state()
 
+        if not self.queue:
+            missing, removed = self.registry.record_crawl_missing(self.site.id, self.docs_seen)
+            self.stats["missing_documents"] = missing
+            self.stats["removed_documents"] = removed
+
         return self.stats | {"queue_left": len(self.queue), "seconds": round(time.monotonic() - started)}
+
 
     # --- crawling -------------------------------------------------------------
 

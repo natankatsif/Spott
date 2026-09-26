@@ -150,12 +150,13 @@ def main() -> None:
     stale_lines = indexer.delete_stale_lines(by_chunk)
 
     # Orphans are only knowable when the whole corpus was chunked in this run.
-    is_full_corpus = not (args.from_jsonl or args.sites or args.limit) and len(by_doc) >= total_expected_docs
+    is_full_corpus = not (args.from_jsonl or args.sites or args.limit)
     orphans_removed = 0
     if args.clean_orphans and is_full_corpus:
         orphans_removed = indexer.clean_orphaned_documents(set(by_doc))
     elif args.clean_orphans:
         log.info("Skipping orphan cleanup: partial run (%d of %d documents)", len(by_doc), total_expected_docs)
+
 
     print(f"\nIndexing finished in {time.monotonic() - started:.1f}s:")
     print(f"  Documents indexed:   {len(by_doc)}")
