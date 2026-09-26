@@ -16,16 +16,19 @@ from pathlib import Path
 from common.http import make_clients
 from common.registry import Registry
 
-from .config import Site, load_sites
+from .config import Site, load_sites, load_sites_from_db
 from .site import SiteCrawler
 
 log = logging.getLogger("crawler")
+DEFAULT_CONFIG = Path("data/sources/sites.toml")
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m crawler", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--config", type=Path, default=Path("data/sources/sites.toml"))
+    p.add_argument("--config", type=Path,
+                   help="a sites TOML instead of the admin panel's sources (default: the database; "
+                        "data/sources/sites.toml while it has no sources)")
     p.add_argument("--out", type=Path, default=Path("data/crawl"), help="raw HTML and crawl state")
     p.add_argument("--db", type=Path, default=Path("data/registry.sqlite"))
     p.add_argument("--sites", nargs="+", metavar="ID", help="site ids from the config (default: all)")
@@ -40,7 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def select_sites(args: argparse.Namespace) -> list[Site]:
-    sites = load_sites(args.config)
+    sites = (None if args.config else load_sites_from_db()) or load_sites(args.config or DEFAULT_CONFIG)
     if args.sites:
         by_id = {s.id: s for s in sites}
         if unknown := [i for i in args.sites if i not in by_id]:

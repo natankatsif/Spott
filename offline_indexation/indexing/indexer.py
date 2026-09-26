@@ -17,6 +17,8 @@ import psycopg
 from retrieval.db import get_connection
 from retrieval.embeddings import free_device_cache, get_device, get_embedding_model
 
+from common.progress import Progress
+
 log = logging.getLogger("indexing.indexer")
 
 WRITE_BATCH = 128  # chunks embedded and written per step
@@ -88,6 +90,7 @@ class Indexer:
         self.conn = conn or get_connection(autocommit=True)
         self.batch_size = batch_size
         self.device = get_device()
+        self.progress = Progress()  # chunks and lines written, for the admin worker
 
     @property
     def model(self):
@@ -132,6 +135,7 @@ class Indexer:
             c["embedding"] = cached[c["content_hash"]]
         for start in range(0, len(reused), WRITE_BATCH):
             self.write_chunks(reused[start:start + WRITE_BATCH])
+            self.progress.advance(len(reused[start:start + WRITE_BATCH]))
 
         # Length-sorted batches waste less compute on padding.
         todo = sorted((c for c in chunks if c["content_hash"] not in cached), key=lambda c: len(c["embed_text"]))
@@ -145,6 +149,7 @@ class Indexer:
             for c, vec in zip(batch, vectors, strict=True):
                 c["embedding"] = vec
             self.write_chunks(batch)
+            self.progress.advance(len(batch))
             free_device_cache(self.device)
             done = start + len(batch)
             log.info("Embedded %d/%d (%.1f chunks/s)", done, len(todo), done / max(time.monotonic() - started, 1e-3))
@@ -208,6 +213,7 @@ class Indexer:
 
         for start in range(0, len(lines), WRITE_BATCH):
             self.write_lines(lines[start : start + WRITE_BATCH])
+            self.progress.advance(len(lines[start : start + WRITE_BATCH]))
 
         reused_count = len(lines) - len(todo_items)
         return reused_count, len(todo_items)

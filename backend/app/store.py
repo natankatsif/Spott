@@ -107,3 +107,29 @@ class PgStore:
                               (doc_ids,)):
             by_doc.setdefault(row["doc_id"], []).append(row["text"])
         return by_doc
+
+    def contacts_near(self, question: str, limit: int = 8) -> tuple[list[dict], dict | None]:
+        """Contact cards nearest to the question (cosine similarity of bge-m3 embeddings), and the City Hall's
+        general card; each card with the texts of its lines. ([], None) before `python -m contacts` has run."""
+        from retrieval.embeddings import get_device, get_embedding_model
+
+        vec = get_embedding_model(get_device()).encode([question], normalize_embeddings=True)[0]
+        columns = "contact_id, name, area, phone, email, address, hours, url, site, line_ids, is_general"
+        try:
+            near = self._rows(f"SELECT {columns}, 1 - (embedding <=> %s) AS similarity FROM contacts "
+                              "ORDER BY embedding <=> %s LIMIT %s", (vec, vec, limit))
+            general = self._rows(f"SELECT {columns}, 0.0 AS similarity FROM contacts WHERE is_general "
+                                 "ORDER BY jsonb_array_length(phone) DESC LIMIT 1", ())
+        except psycopg.errors.UndefinedTable:
+            return [], None
+        cards = near + general
+        texts = dict(self._rows_tuples("SELECT line_id, text FROM lines WHERE line_id = ANY(%s)",
+                                       ([lid for c in cards for lid in c["line_ids"]],)))
+        for c in cards:
+            c["line_texts"] = [texts[lid] for lid in c["line_ids"] if lid in texts]
+        return near, general[0] if general else None
+
+    def _rows_tuples(self, sql: str, params: tuple) -> list[tuple]:
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()

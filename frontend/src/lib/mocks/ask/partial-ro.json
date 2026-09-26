@@ -2,7 +2,7 @@
   "id": "mock-partial-ro",
   "status": "partial",
   "lang": "ro",
-  "answer": "Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice. Termenul de finalizare a Planului urbanistic general nu este indicat în documentele disponibile.",
+  "answer": "Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice. Termenul de finalizare a Planului urbanistic general nu este indicat în documentele disponibile. Pentru ce lipsește din documente, credem că vă poate ajuta: Întrebări frecvente.",
   "sentences": [
     {
       "text": "Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice.",
@@ -12,6 +12,10 @@
     },
     {
       "text": "Termenul de finalizare a Planului urbanistic general nu este indicat în documentele disponibile.",
+      "cites": []
+    },
+    {
+      "text": "Pentru ce lipsește din documente, credem că vă poate ajuta: Întrebări frecvente.",
       "cites": []
     }
   ],
@@ -83,5 +87,27 @@
     "latency_ms": 2380.0,
     "verified": true
   },
-  "focus_citation_id": null
+  "focus_citation_id": null,
+  "contacts": [
+    {
+      "name": "Întrebări frecvente",
+      "area": "Întrebări frecvente Ce este DGAURF și care sunt atribuțiile principale ale acestei instituții?",
+      "phone": [
+        "+373 22 228 110"
+      ],
+      "email": [
+        "dgaurf@cmc.md"
+      ],
+      "address": "Adresă: MD-2012, Chișinău, bd. Ștefan cel Mare și Sfânt, 83",
+      "hours": null,
+      "url": "https://dgaurf.md/ro/questions",
+      "site": "dgaurf.md",
+      "reason": "Pagina lor de pe dgaurf.md este cea mai apropiată de întrebarea dvs.",
+      "line_ids": [
+        "29d21984a7f12a558efbc8e28007a8fa396003ac",
+        "53d3fe5606ec938d73306c66b6f31be42b494d73"
+      ],
+      "deep_link": "https://dgaurf.md/ro/questions#:~:text=Telefon%3A%20%2B373%2022%20228%20110%20Email%3A%20dgaurf%40cmc.md%20Website%3A"
+    }
+  ]
 }

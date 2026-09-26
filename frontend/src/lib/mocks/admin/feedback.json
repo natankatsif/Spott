@@ -1,0 +1,41 @@
+{
+  "items": [
+    {
+      "answer_id": "a_3f9c1e0b7d2a4c11",
+      "rating": 1,
+      "tags": [
+        "outdated",
+        "wrong_source"
+      ],
+      "comment": "Se citează decizia din 2020, dar elaboratorul e altul acum",
+      "citation_id": "c1",
+      "question": "Cine elaborează Planul urbanistic general?",
+      "lang": "ro",
+      "status": "conflict",
+      "answer": "Conform deciziei nr. 4/1 din 05.03.2020, elaborarea PUG este asigurată de Asociația CCDD.",
+      "doc_ids": [
+        "file:5c0d7f2b7a5e1d6f3f7d7a0e4d3b0c9a1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b"
+      ],
+      "path": "fast",
+      "created_at": "2026-09-26T16:02:13+03:00",
+      "updated_at": "2026-09-26T16:02:13+03:00"
+    },
+    {
+      "answer_id": "a_8b2d4f6a1c3e5b7d",
+      "rating": 2,
+      "tags": [
+        "incomplete"
+      ],
+      "comment": null,
+      "citation_id": null,
+      "question": "Когда проходят публичные консультации по генплану?",
+      "lang": "ru",
+      "status": "partial",
+      "answer": "Консультации CP-03 проходят с 4 сентября по 7 октября 2026 года.",
+      "doc_ids": [],
+      "path": "agent",
+      "created_at": "2026-09-26T16:40:51+03:00",
+      "updated_at": "2026-09-26T16:41:30+03:00"
+    }
+  ]
+}

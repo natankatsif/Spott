@@ -20,6 +20,7 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from common.http import HTML_TYPES, RETRY_STATUSES, content_type, tls_failed
+from common.progress import Progress
 from common.registry import Registry
 from common.urls import DOC_EXTENSIONS, bare_host
 
@@ -84,12 +85,16 @@ class Downloader:
         self.refresh = refresh
         self.insecure_hosts: set[str] = set()
         self.stats: Counter[str] = Counter()
+        self.progress = Progress()
 
     async def download_host(self, host: str, docs: list[sqlite3.Row]) -> None:
         """Documents of one host, sequentially with a pause — same politeness as the crawler."""
         for i, doc in enumerate(docs, 1):
+            if self.progress.cancelled():
+                return
             outcome = await self.download(doc)
             self.stats[outcome] += 1
+            self.progress.advance(error=outcome == "failed")
             log.info("%s [%d/%d] %s %s", host, i, len(docs), outcome, doc["url"])
 
     async def download(self, doc: sqlite3.Row) -> str:

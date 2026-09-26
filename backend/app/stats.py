@@ -1,7 +1,7 @@
 """Corpus health dashboard (GET /api/corpus/stats): every Annex-1 site, what is crawled and indexed.
 
-Sources: sites.toml (all sites), registry.sqlite (pages and documents per site, if present on this machine),
-Postgres (chunks per site, lines).
+Sources: the admin panel's `sources` table (all sites, robots status; sites.toml only until it is imported),
+registry.sqlite (pages and documents per site, if present on this machine), Postgres (chunks per site, lines).
 """
 
 import sqlite3
@@ -9,6 +9,7 @@ import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
+import psycopg
 from psycopg_pool import ConnectionPool
 
 from .files import DATA_DIR
@@ -22,7 +23,18 @@ BLOCKED = {"chisinau.md", "actelocale.gov.md"}  # robots.txt: Disallow: /
 def load_sites(path: Path = SITES_TOML) -> list[dict]:
     if not path.is_file():
         return []
-    return tomllib.loads(path.read_text(encoding="utf-8")).get("site", [])
+    return [s | {"blocked": s["id"] in BLOCKED}
+            for s in tomllib.loads(path.read_text(encoding="utf-8")).get("site", [])]
+
+
+def source_sites(pool: ConnectionPool) -> list[dict]:
+    """Site sources from the admin panel; [] before `python -m tools.sources import` has filled the table."""
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT site_id, category, robots FROM sources WHERE kind = 'site' ORDER BY id")
+            return [{"id": sid, "category": cat, "blocked": robots == "blocked"} for sid, cat, robots in cur.fetchall()]
+    except psycopg.errors.UndefinedTable:
+        return []
 
 
 def registry_counts(path: Path = REGISTRY) -> dict[str, dict]:
@@ -66,7 +78,7 @@ def index_counts(pool: ConnectionPool) -> tuple[dict[str, dict], int, str | None
 
 
 def corpus_stats(pool: ConnectionPool, sites_path: Path = SITES_TOML, registry_path: Path = REGISTRY) -> CorpusStats:
-    sites = load_sites(sites_path)
+    sites = source_sites(pool) or load_sites(sites_path)
     registry = registry_counts(registry_path)
     index, lines, indexed_at = index_counts(pool)
 
@@ -78,7 +90,7 @@ def corpus_stats(pool: ConnectionPool, sites_path: Path = SITES_TOML, registry_p
         rows.append(SiteStats(
             site=sid,
             category=site.get("category"),
-            status="indexed" if chunks else "blocked" if sid in BLOCKED else "pending",
+            status="indexed" if chunks else "blocked" if site["blocked"] else "pending",
             # Without the registry on this machine, fall back to what the index holds.
             pages=reg.get("pages", idx.get("indexed_pages", 0)),
             documents_found=reg.get("documents_found", idx.get("indexed_files", 0)),

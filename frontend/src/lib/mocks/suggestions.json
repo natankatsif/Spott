@@ -1,0 +1,76 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "question": "Cine este președintele Grupului de supraveghere a reactualizării PUG?",
+      "lang": "ro",
+      "answer_id": "a_0000000000000001",
+      "asked_count": 9,
+      "rating_avg": 4.8,
+      "pinned": true
+    },
+    {
+      "id": 2,
+      "question": "Când au loc consultările publice privind studiile de fundamentare ale PUG?",
+      "lang": "ro",
+      "answer_id": "a_0000000000000002",
+      "asked_count": 6,
+      "rating_avg": null,
+      "pinned": false
+    },
+    {
+      "id": 3,
+      "question": "Ce tip de transport public va fi achiziționat în Chișinău în anul 2020?",
+      "lang": "ro",
+      "answer_id": "a_0000000000000003",
+      "asked_count": 4,
+      "rating_avg": 4.5,
+      "pinned": false
+    },
+    {
+      "id": 4,
+      "question": "Ce grup supraveghează elaborarea PUG?",
+      "lang": "ro",
+      "answer_id": "a_0000000000000004",
+      "asked_count": 3,
+      "rating_avg": null,
+      "pinned": false
+    },
+    {
+      "id": 5,
+      "question": "Кто входит в группу по надзору за обновлением генплана?",
+      "lang": "ru",
+      "answer_id": "a_0000000000000005",
+      "asked_count": 9,
+      "rating_avg": 4.8,
+      "pinned": true
+    },
+    {
+      "id": 6,
+      "question": "Кто разрабатывает генплан Кишинёва?",
+      "lang": "ru",
+      "answer_id": "a_0000000000000006",
+      "asked_count": 6,
+      "rating_avg": null,
+      "pinned": false
+    },
+    {
+      "id": 7,
+      "question": "Где находится офис Парка городских автобусов в Кишинёве?",
+      "lang": "ru",
+      "answer_id": "a_0000000000000007",
+      "asked_count": 4,
+      "rating_avg": 4.5,
+      "pinned": false
+    },
+    {
+      "id": 8,
+      "question": "Кто отвечает за подготовку повестки дня на заседаниях?",
+      "lang": "ru",
+      "answer_id": "a_0000000000000008",
+      "asked_count": 3,
+      "rating_avg": null,
+      "pinned": false
+    }
+  ]
+}

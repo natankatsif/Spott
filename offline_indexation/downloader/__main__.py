@@ -59,12 +59,14 @@ async def download_all(args: argparse.Namespace, registry: Registry) -> Download
     async with make_clients() as (client, insecure_client):
         downloader = Downloader(client, insecure_client, registry, args.data,
                                 delay=args.delay, refresh=args.refresh)
+        downloader.progress.set_total(len(docs))
 
         async def one_host(host, host_docs):
             async with semaphore:
                 await downloader.download_host(host, host_docs)
 
         await asyncio.gather(*(one_host(h, d) for h, d in by_host.items()))
+        downloader.progress.finish()
     return downloader
 
 

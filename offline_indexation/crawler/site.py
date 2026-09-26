@@ -21,6 +21,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from common.http import HTML_TYPES, RETRY_STATUSES, USER_AGENT, content_type, tls_failed
+from common.progress import Progress
 from common.registry import Registry, now
 from common.urls import (
     bare_host,
@@ -85,16 +86,23 @@ class SiteCrawler:
             await self._discover_wp_media()
 
         steps = 0
+        progress = Progress()
         try:
             while self.queue and self.stats["pages"] < self.site.max_pages:
+                if progress.cancelled():
+                    break
                 await self._visit(*self.queue.popleft())
                 steps += 1
+                # Pages to go: the queue while it is shorter than what max_pages still allows.
+                progress.update(self.stats["pages"],
+                                min(self.site.max_pages, self.stats["pages"] + len(self.queue)))
                 if steps % STATE_EVERY == 0:
                     self._save_state()
                     log.info("%s: pages=%d docs=%d queue=%d", self.site.id,
                              self.stats["pages"], self.stats["documents"], len(self.queue))
         finally:
             self._save_state()
+            progress.finish()
 
         if not self.queue:
             missing, removed = self.registry.record_crawl_missing(self.site.id, self.docs_seen)

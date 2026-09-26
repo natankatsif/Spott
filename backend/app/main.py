@@ -3,6 +3,8 @@
     uv run uvicorn app.main:app --reload --port 8000
 """
 
+import asyncio
+import functools
 import json
 import logging
 import os
@@ -23,6 +25,7 @@ from retrieval import (
     get_reranker_model,
     retrieve,
 )
+from retrieval.db import init_app_db
 from retrieval.tools import (
     TOOL_SCHEMAS,
     grep_tool,
@@ -32,8 +35,10 @@ from retrieval.tools import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from . import errors
-from .answering import answer_events, answer_question
+from . import admin, errors
+from .admin import PgAdminStore
+from .answering import answer_events, answer_question, replay_events
+from .answers import PgAnswers
 from .errors import ApiException, RateLimiter
 from .llm import LLM, LLMUnavailable, OpenAILLM
 from .pdf_source import PdfSource, make_clients
@@ -49,6 +54,7 @@ from .schemas import (
     SearchResponse,
     SearchResultItem,
     SearchTimings,
+    SuggestionList,
     ToolGrepRequest,
     ToolOpenRequest,
     ToolSearchRequest,
@@ -57,6 +63,7 @@ from .schemas import (
 )
 from .stats import corpus_stats
 from .store import PgStore
+from .suggestions import PgSuggestions
 from .wall import Wall
 
 log = logging.getLogger("backend")
@@ -64,6 +71,9 @@ log = logging.getLogger("backend")
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
                 if o.strip()]
 ASK_RATE_LIMIT = int(os.getenv("ASK_RATE_LIMIT", "10"))  # questions per minute per client
+# Quick questions are re-asked (LLM calls) when the index changes and daily; checked every this many seconds.
+SUGGESTIONS_EVERY_S = float(os.getenv("SUGGESTIONS_EVERY_S", "600"))
+SUGGESTIONS_RECHECK = os.getenv("SUGGESTIONS_RECHECK", "true").lower() in ("1", "true", "yes")
 FEEDBACK_DIR = Path(__file__).resolve().parents[2] / "data" / "feedback"
 
 
@@ -80,7 +90,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     pool = get_pool(min_size=2, max_size=10)
     app.state.pool = pool
     app.state.store = PgStore(pool)
+    try:  # app-state tables (sources, jobs, answers, feedback, suggestions, contacts)
+        with pool.connection() as conn:
+            init_app_db(conn)
+    except Exception as e:
+        log.warning("App tables not created: %s", e)
+    app.state.admin = PgAdminStore(pool)
+    app.state.answers = PgAnswers(pool)
+    app.state.suggestions = PgSuggestions(pool)
     http_clients = make_clients()
+    app.state.http = http_clients[0]
     app.state.pdf_source = PdfSource(*http_clients)
 
     log.info("Loading embedding model on %s...", device)
@@ -106,16 +125,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         log.warning("Could not query chunk count on startup: %s", e)
 
+    recheck = asyncio.create_task(recheck_suggestions()) if SUGGESTIONS_RECHECK else None
     yield
 
     log.info("Shutting down Municipal Assistant API...")
+    if recheck:
+        recheck.cancel()
     for client in http_clients:
         await client.aclose()
     pool.close()
 
 
+async def recheck_suggestions() -> None:
+    """Quick questions: candidates from the answers log (seeds while it is empty), each re-asked when the index
+    changed or a day has passed; one that is no longer answered and verified is dropped."""
+    while True:
+        try:
+            suggestions = app.state.suggestions
+            await run_in_threadpool(suggestions.refresh)
+            result = await run_in_threadpool(suggestions.recheck, functools.partial(
+                answer_question, app.state.store, get_llm(), pool=app.state.pool))
+            if result["checked"]:
+                log.info("quick questions re-checked: %s", result)
+        except Exception as e:
+            log.warning("quick questions not re-checked: %s", e)
+        await asyncio.sleep(SUGGESTIONS_EVERY_S)
+
+
 app = FastAPI(title="Chișinău Municipal Assistant", lifespan=lifespan)
 errors.install(app)
+app.include_router(admin.auth_router)
+app.include_router(admin.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,  # CORS_ORIGINS=* for the widget embedded on other sites
@@ -169,15 +209,36 @@ def health() -> HealthResponse:
 # ─────────────── answers ───────────────
 
 
+def cached_answer(req: AskRequest) -> AskResponse | None:
+    suggestions = getattr(app.state, "suggestions", None)
+    try:
+        return suggestions.cached(req) if suggestions is not None else None
+    except Exception as e:
+        log.warning("quick question cache not read: %s", e)
+        return None
+
+
 @app.post("/api/ask", response_model=AskResponse)
 async def ask(req: AskRequest, request: Request) -> AskResponse:
     pool, llm = prepare_ask(request)
+    if cached := await run_in_threadpool(cached_answer, req):
+        for event in replay_events(cached, req, on_done=answered):
+            if event["type"] == "done":
+                return AskResponse.model_validate(event["response"])
     try:
         return await run_in_threadpool(answer_question, app.state.store, llm, req, pool=pool,
-                                       on_done=app.state.wall.add)
+                                       on_done=answered)
     except LLMUnavailable as e:
         log.warning("LLM call failed: %s", e)
         raise ApiException(503, "unavailable", "LLM unavailable, try again") from e
+
+
+def answered(req: AskRequest, resp: AskResponse) -> None:
+    """Every answer: onto the question wall, and into `answers` for ratings and quick questions."""
+    app.state.wall.add(req, resp)
+    answers = getattr(app.state, "answers", None)
+    if answers is not None:
+        answers.record(req, resp)
 
 
 def sse(event: dict) -> str:
@@ -190,7 +251,10 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
     def events() -> Iterator[str]:  # sync: Starlette iterates it in a worker thread
         try:
-            for event in answer_events(app.state.store, llm, req, pool=pool, on_done=app.state.wall.add):
+            cached = cached_answer(req)
+            stream = replay_events(cached, req, on_done=answered) if cached else answer_events(
+                app.state.store, llm, req, pool=pool, on_done=answered)
+            for event in stream:
                 yield sse(event)
         except LLMUnavailable as e:
             log.warning("LLM call failed: %s", e)
@@ -205,7 +269,14 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 
 @app.post("/api/feedback", response_model=FeedbackResponse)
 def feedback(req: FeedbackRequest) -> FeedbackResponse:
-    record = req.model_dump() | {"ts": datetime.now(UTC).isoformat(timespec="seconds")}
+    """1-5 stars (or the older up/down vote), reason tags, comment. Stored in Postgres with the question, status,
+    cited documents and path of the answer; without a database (local UI work) appended to data/feedback."""
+    answers = getattr(app.state, "answers", None)
+    if answers is not None:
+        if not answers.rate(req):
+            raise ApiException(404, "not_found", f"Unknown answer {req.answer_id}")
+        return FeedbackResponse(ok=True)
+    record = req.model_dump() | {"rating": req.stars, "ts": datetime.now(UTC).isoformat(timespec="seconds")}
     FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
     with (FEEDBACK_DIR / f"{datetime.now(UTC):%Y-%m-%d}.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -227,6 +298,15 @@ async def document_file(doc_id: str) -> Response:
 @app.get("/api/wall", response_model=WallResponse)
 def wall(after: str | None = None, limit: int = Query(default=50, ge=1, le=200)) -> WallResponse:
     return app.state.wall.since(after, limit)
+
+
+@app.get("/api/suggestions", response_model=SuggestionList)
+async def suggestions(lang: str = Query("ro", pattern="^(ro|ru)$"), limit: int = Query(6, ge=1, le=20)) -> SuggestionList:
+    """Real questions we know we answer well (answered, verified, re-checked against the current index)."""
+    store = getattr(app.state, "suggestions", None)
+    if store is None:
+        return SuggestionList(items=[])
+    return SuggestionList(items=await run_in_threadpool(store.list, lang, limit))
 
 
 @app.get("/api/corpus/stats", response_model=CorpusStats)

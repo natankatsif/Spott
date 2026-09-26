@@ -1,0 +1,117 @@
+{
+  "sources": [
+    {
+      "id": 5,
+      "kind": "site",
+      "url": "https://dgaurf.md/",
+      "site_id": "dgaurf.md",
+      "category": "urban_utilities",
+      "start_urls": [
+        "https://dgaurf.md/"
+      ],
+      "max_depth": 4,
+      "max_pages": 2000,
+      "enabled": true,
+      "robots": "allowed",
+      "created_at": "2026-09-26T14:55:00+03:00",
+      "last_job": {
+        "id": 3,
+        "source_id": 5,
+        "kind": "crawl",
+        "status": "done",
+        "stage": "index",
+        "stage_done": 0,
+        "stage_total": 0,
+        "percent": 100.0,
+        "eta_s": null,
+        "started_at": "2026-09-26T15:02:11+03:00",
+        "finished_at": "2026-09-26T15:09:40+03:00",
+        "stats": {
+          "pages": 260,
+          "documents_found": 95,
+          "documents_downloaded": 95,
+          "files_parsed": 93,
+          "chunks": 260,
+          "lines": 1804,
+          "embeddings_reused": 241,
+          "embeddings_computed": 19,
+          "errors": 2
+        },
+        "log_tail": [
+          "Indexing finished in 41.2s:",
+          "  Documents indexed:   118",
+          "  Chunks:              260"
+        ],
+        "error": null
+      },
+      "chunks": 260
+    },
+    {
+      "id": 12,
+      "kind": "site",
+      "url": "https://acc.md/",
+      "site_id": "acc.md",
+      "category": "agency",
+      "start_urls": [
+        "https://acc.md/"
+      ],
+      "max_depth": 2,
+      "max_pages": 200,
+      "enabled": true,
+      "robots": "allowed",
+      "created_at": "2026-09-26T17:39:58+03:00",
+      "last_job": {
+        "id": 7,
+        "source_id": 12,
+        "kind": "crawl",
+        "status": "running",
+        "stage": "download",
+        "stage_done": 14,
+        "stage_total": 37,
+        "percent": 27.6,
+        "eta_s": 412.0,
+        "started_at": "2026-09-26T17:40:02+03:00",
+        "finished_at": null,
+        "stats": {},
+        "log_tail": [
+          "acc.md [13/37] downloaded https://acc.md/wp-content/uploads/2026/03/raport.pdf",
+          "acc.md [14/37] not_modified https://acc.md/wp-content/uploads/2025/12/plan.pdf"
+        ],
+        "error": null
+      },
+      "chunks": 0
+    },
+    {
+      "id": 1,
+      "kind": "site",
+      "url": "https://chisinau.md/",
+      "site_id": "chisinau.md",
+      "category": "city_hall",
+      "start_urls": [
+        "https://chisinau.md/"
+      ],
+      "max_depth": 4,
+      "max_pages": 2000,
+      "enabled": true,
+      "robots": "blocked",
+      "created_at": "2026-09-26T14:55:00+03:00",
+      "last_job": null,
+      "chunks": 0
+    },
+    {
+      "id": 41,
+      "kind": "document",
+      "url": "https://dgaurf.md/storage/dispozitia-nr.-251-d-din-02.07.2026.pdf",
+      "site_id": "dgaurf.md",
+      "category": null,
+      "start_urls": [],
+      "max_depth": null,
+      "max_pages": null,
+      "enabled": true,
+      "robots": "allowed",
+      "created_at": "2026-09-26T16:20:00+03:00",
+      "last_job": null,
+      "chunks": 0
+    }
+  ]
+}

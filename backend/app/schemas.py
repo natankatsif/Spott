@@ -7,13 +7,14 @@ is a contract change, not something to pass through silently.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from retrieval.config import RERANK_TOP_K
 
 Lang = Literal["ro", "ru"]
 SearchLang = Literal["ro", "ru", "en", "uk"]
 AskStatus = Literal["answered", "partial", "not_found", "conflict", "refused"]
-ErrorCode = Literal["validation_error", "not_found", "rate_limited", "unavailable", "not_implemented", "internal"]
+ErrorCode = Literal["validation_error", "unauthorized", "not_found", "conflict", "rate_limited", "unavailable",
+                    "not_implemented", "internal"]
 
 
 class Strict(BaseModel):
@@ -119,9 +120,25 @@ class TraceStep(Strict):
 
 class AnswerMeta(Strict):
     model: str | None
-    path: Literal["fast", "agent", "none"]
+    path: Literal["fast", "agent", "none", "cache"]  # cache: a quick question's checked answer, replayed
     latency_ms: float
     verified: bool  # quotes re-read from the index and claims checked against them
+
+
+class ContactCard(Strict):
+    """Who can help when the documents don't answer: every phone, e-mail and address is in its line_ids."""
+
+    name: str  # institution / department
+    area: str | None  # what it handles
+    phone: list[str]
+    email: list[str]
+    address: str | None
+    hours: str | None
+    url: str
+    site: str
+    reason: str  # why this contact, one sentence in the answer's language
+    line_ids: list[str]
+    deep_link: str
 
 
 class AskResponse(Strict):
@@ -140,20 +157,182 @@ class AskResponse(Strict):
     # The citation the UI opens right away in the source viewer (the question asks where exactly something
     # is written); null = only on click.
     focus_citation_id: str | None = None
+    contacts: list[ContactCard] = []  # for not_found / partial: who can help; empty otherwise
 
 
-# ─────────────── POST /api/feedback ───────────────
+# ─────────────── POST /api/feedback, GET /api/admin/feedback ───────────────
+
+FeedbackTag = Literal["wrong", "outdated", "incomplete", "wrong_source", "not_understood", "helpful"]
 
 
 class FeedbackRequest(Strict):
     answer_id: str = Field(min_length=1, max_length=200)
-    vote: Literal["up", "down"]
+    rating: int | None = Field(default=None, ge=1, le=5)
+    vote: Literal["up", "down"] | None = None  # older clients: up = 5 stars, down = 1
+    tags: list[FeedbackTag] = Field(default=[], max_length=6)
     comment: str | None = Field(default=None, max_length=2000)
     citation_id: str | None = Field(default=None, max_length=50)
+    session_id: str | None = Field(default=None, max_length=100)  # the same session rating again overwrites
+
+    @model_validator(mode="after")
+    def rating_or_vote(self) -> FeedbackRequest:
+        if self.rating is None and self.vote is None:
+            raise ValueError("rating (1-5) or vote is required")
+        return self
+
+    @property
+    def stars(self) -> int:
+        return self.rating if self.rating is not None else (5 if self.vote == "up" else 1)
 
 
 class FeedbackResponse(Strict):
     ok: bool
+
+
+class FeedbackItem(Strict):
+    answer_id: str
+    rating: int
+    tags: list[FeedbackTag]
+    comment: str | None
+    citation_id: str | None
+    question: str | None
+    lang: Lang | None
+    status: AskStatus | None
+    answer: str | None
+    doc_ids: list[str]
+    path: str | None
+    created_at: str
+    updated_at: str
+
+
+class FeedbackList(Strict):
+    items: list[FeedbackItem]  # lowest rating first, then newest
+
+
+class TagCount(Strict):
+    tag: FeedbackTag
+    count: int
+
+
+class FeedbackDay(Strict):
+    day: str  # YYYY-MM-DD
+    count: int
+    average: float
+
+
+class FeedbackStats(Strict):
+    count: int
+    average: float | None
+    per_star: dict[str, int]  # "1".."5"
+    top_tags: list[TagCount]
+    by_day: list[FeedbackDay]  # oldest first
+
+
+# ─────────────── GET /api/suggestions ───────────────
+
+
+class Suggestion(Strict):
+    id: int
+    question: str
+    lang: Lang
+    answer_id: str | None
+    asked_count: int
+    rating_avg: float | None
+    pinned: bool
+
+
+class SuggestionList(Strict):
+    items: list[Suggestion]
+
+
+class SuggestionCreate(Strict):
+    question: str = Field(min_length=10, max_length=120)
+    lang: Lang
+    pinned: bool = True
+
+
+# ─────────────── admin: login ───────────────
+
+
+class AdminLogin(Strict):
+    login: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class AdminSession(Strict):
+    token: str  # send as Authorization: Bearer <token>
+    login: str
+    expires_at: str  # ISO time; log in again after it
+
+
+class AdminMe(Strict):
+    login: str
+
+
+# ─────────────── admin: sources and jobs ───────────────
+
+JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
+
+
+class Job(Strict):
+    id: int
+    source_id: int | None  # null = all sources
+    kind: Literal["crawl", "refresh"]
+    status: JobStatus
+    stage: Literal["crawl", "download", "parse", "index"] | None
+    stage_done: int
+    stage_total: int
+    percent: float  # 0..100 over all stages: crawl 20, download 20, parse 40, index 20
+    eta_s: float | None
+    started_at: str | None
+    finished_at: str | None
+    stats: dict[str, int]  # pages, documents_found, documents_downloaded, files_parsed, chunks, lines, …
+    log_tail: list[str]  # last 50 lines of the running stage
+    error: str | None
+
+
+class JobList(Strict):
+    jobs: list[Job]
+
+
+class JobCreate(Strict):
+    kind: Literal["crawl", "refresh"]
+
+
+class SourceRow(Strict):
+    id: int
+    kind: Literal["site", "document"]
+    url: str
+    site_id: str  # domain
+    category: str | None
+    start_urls: list[str]
+    max_depth: int | None
+    max_pages: int | None
+    enabled: bool
+    robots: Literal["allowed", "blocked"]  # blocked: robots.txt forbids crawling, no crawl from the UI
+    created_at: str
+    last_job: Job | None
+    chunks: int  # in the index
+
+
+class SourceList(Strict):
+    sources: list[SourceRow]
+
+
+class SourceCreate(Strict):
+    kind: Literal["site", "document"]
+    url: str = Field(min_length=8, max_length=2000)
+    category: str | None = Field(default=None, max_length=50)
+    max_depth: int | None = Field(default=None, ge=0, le=10)
+    max_pages: int | None = Field(default=None, ge=1, le=20000)
+    start: bool = False  # queue a crawl right away
+
+
+class SourcePatch(Strict):
+    enabled: bool | None = None
+    max_depth: int | None = Field(default=None, ge=0, le=10)
+    max_pages: int | None = Field(default=None, ge=1, le=20000)
+    category: str | None = Field(default=None, max_length=50)
 
 
 # ─────────────── errors: body of every non-2xx response ───────────────

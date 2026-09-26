@@ -2,14 +2,10 @@
   "id": "mock-not-found-ru",
   "status": "not_found",
   "lang": "ru",
-  "answer": "В документах Примэрии нет информации о курсах дрессировки крокодилов в муниципальном приюте. Я отвечаю только по опубликованным документам, поэтому не буду угадывать. Возможно, стоит обратиться напрямую в Примэрию.",
+  "answer": "К сожалению, мы не можем ответить на этот вопрос по имеющимся документам. Думаем, вам поможет: Direcția Generală Mobilitate Urbană.",
   "sentences": [
     {
-      "text": "В документах Примэрии нет информации о курсах дрессировки крокодилов в муниципальном приюте.",
-      "cites": []
-    },
-    {
-      "text": "Я отвечаю только по опубликованным документам, поэтому не буду угадывать. Возможно, стоит обратиться напрямую в Примэрию.",
+      "text": "К сожалению, мы не можем ответить на этот вопрос по имеющимся документам. Думаем, вам поможет: Direcția Generală Mobilitate Urbană.",
       "cites": []
     }
   ],
@@ -44,5 +40,28 @@
     "latency_ms": 1810.0,
     "verified": true
   },
-  "focus_citation_id": null
+  "focus_citation_id": null,
+  "contacts": [
+    {
+      "name": "Direcția Generală Mobilitate Urbană",
+      "area": "Direcția Generală Mobilitate Urbană este o subdiviziune a Consiliului Municipal Chișinău, ce are în sarcina sa dezvoltarea infrastructurii urbane, care să permită utilizarea cu ușurință a oricărei mod",
+      "phone": [
+        "022-20-46-90",
+        "022 -20-46-58"
+      ],
+      "email": [
+        "dirtrans@pmc.md"
+      ],
+      "address": "ADRESA MD-2004, municipiul Chișinău, Str. Serghei Lazo, 18",
+      "hours": null,
+      "url": "https://mobilitatechisinau.md/",
+      "site": "mobilitatechisinau.md",
+      "reason": "Их страница на mobilitatechisinau.md ближе всего к вашему вопросу.",
+      "line_ids": [
+        "9a49692a0920120a7b33a5a52699d8577e462aff",
+        "bb1d881642bb4f3b0d3825d12a04370af7967499"
+      ],
+      "deep_link": "https://mobilitatechisinau.md/#:~:text=ANTICAMERA%20TEL%3A%20022-20-46-90%20FAX%3A%20022%20-20-46-58%20EMAIL%3A%20dirtrans%40pmc.md"
+    }
+  ]
 }

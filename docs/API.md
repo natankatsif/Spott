@@ -11,7 +11,9 @@
 | `POST /api/search`, `/api/tools/*`, `GET /health` | work |
 | `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
 | `POST /api/ask/stream` | works: real token streaming; each sentence is checked when the model closes it |
-| `POST /api/feedback` | works: stored in `data/feedback/<date>.jsonl` |
+| `POST /api/feedback` | works: 1–5 stars + reason tags, stored in Postgres `feedback` with the answer (without a DB: `data/feedback/<date>.jsonl`) |
+| `GET /api/suggestions` | works: quick questions from real questions, re-checked by their answers (seed list while the log is empty) |
+| `/api/admin/*` | works: login (credentials from env) → session token; sources, crawl jobs with progress (worker `python -m worker`), low ratings, quick questions |
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | `GET /api/wall` | works (in memory) |
 | `GET /api/corpus/stats` | works; without `registry.sqlite` on the machine, pages/documents come from the index |
@@ -71,8 +73,9 @@ Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. The
 | `nav_links[]` | `{title, url, kind: page\|service\|contact\|document, selector}`: where to go on the city hall sites. `selector` (widget only): CSS selector of the element to highlight when `url` is the page the user is on (`page_context.url`); otherwise `null` |
 | `followups[]` | suggested next questions, in `lang` |
 | `trace[]` | agent steps `{tool, input, summary, ms}`: for the "how I searched" panel. `summary` is in `lang` |
-| `meta` | `{model, path: fast\|agent\|none, latency_ms, verified}`. `verified` = quotes re-read from the DB and claims checked against them |
+| `meta` | `{model, path: fast\|agent\|none\|cache, latency_ms, verified}`. `verified` = quotes re-read from the DB and claims checked against them. `cache` = a quick question's checked answer, replayed |
 | `focus_citation_id` | citation to open right away in the source viewer, when the question asks where exactly something is written ("unde anume scrie…", "где именно написано…"). Prefers a PDF citation. `null` = open only on click |
+| `contacts[]` | for `not_found` / `partial` only (else `[]`): 1–2 real contacts from the corpus that can help, `{name, area, phone[], email[], address, hours, url, site, reason, line_ids[], deep_link}`. Every phone, e-mail and address is in `line_ids` (never invented). The answer text then ends with "Din păcate nu putem răspunde… Credem că vă poate ajuta: …" / "К сожалению… Думаем, вам поможет: …" (partial: "Pentru ce lipsește din documente…") |
 
 ### Citation
 
@@ -137,9 +140,46 @@ How the backend streams (task 10):
 
 ## `POST /api/feedback`
 ```json
-{ "answer_id": "…", "vote": "down", "comment": "sursa e veche", "citation_id": "c2" }
+{ "answer_id": "a_…", "rating": 2, "tags": ["outdated", "wrong_source"], "comment": "sursa e veche",
+  "citation_id": "c2", "session_id": "anon-7f3a" }
 ```
 → `{ "ok": true }`
+- `rating` 1–5 (or the older `vote`: `up` = 5, `down` = 1; one of them is required).
+- `tags` (optional): `wrong`, `outdated`, `incomplete`, `wrong_source`, `not_understood`, `helpful`.
+- Rating the same `answer_id` again from the same `session_id` overwrites the previous rating.
+- Unknown `answer_id` → 404. Stored with the question, status, cited doc_ids and `meta.path` of the answer.
+
+## `GET /api/suggestions?lang=ro&limit=6`
+→ `{ "items": [{ "id", "question", "lang", "answer_id", "asked_count", "rating_avg", "pinned" }] }` (mock: `mocks/suggestions.json`)
+- Chips on the empty screen and after an answer: real questions asked ≥ 2 times (or pinned by the admin), answered + verified with a citation, no rating ≤ 2 and average ≥ 4 if rated, nothing personal in them, 10–120 characters. Near-identical wordings are one question.
+- Every one is asked again when the index changes and at least daily; one that is no longer answered and verified disappears. Empty log → a seed list, through the same check.
+- Clicking one: send it to `/api/ask/stream` as usual. If it was checked against the current index, the answer is replayed at once (same events, `meta.path = "cache"`, a new answer id).
+
+## Admin: `/api/admin/*`
+**Login.** The login and password live in the server's env (`ADMIN_LOGIN`, `ADMIN_PASSWORD`). The UI shows a login form and sends:
+```
+POST /api/admin/login   { login, password } → { token, login, expires_at }   (mock: mocks/admin/session.json)
+GET  /api/admin/me      → { login }   (is the stored token still valid)
+```
+Every other admin call needs `Authorization: Bearer <token>`. The token is signed by the server and lasts 12 h (`ADMIN_SESSION_HOURS`); changing the password ends every session. Wrong login/password, a missing, expired or forged token → `401 unauthorized` (show the login form). More than 5 login attempts a minute from one IP → `429 rate_limited`. Without `ADMIN_LOGIN`/`ADMIN_PASSWORD` on the server the admin is off (always 401). Client: `adminLogin()` and the `admin*()` functions in `frontend/src/lib/api.ts`. Mocks: `mocks/admin/*.json`.
+```
+GET    /api/admin/sources                    → { sources: SourceRow[] }
+POST   /api/admin/sources                    { kind: "site"|"document", url, category?, max_depth?, max_pages?, start? } → 201 SourceRow
+PATCH  /api/admin/sources/{id}               { enabled?, max_depth?, max_pages?, category? } → SourceRow
+DELETE /api/admin/sources/{id}?purge=true    purge also removes its documents from the index → { ok: true }
+POST   /api/admin/sources/{id}/jobs          { kind: "crawl"|"refresh" } → 201 Job
+GET    /api/admin/jobs?status=running        → { jobs: Job[] }
+GET    /api/admin/jobs/{id}                  → Job   (poll every 1–2 s while running)
+POST   /api/admin/jobs/{id}/cancel           → Job   (queued: cancelled at once; running: stops after the current item)
+GET    /api/admin/feedback?max_rating=2&limit=50  → { items: FeedbackItem[] }  lowest first
+GET    /api/admin/feedback/stats             → { count, average, per_star{"1".."5"}, top_tags[{tag,count}], by_day[{day,count,average}] }
+POST   /api/admin/suggestions                { question, lang, pinned: true } → 201 Suggestion
+DELETE /api/admin/suggestions/{id}           hide it → { ok: true }
+```
+- `SourceRow` = `{id, kind, url, site_id, category, start_urls[], max_depth, max_pages, enabled, robots: allowed|blocked, created_at, last_job: Job|null, chunks}`.
+- `Job` = `{id, source_id, kind, status: queued|running|done|failed|cancelled, stage: crawl|download|parse|index, stage_done, stage_total, percent, eta_s, started_at, finished_at, stats{pages, documents_found, documents_downloaded, files_parsed, chunks, lines, embeddings_reused, embeddings_computed, errors}, log_tail[], error}`. `percent` over all stages: crawl 20, download 20, parse 40, index 20.
+- Rules: only `http(s)`; a site already added (same domain) → `409 conflict`; a `document` URL must answer with a PDF/DOC/DOCX content type (else 422). robots.txt is checked on add: if it forbids crawling, the source is kept with `robots=blocked` and a job can't be started (`409`). A second job while one is queued/running → 409.
+- The jobs run in a separate process next to uvicorn: `cd offline_indexation && uv run python -m worker`.
 
 ## `GET /api/documents/{doc_id}/file`
 - Returns the PDF (`application/pdf`) for the viewer: pdf.js + `bboxes` highlight. City hall sites don't send CORS headers, so the viewer can't load the originals directly: the backend fetches the document from its original `url` on request and passes it through (in-memory cache, nothing stored; a stored copy is used if the machine has one). Only documents in our index, only PDFs.
@@ -162,7 +202,9 @@ Useful for a "what search found" debug panel and for the demo before `/api/ask` 
 | `error` | HTTP | UI |
 |---|---|---|
 | `validation_error` | 422 | "question too long / empty" (FastAPI's default `{detail:[…]}` must be replaced with this shape) |
+| `unauthorized` | 401 | admin: wrong login/password or the session is over: show the login form |
 | `not_found` | 404 | unknown doc_id in viewer: open `deep_link` instead |
+| `conflict` | 409 | admin: duplicate source, robots.txt forbids crawling, a job already running |
 | `rate_limited` | 429 | "too many questions, wait N s" (QR-wall protection: suggested 10 questions/min per IP) |
 | `unavailable` | 503 | "service warming up / DB down, try again" |
 | `not_implemented` | 501 | feature not ready: hide it |

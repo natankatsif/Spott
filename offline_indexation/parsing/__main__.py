@@ -25,6 +25,7 @@ from docling.datamodel.base_models import ConversionStatus
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
 
+from common.progress import Progress
 from common.registry import Registry
 
 from .build import (
@@ -145,11 +146,16 @@ def main() -> None:
         parser = FileParser(registry, args.data, use_cache=args.rebuild)
         stats: Counter[str] = Counter()
         started = time.monotonic()
+        progress = Progress(total=len(files))
         for i, row in enumerate(files, 1):
+            if progress.cancelled():
+                break
             t = time.monotonic()
             outcome = parser.parse(row)
             stats[outcome] += 1
+            progress.advance(error=outcome == "failed")
             log.info("[%d/%d] %s %s %.1fs", i, len(files), outcome, row["path"], time.monotonic() - t)
+        progress.finish()
 
         print(f"\nThis run ({time.monotonic() - started:.0f}s):")
         for outcome in ("parsed", "failed", "unsupported"):

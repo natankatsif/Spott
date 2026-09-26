@@ -207,6 +207,122 @@ CREATE INDEX IF NOT EXISTS idx_act_relations_to ON act_relations(to_doc_id);
 """
 
 
+# Contacts extracted from the index by `python -m contacts`: part of the index (goes into the dump).
+CONTACTS_SQL = """
+CREATE TABLE IF NOT EXISTS contacts (
+    contact_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,              -- institution / department
+    area TEXT,                       -- what it handles, one sentence from the page
+    phone JSONB NOT NULL DEFAULT '[]',
+    email JSONB NOT NULL DEFAULT '[]',
+    address TEXT,
+    hours TEXT,
+    url TEXT NOT NULL,
+    site TEXT NOT NULL,
+    category TEXT,
+    doc_id TEXT NOT NULL,
+    line_ids JSONB NOT NULL,         -- every phone, e-mail and address is in one of these lines
+    is_general BOOLEAN NOT NULL DEFAULT FALSE,  -- the City Hall's general contact
+    embedding vector(1024)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_site ON contacts(site);
+"""
+
+# App state, not part of the index dump: sources the admin manages and their jobs, answers given, ratings,
+# quick questions. Created by the backend at startup and by the offline tools that use them.
+APP_SQL = """
+CREATE TABLE IF NOT EXISTS sources (
+    id BIGSERIAL PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('site', 'document')),
+    url TEXT NOT NULL,
+    site_id TEXT NOT NULL,           -- domain
+    category TEXT,
+    start_urls JSONB NOT NULL DEFAULT '[]',
+    max_depth INTEGER,
+    max_pages INTEGER,
+    delay REAL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    robots TEXT NOT NULL DEFAULT 'allowed' CHECK (robots IN ('allowed', 'blocked')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_job_id BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_site ON sources(site_id) WHERE kind = 'site';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_document ON sources(url) WHERE kind = 'document';
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id BIGSERIAL PRIMARY KEY,
+    source_id BIGINT,                -- NULL = all sources
+    kind TEXT NOT NULL CHECK (kind IN ('crawl', 'refresh')),
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled')),
+    cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+    stage TEXT,
+    stage_done INTEGER NOT NULL DEFAULT 0,
+    stage_total INTEGER NOT NULL DEFAULT 0,
+    percent REAL NOT NULL DEFAULT 0,
+    eta_s REAL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    stats JSONB NOT NULL DEFAULT '{}',
+    log_tail JSONB NOT NULL DEFAULT '[]',
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+CREATE TABLE IF NOT EXISTS answers (
+    answer_id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    session_id TEXT,
+    question TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    status TEXT NOT NULL,
+    verified BOOLEAN NOT NULL,
+    path TEXT NOT NULL,
+    citations INTEGER NOT NULL,
+    doc_ids JSONB NOT NULL DEFAULT '[]',
+    answer TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_answers_created ON answers(created_at);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    answer_id TEXT NOT NULL,
+    session_id TEXT NOT NULL DEFAULT '',
+    rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    tags JSONB NOT NULL DEFAULT '[]',
+    comment TEXT,
+    citation_id TEXT,
+    question TEXT,
+    lang TEXT,
+    status TEXT,
+    doc_ids JSONB NOT NULL DEFAULT '[]',
+    path TEXT,
+    answer TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (answer_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback(rating);
+
+CREATE TABLE IF NOT EXISTS suggestions (
+    id BIGSERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    hidden BOOLEAN NOT NULL DEFAULT FALSE,
+    asked_count INTEGER NOT NULL DEFAULT 0,
+    rating_avg REAL,
+    answer_id TEXT,
+    ok BOOLEAN NOT NULL DEFAULT FALSE,   -- the last re-check answered it, verified
+    checked_at TIMESTAMPTZ,
+    index_version TEXT,
+    cached JSONB,                        -- the last verified AskResponse, replayed on click
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (lang, question)
+);
+"""
+
+
 def init_db(conn: psycopg.Connection | None = None) -> None:
     own_conn = conn is None
     # No vector registration: on a fresh database the extension doesn't exist until INIT_SQL creates it.
@@ -214,6 +330,21 @@ def init_db(conn: psycopg.Connection | None = None) -> None:
     try:
         with c.cursor() as cur:
             cur.execute(INIT_SQL)
+            cur.execute(CONTACTS_SQL)
+            cur.execute(APP_SQL)
+    finally:
+        if own_conn:
+            c.close()
+
+
+def init_app_db(conn: psycopg.Connection | None = None) -> None:
+    """The app-state tables only (and contacts), on an existing index: what the backend needs at startup."""
+    own_conn = conn is None
+    c = conn or get_connection(autocommit=True)
+    try:
+        with c.cursor() as cur:
+            cur.execute(CONTACTS_SQL)
+            cur.execute(APP_SQL)
     finally:
         if own_conn:
             c.close()

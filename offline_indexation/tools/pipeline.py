@@ -28,6 +28,11 @@ STAGES = ("crawler", "downloader", "parsing", "pages_parsing", "chunking", "inde
 
 
 def allowed_sites(config: Path = OI_DIR / "data" / "sources" / "sites.toml") -> list[str]:
+    """The admin panel's crawlable sites; sites.toml while the database has none."""
+    from crawler.config import load_sites_from_db
+
+    if from_db := load_sites_from_db():
+        return [s.id for s in from_db if s.id not in EXCLUDED_SITES]
     with config.open("rb") as f:
         sites = tomllib.load(f).get("site", [])
     return [s["id"] for s in sites if s["id"] not in EXCLUDED_SITES]

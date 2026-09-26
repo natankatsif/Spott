@@ -1,0 +1,19 @@
+{
+  "id": 7,
+  "source_id": 12,
+  "kind": "crawl",
+  "status": "running",
+  "stage": "download",
+  "stage_done": 14,
+  "stage_total": 37,
+  "percent": 27.6,
+  "eta_s": 412.0,
+  "started_at": "2026-09-26T17:40:02+03:00",
+  "finished_at": null,
+  "stats": {},
+  "log_tail": [
+    "acc.md [13/37] downloaded https://acc.md/wp-content/uploads/2026/03/raport.pdf",
+    "acc.md [14/37] not_modified https://acc.md/wp-content/uploads/2025/12/plan.pdf"
+  ],
+  "error": null
+}

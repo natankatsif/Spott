@@ -85,3 +85,29 @@ def test_rate_limiter():
         limiter.check("1.2.3.4")
     assert (e.value.status, e.value.code) == (429, "rate_limited")
     assert 0 < e.value.retry_after_s <= 60
+
+
+class Ratings:
+    def __init__(self):
+        self.saved = []
+
+    def rate(self, req):
+        if req.answer_id != "a1":
+            return False
+        self.saved.append((req.answer_id, req.stars, req.tags, req.session_id))
+        return True
+
+
+def test_star_rating_with_tags_is_stored(client):
+    main.app.state.answers = ratings = Ratings()
+    try:
+        r = client.post("/api/feedback", json={"answer_id": "a1", "rating": 2, "tags": ["outdated", "wrong_source"],
+                                               "comment": "sursa e veche", "session_id": "s1"})
+        assert r.json() == {"ok": True}
+        client.post("/api/feedback", json={"answer_id": "a1", "vote": "up"})  # older clients: up = 5 stars
+        assert ratings.saved == [("a1", 2, ["outdated", "wrong_source"], "s1"), ("a1", 5, [], None)]
+        assert client.post("/api/feedback", json={"answer_id": "nope", "rating": 5}).status_code == 404
+        for bad in ({"answer_id": "a1"}, {"answer_id": "a1", "rating": 6}, {"answer_id": "a1", "rating": 3, "tags": ["meh"]}):
+            assert client.post("/api/feedback", json=bad).status_code == 422
+    finally:
+        main.app.state.answers = None

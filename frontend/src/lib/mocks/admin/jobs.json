@@ -1,0 +1,53 @@
+{
+  "jobs": [
+    {
+      "id": 7,
+      "source_id": 12,
+      "kind": "crawl",
+      "status": "running",
+      "stage": "download",
+      "stage_done": 14,
+      "stage_total": 37,
+      "percent": 27.6,
+      "eta_s": 412.0,
+      "started_at": "2026-09-26T17:40:02+03:00",
+      "finished_at": null,
+      "stats": {},
+      "log_tail": [
+        "acc.md [13/37] downloaded https://acc.md/wp-content/uploads/2026/03/raport.pdf",
+        "acc.md [14/37] not_modified https://acc.md/wp-content/uploads/2025/12/plan.pdf"
+      ],
+      "error": null
+    },
+    {
+      "id": 3,
+      "source_id": 5,
+      "kind": "crawl",
+      "status": "done",
+      "stage": "index",
+      "stage_done": 0,
+      "stage_total": 0,
+      "percent": 100.0,
+      "eta_s": null,
+      "started_at": "2026-09-26T15:02:11+03:00",
+      "finished_at": "2026-09-26T15:09:40+03:00",
+      "stats": {
+        "pages": 260,
+        "documents_found": 95,
+        "documents_downloaded": 95,
+        "files_parsed": 93,
+        "chunks": 260,
+        "lines": 1804,
+        "embeddings_reused": 241,
+        "embeddings_computed": 19,
+        "errors": 2
+      },
+      "log_tail": [
+        "Indexing finished in 41.2s:",
+        "  Documents indexed:   118",
+        "  Chunks:              260"
+      ],
+      "error": null
+    }
+  ]
+}

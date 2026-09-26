@@ -127,14 +127,11 @@ def main() -> None:
         return
 
     indexer = Indexer(conn=conn, batch_size=args.batch_size)
+    if indexer.progress.cancelled():  # the admin cancelled the job before indexing: leave the index as it is
+        print("Cancelled before indexing.")
+        return
     started = time.monotonic()
     all_chunks = [c for chunks in by_doc.values() for c in chunks]
-    log.info("Indexing %d chunks from %d documents", len(all_chunks), len(by_doc))
-
-    indexer.upsert_documents(by_doc)  # before chunks: chunks.doc_id references documents
-    reused, computed = indexer.embed_and_store(all_chunks)
-
-    # Collect and index lines
     all_lines = []
     for c in all_chunks:
         c_lines = c.get("lines")
@@ -142,6 +139,12 @@ def main() -> None:
             c_lines = extract_chunk_lines(c)
             c["lines"] = c_lines
         all_lines.extend(c_lines)
+    indexer.progress.set_total(len(all_chunks) + len(all_lines))
+    log.info("Indexing %d chunks from %d documents", len(all_chunks), len(by_doc))
+
+    indexer.upsert_documents(by_doc)  # before chunks: chunks.doc_id references documents
+    reused, computed = indexer.embed_and_store(all_chunks)
+
     log.info("Indexing %d lines from %d chunks", len(all_lines), len(all_chunks))
     reused_lines, computed_lines = indexer.embed_and_store_lines(all_lines)
 
@@ -169,6 +172,7 @@ def main() -> None:
     print(f"  Stale chunks removed:{stale:>4}")
     print(f"  Stale lines removed: {stale_lines:>4}")
     print(f"  Orphans removed:     {orphans_removed}")
+    indexer.progress.finish()
 
     conn.close()
 

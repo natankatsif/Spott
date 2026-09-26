@@ -15,8 +15,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+from common.progress import Progress
 from common.registry import Registry
-from crawler.config import load_sites
+from crawler.config import load_sites, load_sites_from_db
 from parsing.html import parse_site_pages
 
 log = logging.getLogger("pages_parsing")
@@ -47,7 +48,8 @@ def run_pages_parsing(
         print("No pages to parse.")
         return {}
 
-    categories = {s.id: s.category for s in load_sites(config_path)} if config_path.exists() else {}
+    sites_list = load_sites_from_db() or (load_sites(config_path) if config_path.exists() else [])
+    categories = {s.id: s.category for s in sites_list}
     out_dir = data_dir / "parsed" / "pages"
 
     # Group by site for site-wide boilerplate filtering
@@ -57,10 +59,14 @@ def run_pages_parsing(
 
     started = time.monotonic()
     total_stats = {"parsed": 0, "empty": 0, "failed": 0, "boilerplate_dropped": 0}
+    progress = Progress(total=len(pages))
 
     for site_id, site_rows in by_site.items():
+        if progress.cancelled():
+            break
         t = time.monotonic()
         stats = parse_site_pages(site_rows, data_dir, categories, registry, out_dir)
+        progress.advance(len(site_rows))
         for k in total_stats:
             total_stats[k] += stats.get(k, 0)
         log.info(
@@ -72,6 +78,7 @@ def run_pages_parsing(
             time.monotonic() - t,
         )
 
+    progress.finish()
     print(f"\nPages parsing run ({time.monotonic() - started:.1f}s):")
     print(f"  parsed:              {total_stats['parsed']}")
     print(f"  empty (<200 chars):  {total_stats['empty']}")

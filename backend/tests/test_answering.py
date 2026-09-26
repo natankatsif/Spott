@@ -37,10 +37,14 @@ LINES = {
 
 
 class FakeStore:
-    def __init__(self, meta=None, following=(), has_file=True, links=(), later=()):
+    def __init__(self, meta=None, following=(), has_file=True, links=(), later=(), contacts=(), general=None):
         self.meta, self.following, self.has_file = meta or {}, list(following), has_file
         self.links, self.later = list(links), list(later)
+        self.contacts, self.general = list(contacts), general
         self.anchors, self.grep_patterns = [], []
+
+    def contacts_near(self, question, limit=8):
+        return self.contacts, self.general
 
     def chunk_meta(self, ids):
         return {i: self.meta[i] for i in ids if i in self.meta}
@@ -610,3 +614,57 @@ def test_common_keywords_are_ignored():
     rows.append({"chunk_id": "c7", "line_id": "x", "text": "Consorțiul ARHICON, Chișinău"})
     ranked, lines = answering.keyword_ranking(rows, ["Chișinău", "ARHICON"])
     assert ranked == [{"chunk_id": "c7"}] and [r["line_id"] for r in lines] == ["x"]
+
+
+# ─────────────── task 09: contacts when there's no answer ───────────────
+
+DGMU = {"contact_id": "k1", "name": "Direcția Generală Mobilitate Urbană", "area": "infrastructura urbană",
+        "phone": ["022-20-46-90"], "email": ["dirtrans@pmc.md"], "address": None, "hours": None,
+        "url": "https://mobilitatechisinau.md/", "site": "mobilitatechisinau.md", "line_ids": ["m1"],
+        "is_general": False, "similarity": 0.53,
+        "line_texts": ["ANTICAMERA TEL: 022-20-46-90 FAX: 022 -20-46-58 EMAIL: dirtrans@pmc.md"]}
+CITY_HALL = DGMU | {"contact_id": "k0", "name": "Primăria municipiului Chișinău", "phone": ["022 20 17 07"], "email": [],
+                    "url": "https://example.md/contacte", "site": "example.md", "line_ids": ["g1"], "is_general": True,
+                    "similarity": 0.0, "line_texts": ["Primăria municipiului Chișinău, tel. 022 20 17 07"]}
+
+
+def test_no_answer_names_a_contact_from_the_corpus(monkeypatch, tmp_path):
+    store = FakeStore(contacts=[DGMU | {"similarity": 0.40}, DGMU | {"contact_id": "k2", "similarity": 0.52}])
+    _, r, _ = run("Кто отвечает за парковки?", [CONTACTS], model("not_found"), monkeypatch, tmp_path, store=store)
+
+    assert r.status == "not_found" and len(r.contacts) == 1  # the one under the threshold is left out
+    card = r.contacts[0]
+    assert all(any(x in t for t in DGMU["line_texts"]) for x in card.phone + card.email)  # verbatim in its lines
+    assert card.line_ids == ["m1"] and card.reason == "Их страница на mobilitatechisinau.md ближе всего к вашему вопросу."
+    assert card.deep_link.startswith("https://mobilitatechisinau.md/#:~:text=")
+    assert r.answer == ("К сожалению, мы не можем ответить на этот вопрос по имеющимся документам. "
+                        "Думаем, вам поможет: Direcția Generală Mobilitate Urbană.")
+
+
+def test_a_site_the_search_found_counts_a_little_more(monkeypatch, tmp_path):
+    other = DGMU | {"contact_id": "k3", "name": "Regia Autosalubritate", "site": "autosalubritate.md", "similarity": 0.47}
+    near_site = DGMU | {"similarity": 0.44}  # below the threshold alone; its site's chunk was found, not used
+    page = CONTACTS | {"site": "mobilitatechisinau.md"}
+    _, r, _ = run("Unde se plătește parcarea?", [page], model("not_found"), monkeypatch, tmp_path,
+                  store=FakeStore(contacts=[other, near_site]))
+    assert [c.name for c in r.contacts] == ["Direcția Generală Mobilitate Urbană", "Regia Autosalubritate"]
+
+
+def test_general_contact_when_nothing_is_close(monkeypatch, tmp_path):
+    store = FakeStore(contacts=[DGMU | {"similarity": 0.33}], general=CITY_HALL)
+    _, r, _ = run("Unde e piscina?", [], model("not_found"), monkeypatch, tmp_path, store=store)
+    assert [c.name for c in r.contacts] == ["Primăria municipiului Chișinău"]
+    assert r.contacts[0].reason == "Contactul general al Primăriei municipiului Chișinău."
+    assert r.answer.startswith("Din păcate nu putem răspunde") and r.answer.endswith("Primăria municipiului Chișinău.")
+
+
+def test_partial_answer_ends_with_the_contact_and_answered_has_none(monkeypatch, tmp_path):
+    store = FakeStore(contacts=[DGMU])
+    events, r, _ = run("Cât costă și unde depun?", [DECISION], model("partial", sentences=[s("Taxa e 200 lei.", "S1.L1")],
+                       missing=["Locul depunerii nu este indicat."]), monkeypatch, tmp_path, store=store)
+    assert r.sentences[-1].text == "Pentru ce lipsește din documente, credem că vă poate ajuta: " \
+                                   "Direcția Generală Mobilitate Urbană."
+    assert [e["index"] for e in events if e["type"] == "sentence"] == [0, 1, 2]  # streamed after the model's sentences
+    _, r, _ = run("Cât costă?", [DECISION], model(sentences=[s("Taxa e 200 lei.", "S1.L1")]), monkeypatch, tmp_path,
+                  store=store)
+    assert r.status == "answered" and r.contacts == []

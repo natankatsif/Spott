@@ -14,7 +14,8 @@ from .schemas import ApiError, ErrorCode
 log = logging.getLogger("backend.errors")
 
 CODE_BY_STATUS: dict[int, ErrorCode] = {
-    404: "not_found", 422: "validation_error", 429: "rate_limited", 501: "not_implemented", 503: "unavailable",
+    401: "unauthorized", 404: "not_found", 409: "conflict", 422: "validation_error", 429: "rate_limited",
+    501: "not_implemented", 503: "unavailable",
 }
 
 

@@ -44,6 +44,7 @@ from .schemas import (
     ChecklistStep,
     Citation,
     ConflictInfo,
+    ContactCard,
     NavLink,
     TraceStep,
 )
@@ -100,6 +101,21 @@ VERIFY_SUMMARY = {
 }
 SOURCE_PAGE = {"ro": "Pagina sursei pe {site}", "ru": "Страница источника на {site}"}
 FRESH_SUMMARY = {"ro": "Caut acte mai noi… găsite {n}", "ru": "Ищу более новые документы… найдено {n}"}
+# No answer (or a partial one): 1-2 real contacts from the corpus that can help (docs/tasks/09 §4).
+CONTACT_MIN_SIMILARITY = 0.46  # question ↔ "name. area. page" (bge-m3); unrelated questions score 0.31-0.36
+CONTACT_SITE_BOOST = 0.05  # the site of chunks the search found but the answer didn't use
+MAX_CONTACTS = 2
+NO_ANSWER_CONTACTS = {
+    "ro": "Din păcate nu putem răspunde la această întrebare din documentele disponibile. "
+          "Credem că vă poate ajuta: {names}.",
+    "ru": "К сожалению, мы не можем ответить на этот вопрос по имеющимся документам. Думаем, вам поможет: {names}.",
+}
+PARTIAL_CONTACTS = {"ro": "Pentru ce lipsește din documente, credem că vă poate ajuta: {names}.",
+                    "ru": "По тому, чего нет в документах, думаем, вам поможет: {names}."}
+CONTACT_REASON = {"ro": "Pagina lor de pe {site} este cea mai apropiată de întrebarea dvs.",
+                  "ru": "Их страница на {site} ближе всего к вашему вопросу."}
+GENERAL_REASON = {"ro": "Contactul general al Primăriei municipiului Chișinău.",
+                  "ru": "Общий контакт Примэрии муниципия Кишинэу."}
 # Said by code, not by the model, when a cited act ended another one (or was ended) and the answer left it out.
 REPEAL_NOTE = {"ro": "De reținut: {act} prevede: „{quote}”", "ru": "Обратите внимание: в документе «{act}» сказано: «{quote}»"}
 MAX_NOTE_QUOTE = 300
@@ -214,6 +230,7 @@ class Store(Protocol):
     def grep_lines(self, keywords: list[str], limit: int = 200) -> list[dict]: ...
     def dated_lines(self, doc_ids: list[str]) -> dict[str, list[str]]: ...
     def relation_lines(self, doc_ids: list[str]) -> list[dict]: ...
+    def contacts_near(self, question: str, limit: int = 8) -> tuple[list[dict], dict | None]: ...
 
 
 @dataclass
@@ -1112,6 +1129,42 @@ def stream_sentences(built: Built, start: int = 0, sent: set[str] | None = None)
             yield {"type": "citation", "citation": c.model_dump()}
 
 
+def contact_card(c: dict, reason: str) -> ContactCard:
+    shown = c["phone"] + c["email"]
+    line = next((t for t in c.get("line_texts", []) if any(x in t for x in shown)), "")
+    return ContactCard(name=c["name"], area=c.get("area"), phone=c["phone"], email=c["email"], address=c.get("address"),
+                       hours=c.get("hours"), url=c["url"], site=c["site"], reason=reason, line_ids=c["line_ids"],
+                       deep_link=make_deep_link(c["url"], line, None) or c["url"])
+
+
+def pick_contacts(store: Store, question: str, lang: str, unused_sites: set[str]) -> list[ContactCard]:
+    """The nearest contact cards above the threshold (a site the search found but the answer didn't use counts a
+    little more), else the City Hall's general card; [] when the corpus has neither."""
+    try:
+        near, general = store.contacts_near(question)
+    except Exception as e:  # a missing contacts table or model must not break the answer
+        log.warning("contacts not searched: %s", e)
+        return []
+    scored = sorted(((c["similarity"] + (CONTACT_SITE_BOOST if c["site"] in unused_sites else 0.0), c) for c in near),
+                    key=lambda sc: -sc[0])
+    chosen = [c for score, c in scored if score >= CONTACT_MIN_SIMILARITY][:MAX_CONTACTS]
+    if chosen:
+        return [contact_card(c, CONTACT_REASON[lang].format(site=c["site"])) for c in chosen]
+    return [contact_card(general, GENERAL_REASON[lang])] if general else []
+
+
+def with_contacts(response: AskResponse, contacts: list[ContactCard]) -> AskResponse:
+    """The not_found text becomes "we can't answer, but this contact can"; a partial answer ends with it."""
+    names = ", ".join(c.name for c in contacts)
+    if response.status == "not_found":
+        sentences = [AnswerSentence(text=NO_ANSWER_CONTACTS[response.lang].format(names=names), cites=[])]
+    else:
+        sentences = response.sentences + [
+            AnswerSentence(text=PARTIAL_CONTACTS[response.lang].format(names=names), cites=[])]
+    return response.model_copy(update={"contacts": contacts, "sentences": sentences,
+                                       "answer": " ".join(s.text for s in sentences)})
+
+
 def answer_model(req: AskRequest) -> str | None:
     return DEEP_MODEL if req.mode == "deep" else None
 
@@ -1205,9 +1258,15 @@ def answer_events(
             trace.append(TraceStep(tool="verify", input="", ms=0.0,
                                    summary=VERIFY_SUMMARY[lang].format(ok=sum(checked), total=len(checked))))
 
-    response = built.response.model_copy(update={
+    response = built.response
+    if response.status in ("not_found", "partial"):
+        cited_sites = {c.site for c in response.citations}
+        contacts = pick_contacts(store, req.question, lang, {c["site"] for c in g.chunks if c.get("site")} - cited_sites)
+        if contacts:
+            response = with_contacts(response, contacts)
+    response = response.model_copy(update={
         "trace": trace,
-        "meta": built.response.meta.model_copy(update={"latency_ms": round((time.perf_counter() - started) * 1000, 1)}),
+        "meta": response.meta.model_copy(update={"latency_ms": round((time.perf_counter() - started) * 1000, 1)}),
     })
     built.response = response
     if replaced:  # the second answer: streamed whole if nothing was shown yet, else it arrives with done
@@ -1249,6 +1308,24 @@ def answer_events(
         "ttft_ms": ttft_ms,
         "total_ms": response.meta.latency_ms,
     })
+    if on_done:
+        on_done(req, response)
+    yield {"type": "done", "response": response.model_dump()}
+
+
+def replay_events(cached: AskResponse, req: AskRequest,
+                  on_done: Callable[[AskRequest, AskResponse], None] | None = None) -> Iterator[dict]:
+    """A quick question's checked answer replayed with the same events as a live one: a new answer id (ratings
+    stay per answer), meta.path = "cache"."""
+    started = time.perf_counter()
+    answer_id = f"a_{uuid.uuid4().hex[:16]}"
+    yield {"type": "start", "id": answer_id, "lang": cached.lang}
+    for step in cached.trace:
+        yield {"type": "trace", "step": step.model_dump()}
+    response = cached.model_copy(update={"id": answer_id, "meta": cached.meta.model_copy(update={"path": "cache"})})
+    yield from stream_sentences(Built(response))
+    response = response.model_copy(update={"meta": response.meta.model_copy(
+        update={"latency_ms": round((time.perf_counter() - started) * 1000, 1)})})
     if on_done:
         on_done(req, response)
     yield {"type": "done", "response": response.model_dump()}

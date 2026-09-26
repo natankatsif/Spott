@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .common import CONTAINER, ROOT, db_env, utf8_console
 
-TABLES = ("documents", "chunks", "lines", "act_relations")
+TABLES = ("documents", "chunks", "lines", "act_relations", "contacts")  # contacts: python -m contacts
 # Dumps made before the indexer filled chunks.ord have 0 everywhere; the position is the first block.
 ORD_BACKFILL = (
     "UPDATE chunks SET ord = (block_ids->>0)::int "

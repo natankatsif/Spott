@@ -10,6 +10,7 @@ import notFoundRu from "./mocks/ask/not-found-ru.json";
 import partialRo from "./mocks/ask/partial-ro.json";
 import refusedRo from "./mocks/ask/refused-ro.json";
 import corpusStatsMock from "./mocks/corpus-stats.json";
+import suggestionsMock from "./mocks/suggestions.json";
 import wallMock from "./mocks/wall.json";
 
 export type Lang = "ro" | "ru";
@@ -17,7 +18,9 @@ export type SearchLang = "ro" | "ru" | "en" | "uk";
 export type AskStatus = "answered" | "partial" | "not_found" | "conflict" | "refused";
 export type ErrorCode =
   | "validation_error"
+  | "unauthorized" // admin endpoints without the token
   | "not_found"
+  | "conflict" // admin: duplicate source, robots.txt forbids crawling, a job already running
   | "rate_limited"
   | "unavailable"
   | "not_implemented"
@@ -119,7 +122,7 @@ export type TraceStep = {
 
 export type AnswerMeta = {
   model: string | null;
-  path: "fast" | "agent" | "none";
+  path: "fast" | "agent" | "none" | "cache"; // cache: a quick question's checked answer, replayed
   latency_ms: number;
   verified: boolean;
 };
@@ -139,6 +142,22 @@ export type AskResponse = {
   meta: AnswerMeta;
   /** Citation to open right away in the source viewer ("where exactly is it written?"); null = on click. */
   focus_citation_id: string | null;
+  /** not_found / partial: who can help, real contacts from the corpus; [] otherwise. */
+  contacts: ContactCard[];
+};
+
+export type ContactCard = {
+  name: string; // institution / department
+  area: string | null; // what it handles
+  phone: string[];
+  email: string[];
+  address: string | null;
+  hours: string | null;
+  url: string;
+  site: string;
+  reason: string; // why this contact, one sentence in the answer's language
+  line_ids: string[]; // every phone, e-mail and address is in these lines
+  deep_link: string;
 };
 
 // ─────────────── POST /api/ask/stream (SSE) ───────────────
@@ -196,11 +215,105 @@ export type StreamEvent =
 
 // ─────────────── POST /api/feedback ───────────────
 
+export type FeedbackTag = "wrong" | "outdated" | "incomplete" | "wrong_source" | "not_understood" | "helpful";
+
 export type FeedbackRequest = {
   answer_id: string;
-  vote: "up" | "down";
+  rating?: number; // 1..5 stars; rating again from the same session_id overwrites
+  vote?: "up" | "down"; // older clients: up = 5, down = 1 (rating or vote is required)
+  tags?: FeedbackTag[];
   comment?: string | null;
   citation_id?: string | null;
+  session_id?: string | null;
+};
+
+// ─────────────── GET /api/suggestions (quick questions) ───────────────
+
+export type Suggestion = {
+  id: number;
+  question: string;
+  lang: Lang;
+  answer_id: string | null;
+  asked_count: number;
+  rating_avg: number | null;
+  pinned: boolean;
+};
+
+export type SuggestionList = { items: Suggestion[] };
+
+// ─────────────── /api/admin/* ───────────────
+// POST /api/admin/login with the login/password from the server's env (ADMIN_LOGIN / ADMIN_PASSWORD) → session
+// token (12 h). Every other admin call: Authorization: Bearer <token>; 401 → show the login form again.
+
+export type AdminLogin = { login: string; password: string };
+export type AdminSession = { token: string; login: string; expires_at: string };
+
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+export type Job = {
+  id: number;
+  source_id: number | null; // null = all sources
+  kind: "crawl" | "refresh";
+  status: JobStatus;
+  stage: "crawl" | "download" | "parse" | "index" | null;
+  stage_done: number;
+  stage_total: number;
+  percent: number; // 0..100 over all stages: crawl 20, download 20, parse 40, index 20
+  eta_s: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  stats: Record<string, number>; // pages, documents_found, documents_downloaded, files_parsed, chunks, lines, …
+  log_tail: string[];
+  error: string | null;
+};
+
+export type SourceRow = {
+  id: number;
+  kind: "site" | "document";
+  url: string;
+  site_id: string;
+  category: string | null;
+  start_urls: string[];
+  max_depth: number | null;
+  max_pages: number | null;
+  enabled: boolean;
+  robots: "allowed" | "blocked"; // blocked: no crawl from the UI
+  created_at: string;
+  last_job: Job | null;
+  chunks: number;
+};
+
+export type SourceCreate = {
+  kind: "site" | "document";
+  url: string;
+  category?: string;
+  max_depth?: number;
+  max_pages?: number;
+  start?: boolean;
+};
+
+export type FeedbackItem = {
+  answer_id: string;
+  rating: number;
+  tags: FeedbackTag[];
+  comment: string | null;
+  citation_id: string | null;
+  question: string | null;
+  lang: Lang | null;
+  status: AskStatus | null;
+  answer: string | null;
+  doc_ids: string[];
+  path: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FeedbackStats = {
+  count: number;
+  average: number | null;
+  per_star: Record<string, number>; // "1".."5"
+  top_tags: { tag: FeedbackTag; count: number }[];
+  by_day: { day: string; count: number; average: number }[];
 };
 
 // ─────────────── errors: body of every non-2xx response ───────────────
@@ -388,7 +501,55 @@ export async function wall(after?: string): Promise<WallResponse> {
   return get<WallResponse>(`/api/wall${after ? `?after=${encodeURIComponent(after)}` : ""}`);
 }
 
+export async function suggestions(lang: Lang, limit = 6): Promise<SuggestionList> {
+  if (isMock()) return { items: (suggestionsMock as unknown as SuggestionList).items.filter((s) => s.lang === lang) };
+  return get<SuggestionList>(`/api/suggestions?lang=${lang}&limit=${limit}`);
+}
+
 export async function corpusStats(): Promise<CorpusStats> {
   if (isMock()) return corpusStatsMock as unknown as CorpusStats;
   return get<CorpusStats>("/api/corpus/stats");
 }
+
+// ─────────────── admin client ───────────────
+// const session = await adminLogin({ login, password }); keep session.token (e.g. sessionStorage);
+// every call below takes it. ApiRequestError with status 401 = session over, log in again.
+
+async function adminCall<T>(token: string, method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}/api/admin${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return (await checked(res)).json() as Promise<T>;
+}
+
+export const adminLogin = (req: AdminLogin) => post<AdminSession>("/api/admin/login", req);
+export const adminMe = (token: string) => adminCall<{ login: string }>(token, "GET", "/me");
+
+export const adminSources = (token: string) => adminCall<{ sources: SourceRow[] }>(token, "GET", "/sources");
+export const adminAddSource = (token: string, req: SourceCreate) => adminCall<SourceRow>(token, "POST", "/sources", req);
+export const adminPatchSource = (
+  token: string,
+  id: number,
+  patch: { enabled?: boolean; max_depth?: number; max_pages?: number; category?: string },
+) => adminCall<SourceRow>(token, "PATCH", `/sources/${id}`, patch);
+export const adminDeleteSource = (token: string, id: number, purge = false) =>
+  adminCall<{ ok: boolean }>(token, "DELETE", `/sources/${id}${purge ? "?purge=true" : ""}`);
+
+export const adminStartJob = (token: string, sourceId: number, kind: "crawl" | "refresh") =>
+  adminCall<Job>(token, "POST", `/sources/${sourceId}/jobs`, { kind });
+export const adminJobs = (token: string, status?: JobStatus) =>
+  adminCall<{ jobs: Job[] }>(token, "GET", `/jobs${status ? `?status=${status}` : ""}`);
+/** Poll every 1–2 s while status is queued or running. */
+export const adminJob = (token: string, id: number) => adminCall<Job>(token, "GET", `/jobs/${id}`);
+export const adminCancelJob = (token: string, id: number) => adminCall<Job>(token, "POST", `/jobs/${id}/cancel`);
+
+export const adminFeedback = (token: string, maxRating = 2, limit = 50) =>
+  adminCall<{ items: FeedbackItem[] }>(token, "GET", `/feedback?max_rating=${maxRating}&limit=${limit}`);
+export const adminFeedbackStats = (token: string) => adminCall<FeedbackStats>(token, "GET", "/feedback/stats");
+
+export const adminPinSuggestion = (token: string, question: string, lang: Lang) =>
+  adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned: true });
+export const adminHideSuggestion = (token: string, id: number) =>
+  adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);
