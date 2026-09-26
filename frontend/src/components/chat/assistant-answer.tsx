@@ -8,9 +8,13 @@ import {
   BookOpenIcon,
   ScanSearchIcon,
   CheckIcon,
+  ClockIcon,
   CopyIcon,
   FileSearchIcon,
   ListTreeIcon,
+  MailIcon,
+  MapPinIcon,
+  PhoneIcon,
   SearchIcon,
   ShieldCheckIcon,
   TextSearchIcon,
@@ -46,7 +50,7 @@ import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import { CitationPager } from "@/components/chat/citation-pager";
 import { canPreview, LocateBadge, useSourcePreview } from "@/components/chat/source-preview";
-import type { Citation, TraceStep } from "@/lib/api";
+import type { Citation, ContactCard, TraceStep } from "@/lib/api";
 import { sendFeedback } from "@/lib/api";
 import type { AnswerView } from "@/lib/chat-transport";
 import type { UIText } from "@/lib/i18n";
@@ -153,6 +157,47 @@ function StatusNote({ view, t }: { view: AnswerView; t: UIText }) {
   );
 }
 
+// "Where to go": phones to call, e-mails, the address on Google Maps, the hours; the name links to where it is written.
+function ContactBlock({ contact: c }: { contact: ContactCard }) {
+  const inCity = c.address && /chi[șs]in[ăa]u|кишин/i.test(c.address) ? c.address : `${c.address}, Chișinău`;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2">
+      <a className="font-medium hover:underline" href={c.deep_link} rel="noreferrer" target="_blank">
+        {c.name}
+      </a>
+      {c.phone.map((p) => (
+        <a className="flex items-center gap-2 text-brand" href={`tel:${p.replace(/[^\d+]/g, "")}`} key={p}>
+          <PhoneIcon className="size-3.5 shrink-0" />
+          {p}
+        </a>
+      ))}
+      {c.email.map((e) => (
+        <a className="flex items-center gap-2 text-brand" href={`mailto:${e}`} key={e}>
+          <MailIcon className="size-3.5 shrink-0" />
+          {e}
+        </a>
+      ))}
+      {c.address && (
+        <a
+          className="flex items-center gap-2 text-brand"
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inCity)}`}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <MapPinIcon className="size-3.5 shrink-0" />
+          {c.address}
+        </a>
+      )}
+      {c.hours && (
+        <span className="flex items-center gap-2 text-muted-foreground">
+          <ClockIcon className="size-3.5 shrink-0" />
+          {c.hours}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function AssistantAnswer({
   view,
   streaming,
@@ -255,13 +300,11 @@ export function AssistantAnswer({
         {/* phones: one citation at a time (swipe or ← →) instead of a list */}
         {!streaming && view.citations.length > 0 && <CitationPager citations={view.citations} className="lg:hidden" t={t} />}
 
-        {a && a.nav_links.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        {a && a.contacts.length > 0 && (
+          <div className="flex flex-col gap-2 text-sm">
             <span className="text-muted-foreground">{t.whereToGo}:</span>
-            {a.nav_links.map((l) => (
-              <a className="text-brand underline underline-offset-2" href={l.url} key={l.url} rel="noreferrer" target="_blank">
-                {l.title}
-              </a>
+            {a.contacts.map((c) => (
+              <ContactBlock contact={c} key={`${c.name}-${c.url}`} />
             ))}
           </div>
         )}

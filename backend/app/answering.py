@@ -121,6 +121,7 @@ FRESH_SUMMARY = {"ro": "Caut acte mai noi… găsite {n}", "ru": "Ищу бол�
 CONTACT_MIN_SIMILARITY = 0.46  # question ↔ "name. area. page" (bge-m3); unrelated questions score 0.31-0.36
 CONTACT_SITE_BOOST = 0.05  # the site of chunks the search found but the answer didn't use
 MAX_CONTACTS = 2
+MAX_CONTACTS_IN_ANSWER = 3  # the ones the answer model copies from the lines when asked where to go
 NO_ANSWER_CONTACTS = {
     "ro": "Din păcate nu putem răspunde la această întrebare din documentele disponibile. "
           "Credem că vă poate ajuta: {names}.",
@@ -177,6 +178,10 @@ contractor, coordinator vs designer) and web pages vs acts are never a conflict.
 - checklist: only for "how do I get / apply for / register" questions whose procedure is in the lines: title, \
 steps, documents to bring, fee, deadline, each with refs (unknown fee/deadline null), plus 1-2 summary sentences. \
 Else null.
+- contacts: only when the person has to call, write or go somewhere (asks where to go, whom to contact, a phone, \
+e-mail, address or opening hours, or what they ask is done in person): up to 3 offices from the lines that handle \
+exactly this, each with its phones, e-mails, address and hours copied exactly from its lines (refs = those lines, \
+null / [] for what the lines don't give). Never invent or complete a contact. Otherwise [].
 - translations: every cited line not in {language}, translated. followups: up to 3 short next questions these \
 sources answer.
 - search_ro: a short Romanian query of the documents' own nouns for the newest documents on the topic \
@@ -215,6 +220,10 @@ ANSWER_SCHEMA = _obj({
         "fee": _nullable(_BACKED),
         "deadline": _nullable(_BACKED),
     })),
+    "contacts": {"type": "array", "items": _obj({
+        "name": {"type": "string"}, "phone": _STRINGS, "email": _STRINGS,
+        "address": {"type": ["string", "null"]}, "hours": {"type": ["string", "null"]}, "refs": _STRINGS,
+    })},
     "translations": {"type": "array", "items": _obj({"ref": {"type": "string"}, "text": {"type": "string"}})},
     "followups": _STRINGS,
     "locate": {"type": "boolean"},
@@ -582,6 +591,7 @@ class ResponseBuilder:
                     sentences.append(AnswerSentence(text=text.strip(), cites=[]))
                     verified.append(True)
 
+        contacts = self.contacts(data.get("contacts"))
         self.citations = [c.model_copy(update={"translation": self.translations.get(self.first_ref[c.id])})
                           if c.quote_lang != self.lang else c for c in self.citations]
         cited_chunks = [self.lines[r][0].chunk for r in self.cited]
@@ -600,6 +610,7 @@ class ResponseBuilder:
             trace=trace,
             meta=meta.model_copy(update={"verified": all(verified + checklist_verified)}),
             focus_citation_id=self.focus(sentences) if data.get("locate") else None,
+            contacts=contacts,
         )
         return Built(response, verified, self.dropped)
 
@@ -657,6 +668,38 @@ class ResponseBuilder:
             fee=backed_text(data.get("fee")),
             deadline=backed_text(data.get("deadline")),
         )
+
+    def contacts(self, items: list[dict] | None) -> list[ContactCard]:
+        """Where to call or go, as the model copied it from the lines: a phone or e-mail is kept only if it is in
+        the cited lines, an address or hours only if their numbers are; a card with nothing left is dropped."""
+        cards = []
+        for item in (items or [])[:MAX_CONTACTS_IN_ANSWER]:
+            refs = self.valid(item.get("refs"))
+            name = (item.get("name") or "").strip()
+            if not refs or not name:
+                continue
+            texts = [self.lines[r][1]["text"] for r in refs]
+            digits = ["".join(ch for ch in t if ch.isdigit()) for t in texts]
+            joined = " ".join(texts).casefold()
+            phone = [p.strip() for p in item.get("phone") or []
+                     if len(d := "".join(ch for ch in p if ch.isdigit())) >= 5 and any(d in x for x in digits)]
+            email = [e.strip() for e in item.get("email") or [] if e.strip() and e.strip().casefold() in joined]
+            address, hours = ((v or "").strip() or None for v in (item.get("address"), item.get("hours")))
+            address = address if address and numbers_backed(address, texts) else None
+            hours = hours if hours and numbers_backed(hours, texts) else None
+            if not (phone or email or address):
+                continue
+            for r in refs:
+                self.cite(r)
+            source, first = self.lines[refs[0]]
+            c = source.chunk
+            url = c.get("url") or ""
+            cards.append(ContactCard(
+                name=name, area=None, phone=phone, email=email, address=address, hours=hours, url=url,
+                site=c.get("site") or "", reason="", line_ids=[lid for r in refs if (lid := self.lines[r][1].get("line_id"))],
+                deep_link=make_deep_link(url, first["text"], first.get("page") if c.get("kind") == "file" else None)
+                or url))
+        return cards
 
     def nav_links(self, chunks: list[dict]) -> list[NavLink]:
         """Where to go on the city hall sites: the cited pages, or the pages that publish the cited files."""
@@ -1353,7 +1396,7 @@ def answer_events(
                                    summary=VERIFY_SUMMARY[lang].format(ok=sum(checked), total=len(checked))))
 
     response = built.response
-    if response.status in ("not_found", "partial"):
+    if response.status in ("not_found", "partial") and not response.contacts:
         cited_sites = {c.site for c in response.citations}
         contacts = pick_contacts(store, req.question, lang, {c["site"] for c in g.chunks if c.get("site")} - cited_sites)
         if contacts:

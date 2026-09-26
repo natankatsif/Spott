@@ -161,7 +161,9 @@ class AskResponse(Strict):
     # The citation the UI opens right away in the source viewer (the question asks where exactly something
     # is written); null = only on click.
     focus_citation_id: str | None = None
-    contacts: list[ContactCard] = []  # for not_found / partial: who can help; empty otherwise
+    # who can help: copied from the cited lines when the person has to call or go somewhere, else for
+    # not_found / partial the nearest contact cards; empty otherwise
+    contacts: list[ContactCard] = []
 
 
 # ─────────────── POST /api/feedback, GET /api/admin/feedback ───────────────

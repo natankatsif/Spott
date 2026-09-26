@@ -78,10 +78,10 @@ class FakeStore:
 
 
 def model(verdict="answered", sentences=(), missing=(), conflict=None, checklist=None, translations=(),
-          followups=(), locate=False, search_ro=""):
+          followups=(), locate=False, search_ro="", contacts=()):
     return {"verdict": verdict, "sentences": list(sentences), "missing": list(missing), "conflict": conflict,
             "checklist": checklist, "translations": list(translations), "followups": list(followups),
-            "locate": locate, "search_ro": search_ro}
+            "locate": locate, "search_ro": search_ro, "contacts": list(contacts)}
 
 
 def s(text, *refs):
@@ -713,3 +713,23 @@ def test_a_question_routed_to_search_is_answered_from_the_documents(monkeypatch,
     llm = routed("search")
     _, r, _ = run("Cât costă?", [DECISION], llm, monkeypatch, tmp_path)
     assert r.trace and llm.user is not None
+
+
+def test_where_to_go_is_copied_from_the_lines_and_checked(monkeypatch, tmp_path):
+    monkeypatch.setitem(LINES, "c3", [
+        {"line_id": "l7", "idx": 0, "text": "Tel: 022 000 000, e-mail: info@dgaurf.md", "page": None, "bboxes": []},
+        {"line_id": "l8", "idx": 1, "text": "Adresa: str. Pușkin 22, luni-vineri 8:00-17:00", "page": None,
+         "bboxes": []}])
+    data = model(sentences=[s("Vă puteți adresa la DGAURF.", "S1.L1")], contacts=[
+        {"name": "DGAURF", "phone": ["022 000 000", "022 999 999"], "email": ["info@dgaurf.md", "x@y.md"],
+         "address": "str. Pușkin 22", "hours": "luni-vineri 8:00-17:00", "refs": ["S1.L1", "S1.L2"]},
+        {"name": "Invented", "phone": ["022 123 456"], "email": [], "address": None, "hours": None, "refs": ["S1.L1"]},
+    ])
+    _, r, _ = run("Unde sun la DGAURF?", [CONTACTS], data, monkeypatch, tmp_path)
+    [card] = r.contacts
+    assert (card.name, card.phone, card.email, card.address, card.hours) == (
+        "DGAURF", ["022 000 000"], ["info@dgaurf.md"], "str. Pușkin 22", "luni-vineri 8:00-17:00")
+    assert card.line_ids == ["l7", "l8"] and card.url == "https://dgaurf.md/contacte"
+    _, r, _ = run("Cât costă?", [DECISION], model(sentences=[s("Taxa este de 200 lei.", "S1.L1")]),
+                  monkeypatch, tmp_path)
+    assert r.contacts == []  # not asked where to go: no block
