@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app import main, preview
 
 QUOTE = "Direcția generală arhitectură va selecta compania prin procedura de achiziții publice"
-PAGE = f"""<!doctype html><html><head><title>Anunț</title><base href="https://evil.example/">
+PAGE = """<!doctype html><html><head><title>Anunț</title><base href="https://evil.example/">
 <meta http-equiv="refresh" content="0;url=https://evil.example/"><script>alert(1)</script>
 <link rel="stylesheet" href="/css/site.css"></head>
 <body onload="steal()"><h1>Anunț</h1><p>Text înainte.</p><p><span>Direcția generală</span> arhitectură va

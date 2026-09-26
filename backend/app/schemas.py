@@ -179,7 +179,7 @@ class FeedbackRequest(Strict):
     session_id: str | None = Field(default=None, max_length=100)  # the same session rating again overwrites
 
     @model_validator(mode="after")
-    def rating_or_vote(self) -> FeedbackRequest:
+    def rating_or_vote(self) -> "FeedbackRequest":  # quoted: Python 3.12 evaluates annotations eagerly
         if self.rating is None and self.vote is None:
             raise ValueError("rating (1-5) or vote is required")
         return self
@@ -392,7 +392,7 @@ class SourceRow(Strict):
 
 class SourceList(Strict):
     sources: list[SourceRow]
-    totals: CorpusTotals  # the same as /api/corpus/stats totals: the page header needs no second call
+    totals: "CorpusTotals"  # the same as /api/corpus/stats totals: the page header needs no second call
 
 
 class SourceCreate(Strict):

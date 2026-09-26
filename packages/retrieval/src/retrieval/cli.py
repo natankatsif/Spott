@@ -85,7 +85,7 @@ def git_rev() -> str:
         return subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"], cwd=repo_root(), stderr=subprocess.DEVNULL, text=True
         ).strip()
-    except OSError, subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         return "unknown"
 
 
@@ -438,7 +438,7 @@ def main(argv: list[str] | None = None) -> None:
         while True:
             try:
                 line = input("❯ ")
-            except EOFError, KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 console.print()
                 break
             try:
