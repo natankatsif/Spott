@@ -1,0 +1,9 @@
+[tool.uv.workspace]
+members = ["offline_indexation", "backend", "packages/retrieval"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "UP", "I", "SIM"]

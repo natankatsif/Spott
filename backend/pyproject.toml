@@ -5,5 +5,28 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141.1",
+    "retrieval",
     "uvicorn[standard]>=0.54.0",
 ]
+
+[tool.uv.sources]
+retrieval = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.5.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "UP", "I", "SIM"]

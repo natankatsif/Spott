@@ -1,6 +1,6 @@
-"""Tests for indexing/search.py: FTS query building, sanitization, stop words, without database."""
+"""Pure unit tests for search: FTS query building, deduplication, and RRF fusion without DB or models."""
 
-from indexing.search import build_fts_query
+from retrieval.search import build_fts_query, deduplicate_results, rrf_fuse
 
 
 def test_build_fts_query_romanian_stop_words_and_or():
@@ -45,14 +45,11 @@ def test_build_fts_query_special_characters_sanitized():
 
 def test_build_fts_query_empty_and_short():
     assert build_fts_query("") == ""
-    # Short words fallback
     tsq = build_fts_query("ce e")
     assert "ce" in tsq or tsq == ""
 
 
 def test_deduplicate_results_prefers_act_over_page():
-    from indexing.search import deduplicate_results
-
     items = [
         {
             "chunk_id": "c_page",
@@ -85,8 +82,6 @@ def test_deduplicate_results_prefers_act_over_page():
 
 
 def test_deduplicate_results_prefers_higher_rrf_for_same_kind():
-    from indexing.search import deduplicate_results
-
     items = [
         {
             "chunk_id": "p1",
@@ -113,8 +108,6 @@ def test_deduplicate_results_prefers_higher_rrf_for_same_kind():
 
 
 def test_deduplicate_results_preserves_unique():
-    from indexing.search import deduplicate_results
-
     items = [
         {"chunk_id": "c1", "content_hash": "h1", "kind": "file", "rrf_score": 0.02, "text": "T1"},
         {"chunk_id": "c2", "content_hash": "h2", "kind": "file", "rrf_score": 0.05, "text": "T2"},
@@ -124,3 +117,21 @@ def test_deduplicate_results_preserves_unique():
     deduped = deduplicate_results(items, k=2)
     assert len(deduped) == 2
     assert [d["chunk_id"] for d in deduped] == ["c2", "c3"]
+
+
+def test_rrf_fuse():
+    vec = [
+        {"chunk_id": "c1", "text": "Doc 1"},
+        {"chunk_id": "c2", "text": "Doc 2"},
+    ]
+    fts = [
+        {"chunk_id": "c2", "text": "Doc 2"},
+        {"chunk_id": "c3", "text": "Doc 3"},
+    ]
+    fused = rrf_fuse(vec, fts, k=60)
+    assert len(fused) == 3
+    # c2 is in both, so it has higher RRF score than c1 and c3
+    assert fused[0]["chunk_id"] == "c2"
+    assert fused[0]["vec_rank"] == 2
+    assert fused[0]["fts_rank"] == 1
+    assert fused[0]["rrf_score"] > fused[1]["rrf_score"]
