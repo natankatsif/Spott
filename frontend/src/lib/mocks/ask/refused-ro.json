@@ -1,0 +1,26 @@
+{
+  "id": "mock-refused-ro",
+  "status": "refused",
+  "lang": "ro",
+  "answer": "Pot răspunde doar la întrebări despre documentele și serviciile Primăriei Chișinău.",
+  "sentences": [
+    {
+      "text": "Pot răspunde doar la întrebări despre documentele și serviciile Primăriei Chișinău.",
+      "cites": []
+    }
+  ],
+  "citations": [],
+  "conflict": null,
+  "checklist": null,
+  "nav_links": [],
+  "followups": [
+    "Cum obțin certificatul de urbanism?"
+  ],
+  "trace": [],
+  "meta": {
+    "model": "gpt-mock",
+    "path": "none",
+    "latency_ms": 640.0,
+    "verified": false
+  }
+}

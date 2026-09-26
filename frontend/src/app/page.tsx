@@ -39,7 +39,7 @@ export default function Home() {
     setLoading(true);
     setError(false);
     try {
-      const response = await ask(text, lang);
+      const response = await ask({ question: text, lang });
       setMessages((m) => [...m, { role: "assistant", response }]);
     } catch {
       setError(true);
@@ -84,7 +84,7 @@ export default function Home() {
                       <a href={c.url} target="_blank" rel="noreferrer" className="underline">
                         {c.document_title}
                       </a>
-                      {c.location && `, ${c.location}`} — «{c.passage}»
+                      {c.location && `, ${c.location}`} — «{c.quote}»
                     </li>
                   ))}
                 </ul>

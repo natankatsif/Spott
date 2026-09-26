@@ -1,0 +1,66 @@
+{
+  "id": "mock-crosslingual-ru",
+  "status": "answered",
+  "lang": "ru",
+  "answer": "Рядом с остановкой на улице Чуфля обустроили территорию для ожидания пассажиров и зону отдыха вдоль тротуара; её дополнят городской мебелью — скамейками, урнами и качелями.",
+  "sentences": [
+    {
+      "text": "Рядом с остановкой на улице Чуфля обустроили территорию для ожидания пассажиров и зону отдыха вдоль тротуара; её дополнят городской мебелью — скамейками, урнами и качелями.",
+      "cites": [
+        "c1"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "id": "c1",
+      "doc_id": "page:proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea",
+      "chunk_id": "d3f98365c76a081be40eaadbc695b2fcd31d16b5",
+      "line_ids": [
+        "3b15258bde3c35c0698066483a1d9135a2ff02ea"
+      ],
+      "kind": "page",
+      "document_title": "PV 1200: Amenajarea trotuarului pe strada Ciuflea",
+      "doc_type": "page",
+      "act_number": null,
+      "published": null,
+      "location": null,
+      "page": null,
+      "quote": "S-a amenajat și teritoriul stației de așteptare a pasagerilor, precum și spațiul de agrement lateral trotuarului, care urmează să fie completat cu grupuri de mobilier urban, bănci, urne și leagăne.",
+      "quote_lang": "ro",
+      "translation": "Также обустроена территория станции ожидания пассажиров и зона отдыха вдоль тротуара, которую дополнят группами городской мебели: скамейками, урнами и качелями.",
+      "url": "https://proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea",
+      "deep_link": "https://proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea#:~:text=S-a%20amenajat%20%C8%99i%20teritoriul%20sta%C8%9Biei%20de",
+      "found_on": "https://proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea",
+      "site": "proiecte.chisinau.md",
+      "file_url": null,
+      "bboxes": []
+    }
+  ],
+  "conflict": null,
+  "checklist": null,
+  "nav_links": [
+    {
+      "title": "Проекты: благоустройство улицы Чуфля",
+      "url": "https://proiecte.chisinau.md/ro/pv-1200-amenajarea-trotuarului-pe-strada-ciuflea",
+      "kind": "page"
+    }
+  ],
+  "followups": [
+    "Когда закончат работы на улице Чуфля?"
+  ],
+  "trace": [
+    {
+      "tool": "search",
+      "input": "что установят возле остановки",
+      "summary": "5 результатов, лучший: proiecte.chisinau.md (RO)",
+      "ms": 131.0
+    }
+  ],
+  "meta": {
+    "model": "gpt-mock",
+    "path": "fast",
+    "latency_ms": 1540.0,
+    "verified": true
+  }
+}

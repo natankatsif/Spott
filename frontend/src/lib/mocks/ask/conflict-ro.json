@@ -1,0 +1,119 @@
+{
+  "id": "mock-conflict-ro",
+  "status": "conflict",
+  "lang": "ro",
+  "answer": "Decizia din martie 2020 prevedea crearea unui Consorțiu internațional pentru supravegherea elaborării Planului urbanistic general. Decizia ulterioară din iulie 2021 stabilește că elaboratorul Planului este selectat prin achiziții publice de Direcția generală arhitectură, urbanism și relații funciare. Verificați decizia mai nouă: documentele nu spun explicit dacă prevederea din 2020 a fost modificată.",
+  "sentences": [
+    {
+      "text": "Decizia din martie 2020 prevedea crearea unui Consorțiu internațional pentru supravegherea elaborării Planului urbanistic general.",
+      "cites": [
+        "c1"
+      ]
+    },
+    {
+      "text": "Decizia ulterioară din iulie 2021 stabilește că elaboratorul Planului este selectat prin achiziții publice de Direcția generală arhitectură, urbanism și relații funciare.",
+      "cites": [
+        "c2"
+      ]
+    },
+    {
+      "text": "Verificați decizia mai nouă: documentele nu spun explicit dacă prevederea din 2020 a fost modificată.",
+      "cites": []
+    }
+  ],
+  "citations": [
+    {
+      "id": "c1",
+      "doc_id": "file:dgaurf.md/storage/decizia_nr_41_din_05_03_2020_-cu_privire_la_elaborarea_strategiei.pdf",
+      "chunk_id": "9ca97d0cd676708895951970aca82a5f9aadaf98",
+      "line_ids": [
+        "ca8a07e9a59621dc8e9c3a92473bc73d341e1fe9"
+      ],
+      "kind": "file",
+      "document_title": "Decizia nr. 4/1 din 05.03.2020 cu privire la elaborarea Strategiei de dezvoltare",
+      "doc_type": "decizie",
+      "act_number": "4/1",
+      "published": "2020-03-05",
+      "location": "pct. 1",
+      "page": 1,
+      "quote": "1. Primarul General al municipiului Chișinău domnul Ion Ceban va asigura, până la data de 01.04.2020, crearea unui Consorțiu internațional și a unui Grup de lucru pentru supravegherea procesului de elaborare a Strategiei de dezvoltare a municipiului Chișinău și a Planului Urbanistic General",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://dgaurf.md/storage/decizia_nr_41_din_05_03_2020_-cu_privire_la_elaborarea_strategiei.pdf",
+      "deep_link": "https://dgaurf.md/storage/decizia_nr_41_din_05_03_2020_-cu_privire_la_elaborarea_strategiei.pdf#page=1",
+      "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+      "site": "dgaurf.md",
+      "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_41_din_05_03_2020_-cu_privire_la_elaborarea_strategiei.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 87.7,
+          "t": 429.5,
+          "r": 551.5,
+          "b": 520.8,
+          "page_width": 595.2,
+          "page_height": 841.92
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "doc_id": "file:dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+      "chunk_id": "d770e7f3c41f5a87d202bcf8c5ee67fe49de0be4",
+      "line_ids": [
+        "4b4465084b69fd92fbbe7a46d127106733c56fdd"
+      ],
+      "kind": "file",
+      "document_title": "Decizia nr. 79 din 27.07.2021 cu privire la caietul de sarcini",
+      "doc_type": "decizie",
+      "act_number": "79",
+      "published": "2021-07-27",
+      "location": "pct. 2",
+      "page": 1,
+      "quote": "2. Direcția generală arhitectură, urbanism și relații funciare va selecta compania sau consorțiul de companii care va elabora Planul urbanistic general prin intermediul procedurii de achiziții publice.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+      "deep_link": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf#page=1",
+      "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+      "site": "dgaurf.md",
+      "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 100.8,
+          "t": 578.3,
+          "r": 569.5,
+          "b": 620.9,
+          "page_width": 595.8,
+          "page_height": 842.4
+        }
+      ]
+    }
+  ],
+  "conflict": {
+    "kind": "contradiction",
+    "explanation": "Două decizii descriu diferit organizarea elaborării Planului urbanistic general; cea din 2021 este mai nouă, dar nu abrogă explicit decizia din 2020.",
+    "citation_ids": [
+      "c1",
+      "c2"
+    ],
+    "preferred_citation_id": "c2"
+  },
+  "checklist": null,
+  "nav_links": [
+    {
+      "title": "Documentații de urbanism — DGAURF",
+      "url": "https://dgaurf.md/ro/documentatii-de-urbanism",
+      "kind": "page"
+    }
+  ],
+  "followups": [],
+  "trace": [],
+  "meta": {
+    "model": "gpt-mock",
+    "path": "agent",
+    "latency_ms": 3120.0,
+    "verified": true
+  }
+}

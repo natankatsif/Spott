@@ -1,0 +1,203 @@
+{
+  "id": "mock-checklist-ro",
+  "status": "answered",
+  "lang": "ro",
+  "answer": "Dacă copilul este deja înscris într-o școală din Moldova, înregistrarea se face printr-un formular primit de la școală, fără documente justificative.",
+  "sentences": [
+    {
+      "text": "Dacă copilul este deja înscris într-o școală din Moldova, înregistrarea se face printr-un formular primit de la școală, fără documente justificative.",
+      "cites": [
+        "c1",
+        "c4"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "id": "c1",
+      "doc_id": "file:help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "chunk_id": "344ab75498dc79186b55e4b09e4c53c91b3ae746",
+      "line_ids": [
+        "11e04139fdb30e17744c58895105b13663cbc519"
+      ],
+      "kind": "file",
+      "document_title": "Anunț din 01.03.2025: înregistrarea copiilor în sistemul educațional",
+      "doc_type": "anunt",
+      "act_number": null,
+      "published": "2025-03-01",
+      "location": null,
+      "page": 1,
+      "quote": "Pasul 1: Școala va distribui un formular pentru fiecare copil tuturor părinților sau tutorilor legali. Formularul va fi disponibil în limba română, rusă și ucraineană și va conține informații de bază privind starea de înscriere a copilului.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "deep_link": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf#page=1",
+      "found_on": "https://help.chisinau.md/incepand-cu-1-martie-2025-toti-copiii-de-varsta-scolara-aflati-sub-protectie-temporara-trebuie-sa-fie-inregistrati-oficial-in-sistemul-educational/ro_information-for-parents-on-recording-enrolment-status/",
+      "site": "help.chisinau.md",
+      "file_url": "/api/documents/file%3Ahelp.chisinau.md%2Fwp-content%2Fuploads%2F2025%2F06%2Fro_information-for-parents-on-recording-enrolment-status.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 35,
+          "t": 459.2,
+          "r": 553,
+          "b": 535.2,
+          "page_width": 595.5,
+          "page_height": 842.25
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "doc_id": "file:help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "chunk_id": "344ab75498dc79186b55e4b09e4c53c91b3ae746",
+      "line_ids": [
+        "e05217fb7a34ced5aab3f1a22b3a27a0bd47d2a3"
+      ],
+      "kind": "file",
+      "document_title": "Anunț din 01.03.2025: înregistrarea copiilor în sistemul educațional",
+      "doc_type": "anunt",
+      "act_number": null,
+      "published": "2025-03-01",
+      "location": null,
+      "page": 1,
+      "quote": "Pasul 2: Trebuie să completați și să semnați formularul (un formular per copil) și să îl transmiteți la administrația școlii.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "deep_link": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf#page=1",
+      "found_on": "https://help.chisinau.md/incepand-cu-1-martie-2025-toti-copiii-de-varsta-scolara-aflati-sub-protectie-temporara-trebuie-sa-fie-inregistrati-oficial-in-sistemul-educational/ro_information-for-parents-on-recording-enrolment-status/",
+      "site": "help.chisinau.md",
+      "file_url": "/api/documents/file%3Ahelp.chisinau.md%2Fwp-content%2Fuploads%2F2025%2F06%2Fro_information-for-parents-on-recording-enrolment-status.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 35,
+          "t": 564.2,
+          "r": 553,
+          "b": 598.2,
+          "page_width": 595.5,
+          "page_height": 842.25
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "doc_id": "file:help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "chunk_id": "344ab75498dc79186b55e4b09e4c53c91b3ae746",
+      "line_ids": [
+        "5ebf5d232d50d44534da2c28121a9e1fa3d1251b"
+      ],
+      "kind": "file",
+      "document_title": "Anunț din 01.03.2025: înregistrarea copiilor în sistemul educațional",
+      "doc_type": "anunt",
+      "act_number": null,
+      "published": "2025-03-01",
+      "location": null,
+      "page": 1,
+      "quote": "Pasul 3: Nu sunt necesare alte acțiuni decât dacă școala solicită informații suplimentare.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "deep_link": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf#page=1",
+      "found_on": "https://help.chisinau.md/incepand-cu-1-martie-2025-toti-copiii-de-varsta-scolara-aflati-sub-protectie-temporara-trebuie-sa-fie-inregistrati-oficial-in-sistemul-educational/ro_information-for-parents-on-recording-enrolment-status/",
+      "site": "help.chisinau.md",
+      "file_url": "/api/documents/file%3Ahelp.chisinau.md%2Fwp-content%2Fuploads%2F2025%2F06%2Fro_information-for-parents-on-recording-enrolment-status.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 35,
+          "t": 627.2,
+          "r": 553,
+          "b": 661.2,
+          "page_width": 595.5,
+          "page_height": 842.25
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "doc_id": "file:help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "chunk_id": "344ab75498dc79186b55e4b09e4c53c91b3ae746",
+      "line_ids": [
+        "3189e434273e63261437f07c35c1db05fc14f5b7"
+      ],
+      "kind": "file",
+      "document_title": "Anunț din 01.03.2025: înregistrarea copiilor în sistemul educațional",
+      "doc_type": "anunt",
+      "act_number": null,
+      "published": "2025-03-01",
+      "location": null,
+      "page": 1,
+      "quote": "Dacă copilul este înscris într-o școală din Republica Moldova, nu sunt necesare documente justificative.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf",
+      "deep_link": "https://help.chisinau.md/wp-content/uploads/2025/06/ro_information-for-parents-on-recording-enrolment-status.pdf#page=1",
+      "found_on": "https://help.chisinau.md/incepand-cu-1-martie-2025-toti-copiii-de-varsta-scolara-aflati-sub-protectie-temporara-trebuie-sa-fie-inregistrati-oficial-in-sistemul-educational/ro_information-for-parents-on-recording-enrolment-status/",
+      "site": "help.chisinau.md",
+      "file_url": "/api/documents/file%3Ahelp.chisinau.md%2Fwp-content%2Fuploads%2F2025%2F06%2Fro_information-for-parents-on-recording-enrolment-status.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 84,
+          "t": 679.2,
+          "r": 472,
+          "b": 710.2,
+          "page_width": 595.5,
+          "page_height": 842.25
+        }
+      ]
+    }
+  ],
+  "conflict": null,
+  "checklist": {
+    "title": "Înregistrarea statutului de înscriere a copilului",
+    "steps": [
+      {
+        "text": "Primiți de la școală formularul pentru fiecare copil (în română, rusă sau ucraineană).",
+        "cites": [
+          "c1"
+        ]
+      },
+      {
+        "text": "Completați și semnați formularul — câte unul pentru fiecare copil.",
+        "cites": [
+          "c2"
+        ]
+      },
+      {
+        "text": "Transmiteți formularul administrației școlii.",
+        "cites": [
+          "c2"
+        ]
+      },
+      {
+        "text": "Alte acțiuni nu sunt necesare, decât dacă școala cere informații suplimentare.",
+        "cites": [
+          "c3"
+        ]
+      }
+    ],
+    "documents_needed": [],
+    "fee": null,
+    "deadline": null
+  },
+  "nav_links": [
+    {
+      "title": "Anunț pe help.chisinau.md",
+      "url": "https://help.chisinau.md/incepand-cu-1-martie-2025-toti-copiii-de-varsta-scolara-aflati-sub-protectie-temporara-trebuie-sa-fie-inregistrati-oficial-in-sistemul-educational/ro_information-for-parents-on-recording-enrolment-status/",
+      "kind": "page"
+    }
+  ],
+  "followups": [
+    "Ce fac dacă copilul nu este înscris la școală?"
+  ],
+  "trace": [],
+  "meta": {
+    "model": "gpt-mock",
+    "path": "fast",
+    "latency_ms": 1720.0,
+    "verified": true
+  }
+}
