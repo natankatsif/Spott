@@ -205,10 +205,6 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
             <div className="m-auto flex w-full max-w-sm flex-col items-center gap-3 text-center">
               <Spinner className="size-6 text-brand" />
               <Shimmer className="font-medium text-sm">{t.preview.searching}</Shimmer>
-              <div className="w-full rounded-xl border bg-muted/40 px-3 py-2 text-left">
-                <p className="text-[11px] text-muted-foreground">{t.preview.searchingFor}</p>
-                <p className="mt-0.5 line-clamp-4 text-foreground/80 text-xs italic">“{citation.quote}”</p>
-              </div>
             </div>
           )}
         </div>

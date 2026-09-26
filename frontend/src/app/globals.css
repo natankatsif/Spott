@@ -106,11 +106,52 @@
 }
 
 /* Soft sky gradient under the prompt dock (from the design). */
+/* The colour behind the input: see-through, so answers scrolling under it stay visible (blurred by .dock-blur). */
 .dock-glow {
   background:
-    radial-gradient(60% 120% at 12% 100%, rgb(214 206 240 / 0.95), transparent 70%),
-    radial-gradient(70% 140% at 88% 100%, rgb(141 192 226 / 0.9), transparent 70%),
-    linear-gradient(to top, rgb(178 208 232 / 0.85), rgb(245 246 248 / 0));
+    radial-gradient(60% 120% at 12% 100%, rgb(214 206 240 / 0.6), transparent 70%),
+    radial-gradient(70% 140% at 88% 100%, rgb(141 192 226 / 0.55), transparent 70%),
+    linear-gradient(to top, rgb(178 208 232 / 0.45), rgb(245 246 248 / 0));
+}
+
+/* Progressive blur under the glow: text "evaporates" as it goes down, a little blurred at the top edge and more
+   towards the input. Each layer blurs harder and covers a lower band (masks), so there is no hard line. */
+.dock-blur > div {
+  position: absolute;
+  inset: 0;
+}
+.dock-blur > div:nth-child(1) {
+  -webkit-backdrop-filter: blur(1px);
+  backdrop-filter: blur(1px);
+  -webkit-mask-image: linear-gradient(to top, #000 60%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 60%, transparent 100%);
+}
+.dock-blur > div:nth-child(2) {
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to top, #000 45%, transparent 85%);
+  mask-image: linear-gradient(to top, #000 45%, transparent 85%);
+}
+.dock-blur > div:nth-child(3) {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(to top, #000 30%, transparent 65%);
+  mask-image: linear-gradient(to top, #000 30%, transparent 65%);
+}
+.dock-blur > div:nth-child(4) {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to top, #000 15%, transparent 45%);
+  mask-image: linear-gradient(to top, #000 15%, transparent 45%);
+}
+
+/* The same under the header (new chat, mock/live, visitors). */
+.top-blur {
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--background) 75%, transparent), transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
 
 .dark {
@@ -141,4 +182,9 @@ html.chat-locked body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* …and it doesn't zoom: panning only, no pinch or double-tap zoom (the page adds maximum-scale=1 for Android). */
+html.chat-locked body {
+  touch-action: pan-x pan-y;
 }

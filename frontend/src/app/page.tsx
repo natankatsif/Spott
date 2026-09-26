@@ -1,8 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { RotateCcwIcon, UsersIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { SquarePenIcon, UsersIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -12,6 +12,7 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { AssistantAnswer } from "@/components/chat/assistant-answer";
+import { ChatSidebar, ChatSidebarProvider } from "@/components/chat/chat-sidebar";
 import {
   canPreview,
   type PreviewState,
@@ -23,13 +24,15 @@ import {
 import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { type ErrorCode, health, type Lang, suggestions as fetchSuggestions, visit } from "@/lib/api";
+import { loadChat, newChatId, saveChat } from "@/lib/chat-history";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
 import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
-import { type ApiMode, setApiMode, useApiMode } from "@/lib/mode";
+import { type ApiMode, /* setApiMode, */ useApiMode } from "@/lib/mode";
 import { sessionId } from "@/lib/session";
-import { cn } from "@/lib/utils";
+// import { cn } from "@/lib/utils"; // only the commented Mock/Live switch used it
 
 const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" };
 
@@ -114,6 +117,18 @@ function useLockedViewport(): void {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.add("chat-locked");
+
+    // No zooming on the chat screen. Android honours the viewport meta; iOS Safari ignores user-scalable=no, so its
+    // pinch (gesture events) and two-finger moves are cancelled too. Only here: /sources and /admin still zoom.
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const metaBefore = meta?.content;
+    if (meta) meta.content = `${metaBefore}, maximum-scale=1, user-scalable=no`;
+    const cancel = (e: Event) => e.preventDefault();
+    const cancelPinch = (e: TouchEvent) => e.touches.length > 1 && e.preventDefault();
+    document.addEventListener("gesturestart", cancel);
+    document.addEventListener("gesturechange", cancel);
+    document.addEventListener("touchmove", cancelPinch, { passive: false });
+
     const vv = window.visualViewport;
     const update = () => {
       if (vv) root.style.setProperty("--chat-h", `${Math.round(vv.height)}px`);
@@ -124,6 +139,10 @@ function useLockedViewport(): void {
     vv?.addEventListener("scroll", update);
     window.addEventListener("scroll", update);
     return () => {
+      if (meta && metaBefore !== undefined) meta.content = metaBefore;
+      document.removeEventListener("gesturestart", cancel);
+      document.removeEventListener("gesturechange", cancel);
+      document.removeEventListener("touchmove", cancelPinch);
       root.classList.remove("chat-locked");
       root.style.removeProperty("--chat-h");
       vv?.removeEventListener("resize", update);
@@ -145,6 +164,37 @@ export default function Home() {
   const transport = useMemo(() => new MunicipalChatTransport({ lang: () => { const l = getUILang(); return l === "en" ? null : l; }, mode: () => askMode }), []);
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat<ChatMessage>({ transport });
   const busy = status === "submitted" || status === "streaming";
+
+  // Local chat history (lib/chat-history.ts): kept in this browser only, never sent to the backend.
+  const [chatId, setChatId] = useState(newChatId);
+  // what is already stored for this chat: opening a saved chat must not re-save it (and move it to the top)
+  const savedRef = useRef<{ chatId: string; count: number; lastId?: string } | null>(null);
+  useEffect(() => {
+    if (busy || messages.length === 0) return;
+    const saved = savedRef.current;
+    const lastId = messages.at(-1)?.id;
+    if (saved && saved.chatId === chatId && saved.count === messages.length && saved.lastId === lastId) return;
+    saveChat(chatId, messages);
+    savedRef.current = { chatId, count: messages.length, lastId };
+  }, [messages, busy, chatId]);
+
+  const startNewChat = () => {
+    stop();
+    setMessages([]);
+    setPreview(null);
+    setChatId(newChatId());
+    savedRef.current = null;
+  };
+
+  const openChat = (id: string) => {
+    const stored = loadChat(id);
+    if (!stored || id === chatId) return;
+    stop();
+    setPreview(null);
+    savedRef.current = { chatId: id, count: stored.length, lastId: stored.at(-1)?.id };
+    setChatId(id);
+    setMessages(stored);
+  };
 
   // Source preview (task 11). On desktop it opens by itself on each new answer: at focus_citation_id, else the first
   // citation (docs/FRONTEND-11.md §1); smaller screens open it from the citation chips.
@@ -192,135 +242,159 @@ export default function Home() {
 
   return (
     <SourcePreviewProvider setState={setPreview} state={preview}>
-      <main className="flex h-[var(--chat-h,100dvh)] overflow-hidden">
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 bg-linear-to-b from-background via-background/90 to-transparent p-4 pb-6">
-            {visitors !== null && (
-              <span className="flex items-center gap-1 text-muted-foreground text-xs tabular-nums" title={t.visitors}>
-                <UsersIcon aria-hidden className="size-3.5" />
-                <span className="sr-only">{t.visitors}: </span>
-                {visitors.toLocaleString(lang)}
-              </span>
-            )}
-            {messages.length > 0 && (
-              <Button onClick={() => { stop(); setMessages([]); setPreview(null); }} size="sm" variant="ghost">
-                <RotateCcwIcon className="size-3.5" /> {t.newChat}
-              </Button>
-            )}
-            <div className="flex rounded-full border bg-card p-0.5 text-xs shadow-sm" title={t.modeHint}>
-              {(["mock", "live"] as const).map((m) => (
-                <button
-                  className={cn(
-                    "rounded-full px-3 py-1 font-medium transition-colors",
-                    mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                  key={m}
-                  onClick={() => setApiMode(m)}
-                  type="button"
-                >
-                  {m === "mock" ? t.mock : t.live}
-                </button>
-              ))}
-            </div>
-          </header>
-
-          <Conversation className="flex-1">
-            <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
-              {messages.length === 0 ? (
-                <ConversationEmptyState className="min-h-[55vh] gap-4">
-                  <LogoMark className="h-[88px] w-auto" />
-                  <h1 className="font-semibold text-[32px] leading-tight tracking-tight">{t.greeting}</h1>
-                </ConversationEmptyState>
-              ) : (
-                messages.map((m, i) =>
-                  m.role === "user" ? (
-                    <Message from="user" key={m.id}>
-                      <MessageContent>{textOf(m)}</MessageContent>
-                    </Message>
-                  ) : (
-                    (() => {
-                      const view = viewOf(m);
-                      const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
-                      return (
-                        <AssistantAnswer
-                          key={m.id}
-                          onFollowup={ask}
-                          streaming={busy && i === messages.length - 1}
-                          t={UI[answerLang]}
-                          view={view}
-                        />
-                      );
-                    })()
-                  ),
-                )
-              )}
-              {status === "submitted" && messages.at(-1)?.role === "user" && (
-                <AssistantAnswer
-                  onFollowup={ask}
-                  streaming
-                  t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
-                  view={{ sentences: [], citations: [], trace: [], answer: null }}
-                />
-              )}
-              {errorText && <p className="text-destructive text-sm">{errorText}</p>}
-            </ConversationContent>
-            <ConversationScrollButton className="bottom-48" />
-          </Conversation>
-
-          <div className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
-          <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
-            {messages.length === 0 && quickQuestions.length > 0 && (
-              <div className="w-full max-w-[480px]">
-                <Suggestions>
-                  {quickQuestions.map((s) => (
-                    <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
+      <div className="h-[var(--chat-h,100dvh)]">
+        <ChatSidebarProvider>
+          <ChatSidebar
+            activeId={chatId}
+            onDeleted={(id) => (id === null || id === chatId) && startNewChat()}
+            onNew={startNewChat}
+            onSelect={openChat}
+            t={t}
+          />
+          <main className="flex h-full min-w-0 flex-1 overflow-hidden">
+            <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+              <div aria-hidden className="top-blur pointer-events-none absolute inset-x-0 top-0 z-10 h-20" />
+              <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
+                {/* phones: the menu is a slide-over opened from here; on desktop it is docked on the left */}
+                <SidebarTrigger aria-label={t.history.toggle} className="mr-auto md:hidden" />
+                {visitors !== null && (
+                  <span className="flex items-center gap-1 text-muted-foreground text-xs tabular-nums" title={t.visitors}>
+                    <UsersIcon aria-hidden className="size-3.5" />
+                    <span className="sr-only">{t.visitors}: </span>
+                    {visitors.toLocaleString(lang)}
+                  </span>
+                )}
+                {messages.length > 0 && (
+                  <Button className="md:hidden" onClick={startNewChat} size="sm" variant="ghost">
+                    <SquarePenIcon className="size-3.5" /> {t.newChat}
+                  </Button>
+                )}
+                {/* Mock/Live switch: mock mode is off (lib/mode.ts always returns "live"); kept to bring it back
+                <div className="flex rounded-full border bg-card p-0.5 text-xs shadow-sm" title={t.modeHint}>
+                  {(["mock", "live"] as const).map((m) => (
+                    <button
+                      className={cn(
+                        "rounded-full px-3 py-1 font-medium transition-colors",
+                        mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                      key={m}
+                      onClick={() => setApiMode(m)}
+                      type="button"
+                    >
+                      {m === "mock" ? t.mock : t.live}
+                    </button>
                   ))}
-                </Suggestions>
+                </div>
+                */}
+              </header>
+
+              <Conversation className="flex-1">
+                <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
+                  {messages.length === 0 ? (
+                    <ConversationEmptyState className="min-h-[55vh] gap-4">
+                      <LogoMark className="h-[88px] w-auto" />
+                      <h1 className="font-semibold text-[32px] leading-tight tracking-tight">{t.greeting}</h1>
+                    </ConversationEmptyState>
+                  ) : (
+                    messages.map((m, i) =>
+                      m.role === "user" ? (
+                        <Message from="user" key={m.id}>
+                          <MessageContent>{textOf(m)}</MessageContent>
+                        </Message>
+                      ) : (
+                        (() => {
+                          const view = viewOf(m);
+                          const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
+                          return (
+                            <AssistantAnswer
+                              key={m.id}
+                              onFollowup={ask}
+                              streaming={busy && i === messages.length - 1}
+                              t={UI[answerLang]}
+                              view={view}
+                            />
+                          );
+                        })()
+                      ),
+                    )
+                  )}
+                  {status === "submitted" && messages.at(-1)?.role === "user" && (
+                    <AssistantAnswer
+                      onFollowup={ask}
+                      streaming
+                      t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
+                      view={{ sentences: [], citations: [], trace: [], answer: null }}
+                    />
+                  )}
+                  {errorText && <p className="text-destructive text-sm">{errorText}</p>}
+                </ConversationContent>
+                <ConversationScrollButton className="bottom-48" />
+              </Conversation>
+
+              <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56">
+                <div className="dock-blur absolute inset-0">
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                </div>
+                <div className="dock-glow absolute inset-0" />
               </div>
+              <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
+                {messages.length === 0 && quickQuestions.length > 0 && (
+                  <div className="w-full max-w-[480px]">
+                    <Suggestions>
+                      {quickQuestions.map((s) => (
+                        <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
+                      ))}
+                    </Suggestions>
+                  </div>
+                )}
+                <PromptInput
+                  className="w-full"
+                  activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
+                  alwaysExpanded
+                  forceActive={messages.length > 0}
+                  efforts={[...t.efforts]}
+                  maxAttachments={0}
+                  model={lang.toUpperCase()}
+                  models={UI_LANGS.map((l) => l.toUpperCase())}
+                  onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
+                  onSpeechError={(code) => setSpeechError(code)}
+                  onSubmit={(value, { effort }) => {
+                    askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";
+                    ask(value);
+                  }}
+                  placeholder={t.placeholder}
+                  speechLang={SPEECH[lang]}
+                />
+                {backend === "warming" && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
+                {backend === "down" && (
+                  <p className="text-center text-muted-foreground text-xs" role="status">
+                    {t.errors.unavailable}
+                  </p>
+                )}
+                {speechError && (
+                  <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
+                    {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}
+                  </p>
+                )}
+                <p className="text-center text-foreground/80 text-sm">
+                  {t.poweredBy}{" "}
+                  <a className="underline underline-offset-2" href="/sources">
+                    {t.providers}
+                  </a>
+                </p>
+              </footer>
+            </div>
+            {isDesktop && preview && (
+              <aside className="w-[min(46vw,760px)] shrink-0 py-3 pr-3 duration-300 animate-in fade-in slide-in-from-right-6">
+                <SourcePreviewPanel className="h-full" t={t} />
+              </aside>
             )}
-            <PromptInput
-              className="w-full"
-              activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
-              alwaysExpanded
-              forceActive={messages.length > 0}
-              efforts={[...t.efforts]}
-              maxAttachments={0}
-              model={lang.toUpperCase()}
-              models={UI_LANGS.map((l) => l.toUpperCase())}
-              onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
-              onSpeechError={(code) => setSpeechError(code)}
-              onSubmit={(value, { effort }) => {
-                askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";
-                ask(value);
-              }}
-              placeholder={t.placeholder}
-              speechLang={SPEECH[lang]}
-            />
-            {backend === "warming" && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
-            {backend === "down" && (
-              <p className="text-center text-muted-foreground text-xs" role="status">
-                {t.errors.unavailable}
-              </p>
-            )}
-            {speechError && (
-              <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
-                {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}
-              </p>
-            )}
-            <p className="text-center text-foreground/80 text-sm">
-              {t.poweredBy}{" "}
-              <a className="underline underline-offset-2" href="/sources">
-                {t.providers}
-              </a>
-            </p>
-          </footer>
-        </div>
-        {isDesktop && preview && (
-          <aside className="w-[min(46vw,760px)] shrink-0 py-3 pr-3 duration-300 animate-in fade-in slide-in-from-right-6">
-            <SourcePreviewPanel className="h-full" t={t} />
-          </aside>
-        )}
-      </main>
+          </main>
+        </ChatSidebarProvider>
+      </div>
       {!isDesktop && <SourcePreviewSheet t={t} />}
     </SourcePreviewProvider>
   );

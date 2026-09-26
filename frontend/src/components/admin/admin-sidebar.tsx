@@ -22,8 +22,8 @@ import {
 import { admin, signOut, useAdminQuery, useAdminSession } from "@/lib/admin";
 import { ADMIN_UI } from "@/lib/admin-i18n";
 import { useUILang } from "@/lib/lang";
-import { setApiMode, useApiMode } from "@/lib/mode";
-import { cn } from "@/lib/utils";
+import { /* setApiMode, */ useApiMode } from "@/lib/mode";
+// import { cn } from "@/lib/utils"; // only the commented Mock/Live switch used it
 
 export function AdminSidebar() {
   const lang = useUILang();
@@ -86,6 +86,7 @@ export function AdminSidebar() {
       <SidebarFooter className="gap-3">
         <div className="flex flex-col gap-2 px-1 group-data-[collapsible=icon]:hidden">
           <LangSwitch />
+          {/* Mock/Live switch: mock mode is off (lib/mode.ts always returns "live")
           <div className="flex w-fit rounded-full bg-muted/80 p-0.5 text-xs">
             {(["mock", "live"] as const).map((m) => (
               <button
@@ -101,6 +102,7 @@ export function AdminSidebar() {
               </button>
             ))}
           </div>
+          */}
         </div>
         <SidebarMenu>
           <SidebarMenuItem>

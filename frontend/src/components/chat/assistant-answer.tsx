@@ -6,7 +6,6 @@
 import {
   AlertTriangleIcon,
   BookOpenIcon,
-  ExternalLinkIcon,
   ScanSearchIcon,
   CheckIcon,
   CopyIcon,
@@ -18,7 +17,7 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -45,6 +44,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
+import { CitationPager } from "@/components/chat/citation-pager";
 import { canPreview, LocateBadge, useSourcePreview } from "@/components/chat/source-preview";
 import type { Citation, TraceStep } from "@/lib/api";
 import { sendFeedback } from "@/lib/api";
@@ -66,11 +66,22 @@ export function citationLabel(c: Citation, t: UIText): string {
 
 function CitationCard({ citations, all, t }: { citations: Citation[]; all: Citation[]; t: UIText }) {
   const preview = useSourcePreview();
+  // Radix HoverCard ignores touch, so on phones the badge opens (and closes) on tap; a mouse still uses hover.
+  // A tap outside the card closes it (the card's dismissable layer).
+  const [open, setOpen] = useState(false);
+  const pointer = useRef<string>("mouse");
   if (!citations.length) return null;
   return (
     <InlineCitation>
-      <InlineCitationCard>
-        <InlineCitationCardTrigger sources={citations.map((c) => c.url)} />
+      <InlineCitationCard onOpenChange={setOpen} open={open}>
+        <InlineCitationCardTrigger
+          className="cursor-pointer select-none"
+          onClick={() => pointer.current !== "mouse" && setOpen((o) => !o)}
+          onPointerDown={(e) => {
+            pointer.current = e.pointerType;
+          }}
+          sources={citations.map((c) => c.url)}
+        />
         <InlineCitationCardBody>
           <InlineCitationCarousel>
             {citations.length > 1 && (
@@ -227,7 +238,7 @@ export function AssistantAnswer({
         )}
 
         {view.citations.length > 0 && (
-          <Sources>
+          <Sources className="hidden lg:block">
             <SourcesTrigger className="text-muted-foreground text-xs" count={view.citations.length}>
               <BookOpenIcon className="size-3.5" />
               <span>{t.sourcesUsed(view.citations.length)}</span>
@@ -253,36 +264,8 @@ export function AssistantAnswer({
           </Sources>
         )}
 
-        {!streaming && view.citations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 lg:hidden">
-            {view.citations.map((c) => {
-              const chipClass =
-                "inline-flex max-w-full items-center gap-1 rounded-full border bg-card px-3 py-1 text-left text-xs shadow-sm active:scale-[0.98]";
-              const label = (
-                <>
-                  <span className="truncate">
-                    <span className="text-muted-foreground">{c.site ?? new URL(c.url).hostname}</span> · {c.document_title}
-                    {c.location ? `, ${c.location}` : ""}
-                  </span>
-                  {canPreview(c) ? (
-                    <ScanSearchIcon className="size-3 shrink-0 text-brand" />
-                  ) : (
-                    <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
-                  )}
-                </>
-              );
-              return canPreview(c) ? (
-                <button className={chipClass} key={c.id} onClick={() => preview.open(view.citations, c.id)} type="button">
-                  {label}
-                </button>
-              ) : (
-                <a className={chipClass} href={c.deep_link} key={c.id} rel="noreferrer" target="_blank">
-                  {label}
-                </a>
-              );
-            })}
-          </div>
-        )}
+        {/* phones: one citation at a time (swipe or ← →) instead of a list */}
+        {!streaming && view.citations.length > 0 && <CitationPager citations={view.citations} className="lg:hidden" t={t} />}
 
         {a && a.nav_links.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
