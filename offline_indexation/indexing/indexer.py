@@ -60,7 +60,11 @@ def row_values(record: dict, columns: tuple[str, ...]) -> list:
             value = value.to_numpy() if hasattr(value, "to_numpy") else np.asarray(value, dtype=np.float32)
         elif col in ("has_contacts", "is_table"):
             value = bool(value)
-        elif col in ("ord", "idx") and value is None:
+        elif col == "ord" and value is None:
+            # Chunks read from jsonl written before `ord` existed: the position is the first block.
+            blocks = record.get("block_ids") or []
+            value = blocks[0] if blocks and isinstance(blocks[0], int) else 0
+        elif col == "idx" and value is None:
             value = 0
         elif col == "version" and value is None:
             value = 1

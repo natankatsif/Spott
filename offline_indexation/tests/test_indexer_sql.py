@@ -26,6 +26,15 @@ def test_row_values_encodes_json_and_bools():
     assert values["embedding"] is None
 
 
+def test_row_values_ord_falls_back_to_first_block():
+    def ord_of(chunk):
+        return dict(zip(CHUNK_COLUMNS, row_values(chunk, CHUNK_COLUMNS), strict=True))["ord"]
+
+    assert ord_of({"chunk_id": "c1", "block_ids": [7, 8]}) == 7  # jsonl written before `ord` existed
+    assert ord_of({"chunk_id": "c1", "block_ids": [7, 8], "ord": 3}) == 3
+    assert ord_of({"chunk_id": "c1", "block_ids": []}) == 0
+
+
 def test_document_record_takes_metadata_from_first_chunk():
     record = document_record("file:abc", {"title": "Decizia", "site": "dgaurf.md", "text": "ignored"})
     assert record == {"kind": "file", "title": "Decizia", "site": "dgaurf.md", "doc_id": "file:abc"}

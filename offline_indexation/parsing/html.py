@@ -17,6 +17,7 @@ from common.registry import Registry
 from common.text import format_table_markdown, has_contacts
 from common.urls import url_key
 
+from .html_prep import preprocess_html
 from .normalize import normalize_lang, normalize_text
 
 log = logging.getLogger("parsing.html")
@@ -27,6 +28,7 @@ BOILERPLATE_THRESHOLD = 0.30
 
 def extract_raw_blocks(html_content: str) -> tuple[str | None, list[dict]]:
     """Extracts candidate blocks and title from HTML using trafilatura."""
+    html_content, embedded_blocks = preprocess_html(html_content)
     xml_str = trafilatura.extract(
         html_content,
         output_format="xml",
@@ -35,16 +37,16 @@ def extract_raw_blocks(html_content: str) -> tuple[str | None, list[dict]]:
         favor_recall=True,
     )
     if not xml_str:
-        return None, []
+        return None, embedded_blocks
 
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError:
-        return None, []
+        return None, embedded_blocks
 
     main_node = root.find("main")
     if main_node is None:
-        return None, []
+        return None, embedded_blocks
 
     raw_blocks: list[dict] = []
     page_title_from_h1: str | None = None
@@ -123,7 +125,7 @@ def extract_raw_blocks(html_content: str) -> tuple[str | None, list[dict]]:
                     "has_contacts": has_contacts(text),
                 })
 
-    return page_title_from_h1, raw_blocks
+    return page_title_from_h1, raw_blocks + embedded_blocks
 
 
 def build_page_blocks(raw_blocks: list[dict], boilerplate_texts: set[str]) -> list[dict]:

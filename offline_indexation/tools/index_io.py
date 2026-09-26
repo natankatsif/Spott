@@ -18,6 +18,12 @@ from pathlib import Path
 from .common import CONTAINER, ROOT, db_env, utf8_console
 
 TABLES = ("documents", "chunks", "lines")
+# Dumps made before the indexer filled chunks.ord have 0 everywhere; the position is the first block.
+ORD_BACKFILL = (
+    "UPDATE chunks SET ord = (block_ids->>0)::int "
+    "WHERE ord = 0 AND jsonb_typeof(block_ids) = 'array' AND jsonb_array_length(block_ids) > 0 "
+    "AND (block_ids->>0)::int > 0"
+)
 
 
 def docker(*args: str, **kw) -> subprocess.CompletedProcess:
@@ -58,15 +64,15 @@ def import_dump(dump: Path) -> None:
     if not dump.is_file():
         sys.exit(f"Файл не найден: {dump}")
     env = db_env()
-    print("1/4 docker compose up -d")
+    print("1/5 docker compose up -d")
     docker("compose", "up", "-d", cwd=ROOT)
-    print("2/4 жду Postgres…")
+    print("2/5 жду Postgres…")
     wait_ready(env["user"], env["db"])
-    print("3/4 схема (расширения, таблицы, индексы)")
+    print("3/5 схема (расширения, таблицы, индексы)")
     from retrieval.db import init_db
 
     init_db()
-    print(f"4/4 восстанавливаю {dump.name}")
+    print(f"4/5 восстанавливаю {dump.name}")
     with dump.open("rb") as f:
         r = subprocess.run(
             ["docker", "exec", "-i", CONTAINER, "pg_restore", "-U", env["user"], "-d", env["db"],
@@ -75,6 +81,10 @@ def import_dump(dump: Path) -> None:
         )
     if r.returncode != 0:  # pg_restore warns about objects that init_db already created — show, don't fail
         print("pg_restore предупреждения:\n" + "\n".join(r.stderr.splitlines()[-10:]))
+    print("5/5 порядок фрагментов в документах (chunks.ord)")
+    r = docker("exec", CONTAINER, "psql", "-U", env["user"], "-d", env["db"], "-c", ORD_BACKFILL,
+               capture_output=True, text=True, encoding="utf-8")
+    print("   " + r.stdout.strip())
     print(counts(env["user"], env["db"]))
 
 

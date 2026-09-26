@@ -28,7 +28,7 @@ def configure_connection(conn: psycopg.Connection) -> None:
     register_vector(conn)
 
 
-def get_connection(autocommit: bool = True) -> psycopg.Connection:
+def get_connection(autocommit: bool = True, register: bool = True) -> psycopg.Connection:
     conn = psycopg.connect(
         host=POSTGRES_HOST,
         port=POSTGRES_PORT,
@@ -37,7 +37,8 @@ def get_connection(autocommit: bool = True) -> psycopg.Connection:
         dbname=POSTGRES_DB,
         autocommit=autocommit,
     )
-    register_vector(conn)
+    if register:
+        register_vector(conn)
     return conn
 
 
@@ -141,10 +142,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     embedding vector(1024),
     tsv tsvector GENERATED ALWAYS AS (
         to_tsvector(
-            CASE 
-                WHEN lang = 'ru' THEN 'ru_unaccent'
-                ELSE 'ro_unaccent'
-            END::regconfig,
+            CASE
+                WHEN lang = 'ru' THEN 'ru_unaccent'::regconfig
+                ELSE 'ro_unaccent'::regconfig
+            END,
             immutable_unaccent(coalesce(title, '') || ' ' || coalesce(citation_label, '') || ' ' || text)
         )
     ) STORED
@@ -193,7 +194,8 @@ CREATE INDEX IF NOT EXISTS idx_lines_embedding ON lines USING HNSW(embedding vec
 
 def init_db(conn: psycopg.Connection | None = None) -> None:
     own_conn = conn is None
-    c = conn or get_connection(autocommit=True)
+    # No vector registration: on a fresh database the extension doesn't exist until INIT_SQL creates it.
+    c = conn or get_connection(autocommit=True, register=False)
     try:
         with c.cursor() as cur:
             cur.execute(INIT_SQL)
