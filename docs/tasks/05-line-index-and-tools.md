@@ -43,6 +43,16 @@ LLM проекта — **OpenAI GPT по API**. Ключ лежит в корн�
 ## 5. Бенчмарк
 `bench_search.py` на новой схеме: p50/p95 `retrieve()` и каждого инструмента. Цель: `search` p95 < 300 мс, `grep`/`toc`/`open` p95 < 50 мс.
 
+
+## 6. Ссылки на источник у каждой строки
+Каждая строка в `lines` и в ответах инструментов несёт: `url` (сам PDF или страница), `found_on` (страница сайта, где лежит файл), `page` (номер страницы PDF), `bboxes`, `citation_label`. Плюс готовая **`deep_link`**:
+- PDF → `{url}#page={page}` (браузер откроет нужную страницу);
+- HTML-страница → `{url}#:~:text={первые ~8 слов строки, URL-encoded}` (Chrome прокрутит к строке и подсветит её).
+Тест: у 100% строк есть `url` и `deep_link`; для файлов — `page` и `found_on`.
+
+## 7. Перенос индекса на другую машину
+`scripts/export_index.sh` → `pg_dump -Fc` таблиц `documents`, `chunks`, `lines` в `data/export/index-<дата>.dump` (+ размер в выводе); `scripts/import_index.sh <файл>` → `docker compose up -d`, `init_db`, `pg_restore`, проверка `count(*)` и `embedding IS NULL = 0`. В README — «как запустить у друга за 5 минут» (клон, `.env` со своим ключом, `uv sync`, импорт дампа, `uvicorn`). Дамп в git не коммитить.
+
 ## Чего не делать
 - LLM-цикл агента и `/api/ask` — задача 06;
 - фронт, краулинг, `actelocale`/`chisinau.md` не трогать;
