@@ -1,7 +1,8 @@
-"""Act type, number and date from the document head and from the links pointing to it.
+"""Act type, number and date: from the act's own title block, its file name, then the link text.
 
-Links (anchor text, file name) are typed by a person, the document head may be OCR output,
-so number and date prefer the link and fall back to the text.
+Never from the body: acts cite other acts ("Codul … nr. 434/2023", "contractului nr. 41/26 din 20.05.2026"),
+and those numbers and dates aren't the act's own. The title block may be OCR output, so when its number
+disagrees with the file name (typed by a person), the file name wins.
 """
 
 import re
@@ -61,24 +62,30 @@ def pick_number(links: str, head: str) -> str | None:
 
 def find_date(text: str) -> str | None:
     candidates = []
-    if m := DATE_NUMERIC.search(text):
-        candidates.append((m.start(), int(m.group(3)), int(m.group(2)), int(m.group(1))))
-    if m := DATE_WORDS.search(text):
-        candidates.append((m.start(), int(m.group(3)), MONTHS[m.group(2).lower()], int(m.group(1))))
+    # File names separate words with - and _ ("…-din-25-august-2026").
+    for variant in (text, re.sub(r"[-_]+", " ", text)):
+        if m := DATE_NUMERIC.search(variant):
+            candidates.append((m.start(), int(m.group(3)), int(m.group(2)), int(m.group(1))))
+        if m := DATE_WORDS.search(variant):
+            candidates.append((m.start(), int(m.group(3)), MONTHS[m.group(2).lower()], int(m.group(1))))
     for _, year, month, day in sorted(candidates):
         if 1990 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31:
             return f"{year:04d}-{month:02d}-{day:02d}"
     return None
 
 
+def file_names(sources: list[dict]) -> str:
+    names = (unquote(urlsplit(s["url"]).path.rsplit("/", 1)[-1]) for s in sources)
+    return " | ".join(re.sub(r"\.\w+$", "", n) for n in names if n)
+
+
+def anchor_texts(sources: list[dict]) -> str:
+    return " | ".join(s["anchor_text"] for s in sources if s.get("anchor_text"))
+
+
 def link_text(sources: list[dict]) -> str:
     """Anchor texts and file names of all links to the document, as one searchable string."""
-    parts = []
-    for s in sources:
-        parts.append(s.get("anchor_text") or "")
-        name = unquote(urlsplit(s["url"]).path.rsplit("/", 1)[-1])
-        parts.append(re.sub(r"\.\w+$", "", name).replace("_", " "))
-    return " | ".join(p for p in parts if p)
+    return " | ".join(p for p in (anchor_texts(sources), file_names(sources).replace("_", " ")) if p)
 
 
 # Letterhead lines that open every act and say nothing about its content.
@@ -101,17 +108,44 @@ def pick_title(blocks: list[dict], sources: list[dict]) -> str | None:
     return next((b["text"] for b in blocks if b["type"] == "heading"), None)
 
 
+ACT_WORD = re.compile(rf"^\W*(?:{'|'.join(p for _, p in DOC_TYPES)})\b", re.I)
+# The body of an act starts here; nothing below belongs to the title block.
+BODY_START = re.compile(
+    r"^(?:(?:cu privire la|privind|despre|об|о|având|avînd|în temeiul|in temeiul|în scopul|în conformitate|"
+    r"în baza|prezentul|articolul|capitolul|на основании|в соответствии|статья|глава)\b|art\.|\d+\.\s)", re.I)
+OWN_SHORT_LINE = re.compile(r"^\W*(nr\b|n\.|№|din\b|от\b)", re.I)
+SUBJECT_INSIDE = re.compile(r"\b(cu privire la|privind|despre)\b", re.I)
+
+
+def title_block(blocks: list[dict]) -> str:
+    """The act's own heading lines: "DISPOZIȚIE nr. 373-d din 25 august 2026", "nr. 12/14", "din 28 iulie 2020".
+    Stops at the subject line or the first body line; a heading merged with the subject is cut before it."""
+    own = []
+    for b in blocks[:HEAD_BLOCKS]:
+        text = b["text"].strip()
+        if BODY_START.match(text):
+            break
+        if ACT_WORD.match(text):
+            own.append(SUBJECT_INSIDE.split(text)[0])
+        elif len(text) <= 40 and OWN_SHORT_LINE.match(text):
+            own.append(text)
+    return "\n".join(own)
+
+
 def extract(blocks: list[dict], sources: list[dict]) -> dict:
-    head = "\n".join(b["text"] for b in blocks[:HEAD_BLOCKS])
     headings = "\n".join(b["text"] for b in blocks[:HEAD_BLOCKS] if b["type"] == "heading")
-    links = link_text(sources)
+    head, files, anchors = title_block(blocks), file_names(sources), anchor_texts(sources)
     # The act names its own type in a heading ("DECIZIE"); link labels on the sites are sometimes wrong.
     # Body text is not used: it mentions other acts ("Legea nr. 436/2006") and plain words ("решение").
-    doc_type = find_type(headings) or find_type(links)
-    # Outside acts, "nr." and dates in the text are addresses, school numbers, referenced laws.
+    doc_type = find_type(headings) or find_type(head) or find_type(anchors) or find_type(files)
+    number = date = None
+    if doc_type:  # outside acts, "nr." and dates are addresses, school numbers, referenced laws
+        number = pick_number(files, head) or find_number(anchors)
+        date = find_date(head) or find_date(files) or find_date(anchors)
     return {
         "title": pick_title(blocks, sources),
         "doc_type": doc_type,
-        "number": pick_number(links, head) if doc_type else None,
-        "date": find_date(links) or (find_date(head) if doc_type else None),
+        "number": number,
+        "date": date,
+        "effective_date": date,
     }

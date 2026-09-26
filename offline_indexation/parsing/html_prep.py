@@ -16,6 +16,7 @@ from selectolax.parser import HTMLParser, Node
 
 from common.text import has_contacts
 
+from .metadata import find_date
 from .normalize import normalize_text
 
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
@@ -139,3 +140,26 @@ def preprocess_html(html_content: str) -> tuple[str, list[dict]]:
     prefix_toggle_items(tree)
     rewrite_toggle_titles(tree)
     return tree.html or html_content, embedded
+
+
+# Where a page states its own publication date; a bare <time> can belong to a sidebar of other posts.
+PUBLISHED = (
+    ('meta[property="article:published_time"]', "content"),
+    ('meta[itemprop="datePublished"]', "content"),
+    ('meta[name="date"]', "content"),
+    ("article time[datetime]", "datetime"),
+    ("main time[datetime]", "datetime"),
+)
+
+
+def publication_date(html_content: str) -> str | None:
+    """ISO date the page was published, or None."""
+    tree = HTMLParser(html_content)
+    for selector, attr in PUBLISHED:
+        node = tree.css_first(selector)
+        value = (node.attributes.get(attr) or "").strip() if node is not None else ""
+        if m := re.match(r"(\d{4})-(\d{2})-(\d{2})", value):
+            return "-".join(m.groups())
+        if value and (date := find_date(value)):
+            return date
+    return None

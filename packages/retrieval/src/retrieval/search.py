@@ -104,7 +104,8 @@ RESULT_COLUMNS = (
     "text, embed_text, content_hash, parent_legal_path, pages, found_on"
 )
 FTS_QUERY = "(to_tsquery('ro_unaccent', %(q)s) || to_tsquery('ru_unaccent', %(q)s))"
-LINE_RESULT_COLUMNS = "line_id, chunk_id, doc_id, idx, text, embed_text, lang, block_id, page, bboxes"
+# Qualified: line queries may join chunks, which has columns of the same names.
+LINE_RESULT_COLUMNS = "l.line_id, l.chunk_id, l.doc_id, l.idx, l.text, l.embed_text, l.lang, l.block_id, l.page, l.bboxes"
 
 
 def weighted_rrf_fuse(
@@ -139,6 +140,8 @@ def execute_vector_query(
     q_vec: np.ndarray,
     lang: str | None = None,
     site: str | None = None,
+    sites: list[str] | None = None,
+    date_after: str | None = None,
     limit: int = 40,
 ) -> list[dict]:
     """Runs pure cosine similarity vector search on a psycopg connection."""
@@ -150,10 +153,12 @@ def execute_vector_query(
             WHERE embedding IS NOT NULL 
               AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
               AND (%(site)s::text IS NULL OR site = %(site)s::text)
+              AND (%(sites)s::text[] IS NULL OR site = ANY(%(sites)s::text[]))
+              AND (%(date_after)s::text IS NULL OR date > %(date_after)s::text)
             ORDER BY embedding <=> %(v)s::vector
             LIMIT %(limit)s
             """,
-            {"v": q_vec, "lang": lang, "site": site, "limit": limit},
+            {"v": q_vec, "lang": lang, "site": site, "sites": sites, "date_after": date_after, "limit": limit},
         )
         rows = cur.fetchall()
     for row in rows:
@@ -168,6 +173,8 @@ def execute_fts_query(
     fts_query: str,
     lang: str | None = None,
     site: str | None = None,
+    sites: list[str] | None = None,
+    date_after: str | None = None,
     limit: int = 40,
 ) -> list[dict]:
     """Runs full-text search with ro_unaccent | ru_unaccent on a psycopg connection."""
@@ -182,10 +189,12 @@ def execute_fts_query(
                 WHERE tsv @@ {FTS_QUERY} 
                   AND (%(lang)s::text IS NULL OR lang = %(lang)s::text)
                   AND (%(site)s::text IS NULL OR site = %(site)s::text)
+                  AND (%(sites)s::text[] IS NULL OR site = ANY(%(sites)s::text[]))
+                  AND (%(date_after)s::text IS NULL OR date > %(date_after)s::text)
                 ORDER BY raw_score DESC
                 LIMIT %(limit)s
                 """,
-                {"q": fts_query, "lang": lang, "site": site, "limit": limit},
+                {"q": fts_query, "lang": lang, "site": site, "sites": sites, "date_after": date_after, "limit": limit},
             )
             rows = cur.fetchall()
         except psycopg.Error as e:
@@ -203,6 +212,8 @@ def execute_line_vector_query(
     q_vec: np.ndarray,
     lang: str | None = None,
     site: str | None = None,
+    sites: list[str] | None = None,
+    date_after: str | None = None,
     limit: int = 60,
 ) -> list[dict]:
     """Cosine similarity search on lines table."""
@@ -212,14 +223,16 @@ def execute_line_vector_query(
                 f"""
                 SELECT {LINE_RESULT_COLUMNS}, 1 - (l.embedding <=> %(v)s::vector) AS raw_score
                 FROM lines l
-                {'JOIN documents d ON l.doc_id = d.doc_id' if site else ''}
+                {'JOIN chunks c ON c.chunk_id = l.chunk_id' if site or sites or date_after else ''}
                 WHERE l.embedding IS NOT NULL 
                   AND (%(lang)s::text IS NULL OR l.lang = %(lang)s::text)
-                  {'AND d.site = %(site)s' if site else ''}
+                  {'AND c.site = %(site)s' if site else ''}
+                  {'AND c.site = ANY(%(sites)s::text[])' if sites else ''}
+                  {'AND c.date > %(date_after)s' if date_after else ''}
                 ORDER BY l.embedding <=> %(v)s::vector
                 LIMIT %(limit)s
                 """,
-                {"v": q_vec, "lang": lang, "site": site, "limit": limit},
+                {"v": q_vec, "lang": lang, "site": site, "sites": sites, "date_after": date_after, "limit": limit},
             )
             rows = cur.fetchall()
         except psycopg.Error as e:
@@ -235,6 +248,8 @@ def execute_line_fts_query(
     fts_query: str,
     lang: str | None = None,
     site: str | None = None,
+    sites: list[str] | None = None,
+    date_after: str | None = None,
     limit: int = 60,
 ) -> list[dict]:
     """Full-text search on lines table."""
@@ -246,14 +261,16 @@ def execute_line_fts_query(
                 f"""
                 SELECT {LINE_RESULT_COLUMNS}, ts_rank_cd(l.tsv, {FTS_QUERY}) AS raw_score
                 FROM lines l
-                {'JOIN documents d ON l.doc_id = d.doc_id' if site else ''}
+                {'JOIN chunks c ON c.chunk_id = l.chunk_id' if site or sites or date_after else ''}
                 WHERE l.tsv @@ {FTS_QUERY}
                   AND (%(lang)s::text IS NULL OR l.lang = %(lang)s::text)
-                  {'AND d.site = %(site)s' if site else ''}
+                  {'AND c.site = %(site)s' if site else ''}
+                  {'AND c.site = ANY(%(sites)s::text[])' if sites else ''}
+                  {'AND c.date > %(date_after)s' if date_after else ''}
                 ORDER BY raw_score DESC
                 LIMIT %(limit)s
                 """,
-                {"q": fts_query, "lang": lang, "site": site, "limit": limit},
+                {"q": fts_query, "lang": lang, "site": site, "sites": sites, "date_after": date_after, "limit": limit},
             )
             rows = cur.fetchall()
         except psycopg.Error as e:

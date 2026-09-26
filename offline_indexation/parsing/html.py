@@ -17,7 +17,7 @@ from common.registry import Registry
 from common.text import format_table_markdown, has_contacts
 from common.urls import url_key
 
-from .html_prep import preprocess_html
+from .html_prep import preprocess_html, publication_date
 from .normalize import normalize_lang, normalize_text
 
 log = logging.getLogger("parsing.html")
@@ -215,6 +215,7 @@ def parse_site_pages(
                 "html_hash": html_hash,
                 "h1_title": h1_title,
                 "raw_blocks": raw_blocks,
+                "published": publication_date(html_text),
             })
         except Exception as e:
             log.warning("Failed parsing HTML for %s: %s", url, e)
@@ -272,6 +273,8 @@ def parse_site_pages(
             "category": category,
             "title": title,
             "lang": lang,
+            "date": pdata["published"],  # the chunker copies it onto chunks: freshness of web pages
+            "effective_date": pdata["published"],
             "alternates": alternates,
             "pages": [],
             "stats": {

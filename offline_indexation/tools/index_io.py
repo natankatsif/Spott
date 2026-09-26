@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .common import CONTAINER, ROOT, db_env, utf8_console
 
-TABLES = ("documents", "chunks", "lines")
+TABLES = ("documents", "chunks", "lines", "act_relations")
 # Dumps made before the indexer filled chunks.ord have 0 everywhere; the position is the first block.
 ORD_BACKFILL = (
     "UPDATE chunks SET ord = (block_ids->>0)::int "
@@ -44,7 +44,10 @@ def export(out: Path | None) -> Path:
     env = db_env()
     out = out or ROOT / "data" / "export" / f"index-{date.today()}.dump"
     out.parent.mkdir(parents=True, exist_ok=True)
-    tables = [a for t in TABLES for a in ("-t", t)]
+    existing = docker("exec", CONTAINER, "psql", "-U", env["user"], "-d", env["db"], "-At", "-c",
+                      "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
+                      capture_output=True, text=True, encoding="utf-8").stdout.split()
+    tables = [a for t in TABLES if t in existing for a in ("-t", t)]  # act_relations: only after lineage ran
     with out.open("wb") as f:
         docker("exec", CONTAINER, "pg_dump", "-U", env["user"], "-d", env["db"], "-Fc", *tables, stdout=f)
     print(f"Готово: {out} ({out.stat().st_size / 1024**2:.1f} МБ)")

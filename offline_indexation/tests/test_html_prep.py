@@ -3,7 +3,7 @@
 import json
 
 from parsing.html import extract_raw_blocks
-from parsing.html_prep import preprocess_html
+from parsing.html_prep import preprocess_html, publication_date
 
 SERVICES = [{
     "title": "Emiterea certificatului privind edificarea construcției",
@@ -92,3 +92,13 @@ def test_page_without_special_markup_is_unchanged_in_content():
     page = "<html><body><main><article><p>Program de lucru: luni–vineri, 8:00–17:00.</p></article></main></body></html>"
     _, blocks = extract_raw_blocks(page)
     assert texts(blocks) == ["Program de lucru: luni–vineri, 8:00–17:00."]
+
+
+def test_publication_date_of_the_page_not_of_a_sidebar_post():
+    page = """<html><head><meta property="article:published_time" content="2026-09-23T10:00:00+03:00"></head>
+    <body><aside><time datetime="2024-01-01">old post</time></aside><article><p>Text</p></article></body></html>"""
+    assert publication_date(page) == "2026-09-23"
+    article = '<html><body><aside><time datetime="2024-01-01">x</time></aside>' \
+              '<article><time datetime="2025-05-05T08:00">5 mai 2025</time></article></body></html>'
+    assert publication_date(article) == "2025-05-05"
+    assert publication_date('<html><body><aside><time datetime="2024-01-01">x</time></aside></body></html>') is None

@@ -35,9 +35,10 @@ LINES = {
 
 
 class FakeStore:
-    def __init__(self, meta=None, following=(), has_file=True):
+    def __init__(self, meta=None, following=(), has_file=True, links=(), later=()):
         self.meta, self.following, self.has_file = meta or {}, list(following), has_file
-        self.anchors = []
+        self.links, self.later = list(links), list(later)
+        self.anchors, self.grep_patterns = [], []
 
     def chunk_meta(self, ids):
         return {i: self.meta[i] for i in ids if i in self.meta}
@@ -53,11 +54,23 @@ class FakeStore:
         return {d: {"page_sizes": [{"n": 2, "width": 595.0, "height": 842.0}], "has_file": self.has_file}
                 for d in doc_ids}
 
+    def later_acts(self, patterns, exclude_doc_ids, limit=20):
+        self.grep_patterns += patterns
+        return [c["chunk_id"] for c in self.later]
+
+    def relation_lines(self, doc_ids):
+        return [link for link in self.links if link["to_doc_id"] in doc_ids or link["from_doc_id"] in doc_ids]
+
+    def dated_lines(self, doc_ids):
+        return {d: [line["text"] for lines in LINES.values() for line in lines if d in line.get("doc", "")]
+                for d in doc_ids}
+
 
 def model(verdict="answered", sentences=(), missing=(), conflict=None, checklist=None, translations=(),
-          followups=()):
+          followups=(), locate=False, search_ro=""):
     return {"verdict": verdict, "sentences": list(sentences), "missing": list(missing), "conflict": conflict,
-            "checklist": checklist, "translations": list(translations), "followups": list(followups)}
+            "checklist": checklist, "translations": list(translations), "followups": list(followups),
+            "locate": locate, "search_ro": search_ro}
 
 
 def s(text, *refs):
@@ -65,20 +78,28 @@ def s(text, *refs):
 
 
 class FakeLLM:
-    def __init__(self, data):
-        self.data, self.user = data, None
+    """Answers with the given outputs in turn (the last one repeats); remembers every prompt."""
+
+    def __init__(self, *outputs):
+        self.outputs, self.prompts = list(outputs), []
+
+    @property
+    def user(self):
+        return self.prompts[-1] if self.prompts else None
 
     def complete_json(self, system, user, schema_name, schema):
-        self.user = user
-        return LLMResult(data=self.data, model="fake", prompt_tokens=100, completion_tokens=20)
+        self.prompts.append(user)
+        data = self.outputs[min(len(self.prompts), len(self.outputs)) - 1]
+        return LLMResult(data=data, model="fake", prompt_tokens=100, completion_tokens=20)
 
 
-def run(question, chunks, data, monkeypatch, tmp_path, store=None, **req):
+def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, **req):
     monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
-    llm = FakeLLM(data)
+    llm = data if isinstance(data, FakeLLM) else FakeLLM(data)
     events = list(answer_events(
         store or FakeStore(), llm, AskRequest(question=question, **req),
-        retrieve_fn=lambda *a, **kw: RetrievalResult(items=chunks, not_found=not chunks),
+        retrieve_fn=retrieve_fn or (lambda *a, **kw: RetrievalResult(items=chunks, not_found=not chunks)),
+        freshness=freshness,
     ))
     return events, AskResponse.model_validate(events[-1]["response"]), llm
 
@@ -108,6 +129,23 @@ def test_answer_quotes_lines_from_the_index(monkeypatch, tmp_path):
     assert [(n.url, n.kind) for n in r.nav_links] == [("https://dgaurf.md/ro/acte", "page")]
     assert r.followups == ["Care este termenul?"]
     assert [t.tool for t in r.trace] == ["search", "verify"]
+
+
+def test_where_exactly_questions_focus_the_first_pdf_citation(monkeypatch, tmp_path):
+    page_first = model(sentences=[s("Contacte.", "S1.L1"), s("Taxa e 200 lei.", "S2.L1")], locate=True)
+    _, r, _ = run("Unde anume scrie taxa?", [CONTACTS, DECISION], page_first, monkeypatch, tmp_path)
+    assert r.focus_citation_id == "c2"  # the web page can't open in the viewer; the PDF can
+
+    _, r, _ = run("Cât costă?", [DECISION], model(sentences=[s("Taxa e 200 lei.", "S1.L1")]), monkeypatch, tmp_path)
+    assert r.focus_citation_id is None
+
+
+def test_pdf_citations_get_a_file_url_even_without_a_stored_copy(monkeypatch, tmp_path):
+    store = FakeStore(has_file=False)
+    _, r, _ = run("Cât costă?", [DECISION, CONTACTS], model(sentences=[s("Taxa e 200 lei.", "S1.L1", "S2.L1")]),
+                  monkeypatch, tmp_path, store=store)
+    by_kind = {c.kind: c.file_url for c in r.citations}
+    assert by_kind == {"file": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fd.pdf/file", "page": None}
 
 
 def test_stream_order_and_deltas_add_up_to_the_answer(monkeypatch, tmp_path):
@@ -263,3 +301,117 @@ def test_numbers_backed():
 
 def test_boxes_without_page_size_are_skipped():
     assert to_top_left([BOX], []) == []
+
+
+# ─────────────── task 08: freshness pass, act lineage, bigger context ───────────────
+
+OLD_ACT = DECISION | {"chunk_id": "o1", "doc_id": "file:dgaurf.md/storage/4-1.pdf", "number": "4/1",
+                      "date": "2020-03-05", "text": "9. Asociația CCDD va asigura elaborarea PUG."}
+MID_ACT = DECISION | {"chunk_id": "o2", "doc_id": "file:dgaurf.md/storage/79.pdf", "number": "79", "date": "2021-07-27",
+                      "text": "2. DGAURF va selecta elaboratorul prin achiziții publice."}
+NEW_ACT = DECISION | {"chunk_id": "n1", "doc_id": "file:dgaurf.md/storage/366d.pdf", "doc_type": "dispozitie",
+                      "number": "366-d", "date": "2025-10-09", "text": "Elaboratorul PUG este Consorțiul ARHICON."}
+for c in (OLD_ACT, MID_ACT, NEW_ACT):
+    LINES[c["chunk_id"]] = [{"line_id": f"{c['chunk_id']}-l1", "idx": 0, "text": c["text"], "page": 1, "bboxes": []}]
+
+
+def test_freshness_pass_finds_the_newer_act_and_answers_again(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_retrieve(pool, query, **kw):
+        calls.append(kw)
+        return RetrievalResult(items=[NEW_ACT] if kw.get("date_after") else [OLD_ACT, MID_ACT])
+
+    first = model(sentences=[s("Asociația CCDD elaborează PUG.", "S1.L1"), s("DGAURF selectează elaboratorul.", "S2.L1")],
+                  conflict={"kind": "contradiction", "explanation": "Diferă.", "refs": ["S1.L1", "S2.L1"],
+                            "preferred_ref": None})
+    second = model(sentences=[s("PUG este elaborat de Consorțiul ARHICON.", "S1.L1")])
+    llm = FakeLLM(first, second)
+    _, r, _ = run("Cine elaborează PUG?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True,
+                  store=FakeStore(meta={"n1": NEW_ACT}))
+
+    assert (r.status, r.meta.path, r.answer) == ("answered", "agent", "PUG este elaborat de Consorțiul ARHICON.")
+    assert r.citations[0].act_number == "366-d"
+    assert {"date_after": "2021-07-27", "sites": ["dgaurf.md"]} in [
+        {k: c[k] for k in ("date_after", "sites") if k in c} for c in calls]
+    assert llm.prompts[1].index("[S1] ") < llm.prompts[1].index("366-d") < llm.prompts[1].index("79")  # newest first
+    assert [t.tool for t in r.trace] == ["search", "search", "verify"]
+    assert r.trace[1].summary == "Caut acte mai noi… găsite 1"
+
+
+def test_freshness_pass_keeps_the_first_answer_when_nothing_is_newer(monkeypatch, tmp_path):
+    llm = FakeLLM(model(sentences=[s("DGAURF selectează elaboratorul.", "S1.L1")]))
+    _, r, _ = run("Cine selectează elaboratorul?", [MID_ACT], llm, monkeypatch, tmp_path, freshness=True)
+    assert (r.meta.path, len(llm.prompts)) == ("fast", 1)
+    assert r.trace[1].summary == "Caut acte mai noi… găsite 0"
+
+
+def test_freshness_pass_greps_later_acts_by_number(monkeypatch, tmp_path):
+    store = FakeStore(later=[NEW_ACT], meta={"n1": NEW_ACT})
+    llm = FakeLLM(model(sentences=[s("Taxa e 200 lei.", "S1.L1")], conflict={
+        "kind": "outdated", "explanation": "x", "refs": ["S1.L1", "S1.L1"], "preferred_ref": None}))
+    run("Cât costă?", [MID_ACT], llm, monkeypatch, tmp_path, store=store, freshness=True)
+    assert {"nr. 79", "79 din 27.07.2021"} <= set(store.grep_patterns)
+    assert len(llm.prompts) == 2
+
+
+def test_no_freshness_pass_for_settled_answers():
+    assert not answering.needs_freshness(model(sentences=[s("x", "S1.L1")]), [MID_ACT], "Ce prevede decizia 79?")
+    assert answering.needs_freshness(model(), [MID_ACT], "Cine elaborează PUG?")
+    assert answering.needs_freshness(model(), [OLD_ACT, MID_ACT], "Ce prevede?")
+    assert answering.needs_freshness(model("partial"), [MID_ACT], "Ce prevede?")
+    assert not answering.needs_freshness(model("refused"), [OLD_ACT, MID_ACT], "Cine ești?")
+
+
+def test_newest_candidate_joins_the_top_chunks():
+    candidates = [OLD_ACT | {"chunk_id": f"x{i}"} for i in range(12)] + [CONTACTS, NEW_ACT]
+    picked = answering.pick_chunks(candidates)
+    assert len(picked) == 13 and picked[-1]["chunk_id"] == "n1"
+    assert len(answering.pick_chunks(candidates[:12] + [MID_ACT | {"date": "2019-01-01"}])) == 12
+
+
+def test_amending_act_is_added_with_a_note(monkeypatch, tmp_path):
+    amending = DECISION | {"chunk_id": "a1", "doc_id": "file:dgaurf.md/storage/12-14.pdf", "number": "12/14",
+                           "date": "2020-07-28", "text": "Se operează modificări în decizia nr. 4/1."}
+    LINES["a1"] = [{"line_id": "a1-l1", "idx": 0, "text": amending["text"], "page": 1, "bboxes": []}]
+    link = {"from_doc_id": amending["doc_id"], "to_doc_id": OLD_ACT["doc_id"], "relation": "amends",
+            "line_id": "a1-l1", "chunk_id": "a1"}
+    store = FakeStore(links=[link], meta={"a1": amending})
+    _, _, llm = run("Ce prevede decizia 4/1?", [OLD_ACT], model("not_found"), monkeypatch, tmp_path, store=store)
+    assert "note: this act amends Decizia nr. 4/1 din 05.03.2020 cu privire la taxe (line S2.L1)" in llm.user
+
+
+def test_undated_document_is_as_recent_as_the_dates_it_mentions():
+    assert answering.latest_date(["Contract nr. 45/25 din 16.06.2025", "Dispoziția nr. 366-d din 09 octombrie 2025",
+                                  "Planul 2025-2040", "termen 01.01.2099"], today="2026-09-26") == "2025-10-09"
+    regulation = {"chunk_id": "r", "doc_id": "d-reg", "mentions_until": "2025-06-16"}
+    page = {"chunk_id": "p", "doc_id": "d-page"}
+    assert [c["chunk_id"] for c in answering.newest_first([OLD_ACT, page, regulation, NEW_ACT, MID_ACT])] == [
+        "n1", "r", "o2", "o1", "p"]
+
+
+def test_own_repeal_line_is_noted_even_when_the_target_is_not_in_the_corpus(monkeypatch, tmp_path):
+    repeal = NEW_ACT | {"chunk_id": "g6", "text": "6. Grupul aprobat prin Dispoziția 185-d își încetează activitatea."}
+    LINES["g6"] = [{"line_id": "g6-l1", "idx": 0, "text": repeal["text"], "page": 1, "bboxes": []}]
+    link = {"from_doc_id": NEW_ACT["doc_id"], "to_doc_id": None, "to_ref_text": "Dispoziția 185-d din 23.04.2020",
+            "relation": "repeals", "line_id": "g6-l1", "chunk_id": "g6"}
+    _, _, llm = run("Ce grup?", [NEW_ACT], model("not_found"), monkeypatch, tmp_path,
+                    store=FakeStore(links=[link], meta={"g6": repeal}))
+    assert "note: this act repeals Dispoziția 185-d din 23.04.2020 (line S2.L1)" in llm.user
+
+
+def test_freshness_searches_with_the_models_romanian_query(monkeypatch, tmp_path):
+    queries = []
+
+    def fake_retrieve(pool, query, **kw):
+        queries.append(query)
+        return RetrievalResult(items=[MID_ACT])
+
+    llm = FakeLLM(model(sentences=[s("DGAURF selectează.", "S1.L1")], search_ro="reactualizare PUG elaborator"))
+    run("Кто разрабатывает генплан?", [], llm, monkeypatch, tmp_path, retrieve_fn=fake_retrieve, freshness=True)
+    assert "reactualizare PUG elaborator" in queries[1:]
+
+
+def test_copies_of_a_document_are_one_source():
+    copy = OLD_ACT | {"chunk_id": "o1-copy", "content_hash": "h"}
+    assert [c["chunk_id"] for c in answering.distinct([OLD_ACT | {"content_hash": "h"}, copy, MID_ACT])] == ["o1", "o2"]

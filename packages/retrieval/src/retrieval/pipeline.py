@@ -63,6 +63,8 @@ def retrieve(
     *,
     lang: str | None = None,
     site: str | None = None,
+    sites: list[str] | None = None,
+    date_after: str | None = None,
     k: int = RERANK_TOP_K,
     rerank: bool = False,
     top_candidates: int = TOP_CANDIDATES,
@@ -80,6 +82,8 @@ def retrieve(
     5. Deduplicates candidates.
     6. Reranks with CrossEncoder if rerank=True.
     7. Evaluates rejection threshold for not_found.
+
+    sites / date_after restrict the search to chunks of these sites / with an ISO date after this one.
     """
     if rerank and not RERANKER_ENABLED:
         raise ValueError(
@@ -119,25 +123,25 @@ def retrieve(
     def run_chunk_vector() -> tuple[list[dict], float]:
         t0 = time.perf_counter()
         with acquire_conn(pool) as conn:
-            res = execute_vector_query(conn, q_vec, lang=lang, site=site, limit=top_candidates)
+            res = execute_vector_query(conn, q_vec, lang=lang, site=site, sites=sites, date_after=date_after, limit=top_candidates)
         return res, (time.perf_counter() - t0) * 1000.0
 
     def run_line_vector() -> tuple[list[dict], float]:
         t0 = time.perf_counter()
         with acquire_conn(pool) as conn:
-            res = execute_line_vector_query(conn, q_vec, lang=lang, site=site, limit=top_candidates * 2)
+            res = execute_line_vector_query(conn, q_vec, lang=lang, site=site, sites=sites, date_after=date_after, limit=top_candidates * 2)
         return res, (time.perf_counter() - t0) * 1000.0
 
     def run_fts() -> tuple[list[dict], float]:
         t0 = time.perf_counter()
         with acquire_conn(pool) as conn:
-            res = execute_fts_query(conn, fts_q, lang=lang, site=site, limit=top_candidates)
+            res = execute_fts_query(conn, fts_q, lang=lang, site=site, sites=sites, date_after=date_after, limit=top_candidates)
         return res, (time.perf_counter() - t0) * 1000.0
 
     def run_line_fts() -> tuple[list[dict], float]:
         t0 = time.perf_counter()
         with acquire_conn(pool) as conn:
-            res = execute_line_fts_query(conn, fts_q, lang=lang, site=site, limit=top_candidates * 2)
+            res = execute_line_fts_query(conn, fts_q, lang=lang, site=site, sites=sites, date_after=date_after, limit=top_candidates * 2)
         return res, (time.perf_counter() - t0) * 1000.0
 
     if isinstance(pool, ConnectionPool):
