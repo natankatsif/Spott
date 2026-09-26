@@ -12,7 +12,13 @@ export const metadata: Metadata = {
 };
 
 // colour of the mobile browser bar / Android task switcher, same as the page background
-export const viewport: Viewport = { themeColor: "#f5f6f8" };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#f5f6f8",
+  // Android Chrome: the keyboard shrinks the layout (100dvh) instead of scrolling the page to the focused field
+  interactiveWidget: "resizes-content",
+};
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

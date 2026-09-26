@@ -123,3 +123,22 @@
   --sidebar-border: hsl(240 3.7% 15.9%);
   --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
+
+/* Touch screens: iOS Safari zooms into any field whose text is under 16px when it gets focus.
+   Unlayered, so it wins over the Tailwind text-sm/text-xs utilities on inputs. */
+@media (hover: none) and (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* The chat page (html.chat-locked, set by the page): the document itself never scrolls or bounces, only the
+   conversation inside does, so opening the keyboard can't push the header and the input around. */
+html.chat-locked,
+html.chat-locked body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}

@@ -45,7 +45,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
-import { useSourcePreview } from "@/components/chat/source-preview";
+import { canPreview, LocateBadge, useSourcePreview } from "@/components/chat/source-preview";
 import type { Citation, TraceStep } from "@/lib/api";
 import { sendFeedback } from "@/lib/api";
 import type { AnswerView } from "@/lib/chat-transport";
@@ -91,13 +91,16 @@ function CitationCard({ citations, all, t }: { citations: Citation[]; all: Citat
                     </p>
                   )}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <button
-                      className="inline-flex items-center gap-1 font-medium text-brand text-xs hover:underline"
-                      onClick={() => preview.open(all, c.id)}
-                      type="button"
-                    >
-                      <ScanSearchIcon className="size-3.5" /> {t.preview.show}
-                    </button>
+                    {/* no line to look for → nothing to show in the document: only the original link */}
+                    {canPreview(c) && (
+                      <button
+                        className="inline-flex items-center gap-1 font-medium text-brand text-xs hover:underline"
+                        onClick={() => preview.open(all, c.id)}
+                        type="button"
+                      >
+                        <ScanSearchIcon className="size-3.5" /> {t.preview.show}
+                      </button>
+                    )}
                     <a className="text-muted-foreground text-xs underline underline-offset-2" href={c.deep_link} rel="noreferrer" target="_blank">
                       {t.openSource} ↗
                     </a>
@@ -231,18 +234,20 @@ export function AssistantAnswer({
             </SourcesTrigger>
             <SourcesContent>
               {view.citations.map((c) => (
-                <Source
-                  className={cn("flex items-center gap-2 rounded-md", activeId === c.id && "text-brand")}
-                  href={c.deep_link}
-                  key={c.id}
-                  onClick={(e) => {
-                    // open our preview; ctrl/cmd-click still opens the original in a new tab
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-                    e.preventDefault();
-                    preview.open(view.citations, c.id);
-                  }}
-                  title={citationLabel(c, t)}
-                />
+                <div className="flex flex-wrap items-center gap-x-2" key={c.id}>
+                  <Source
+                    className={cn("flex items-center gap-2 rounded-md", activeId === c.id && "text-brand")}
+                    href={c.deep_link}
+                    onClick={(e) => {
+                      // open our preview; ctrl/cmd-click (or a citation without a line to find) opens the original
+                      if (!canPreview(c) || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                      e.preventDefault();
+                      preview.open(view.citations, c.id);
+                    }}
+                    title={citationLabel(c, t)}
+                  />
+                  {activeId === c.id && <LocateBadge className="pl-6" status={preview.status} t={t} />}
+                </div>
               ))}
             </SourcesContent>
           </Sources>
@@ -250,20 +255,32 @@ export function AssistantAnswer({
 
         {!streaming && view.citations.length > 0 && (
           <div className="flex flex-wrap gap-1.5 lg:hidden">
-            {view.citations.map((c) => (
-              <button
-                className="inline-flex max-w-full items-center gap-1 rounded-full border bg-card px-3 py-1 text-left text-xs shadow-sm active:scale-[0.98]"
-                key={c.id}
-                onClick={() => preview.open(view.citations, c.id)}
-                type="button"
-              >
-                <span className="truncate">
-                  <span className="text-muted-foreground">{c.site ?? new URL(c.url).hostname}</span> · {c.document_title}
-                  {c.location ? `, ${c.location}` : ""}
-                </span>
-                <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
-              </button>
-            ))}
+            {view.citations.map((c) => {
+              const chipClass =
+                "inline-flex max-w-full items-center gap-1 rounded-full border bg-card px-3 py-1 text-left text-xs shadow-sm active:scale-[0.98]";
+              const label = (
+                <>
+                  <span className="truncate">
+                    <span className="text-muted-foreground">{c.site ?? new URL(c.url).hostname}</span> · {c.document_title}
+                    {c.location ? `, ${c.location}` : ""}
+                  </span>
+                  {canPreview(c) ? (
+                    <ScanSearchIcon className="size-3 shrink-0 text-brand" />
+                  ) : (
+                    <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
+                  )}
+                </>
+              );
+              return canPreview(c) ? (
+                <button className={chipClass} key={c.id} onClick={() => preview.open(view.citations, c.id)} type="button">
+                  {label}
+                </button>
+              ) : (
+                <a className={chipClass} href={c.deep_link} key={c.id} rel="noreferrer" target="_blank">
+                  {label}
+                </a>
+              );
+            })}
           </div>
         )}
 

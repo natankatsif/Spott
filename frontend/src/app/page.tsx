@@ -13,6 +13,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { AssistantAnswer } from "@/components/chat/assistant-answer";
 import {
+  canPreview,
   type PreviewState,
   SourcePreviewPanel,
   SourcePreviewProvider,
@@ -104,6 +105,34 @@ function useVisitorCount(mode: ApiMode): number | null {
   return count;
 }
 
+/**
+ * Phones: keeps the chat exactly as tall as the visible area and the document at scroll 0. iOS Safari ignores
+ * interactive-widget and, when the keyboard opens, scrolls the whole page up to the focused input; sizing the page
+ * to visualViewport and undoing that scroll keeps the header and the input in place.
+ */
+function useLockedViewport(): void {
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("chat-locked");
+    const vv = window.visualViewport;
+    const update = () => {
+      if (vv) root.style.setProperty("--chat-h", `${Math.round(vv.height)}px`);
+      if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+    };
+    update();
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
+    window.addEventListener("scroll", update);
+    return () => {
+      root.classList.remove("chat-locked");
+      root.style.removeProperty("--chat-h");
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
+    };
+  }, []);
+}
+
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 /** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
 const langOfQuestion = (q: string | undefined, fallback: Lang): Lang => (q && /[а-яё]/i.test(q) ? "ru" : q ? "ro" : fallback);
@@ -125,10 +154,14 @@ export default function Home() {
   const lastMessage = messages.at(-1);
   const lastView = !busy && lastMessage?.role === "assistant" ? viewOf(lastMessage) : null;
   const lastAnswer = lastView?.answer;
-  if (isDesktop && lastView && lastAnswer && lastAnswer.citations.length > 0 && lastAnswer.id !== autoOpenedFor) {
+  // only citations with a line to find can be shown in the document (canPreview); none → no panel
+  const previewable = lastView?.citations.filter(canPreview) ?? [];
+  if (isDesktop && lastView && lastAnswer && lastAnswer.id !== autoOpenedFor) {
     setAutoOpenedFor(lastAnswer.id);
-    const focus = lastView.citations.findIndex((c) => c.id === lastAnswer.focus_citation_id);
-    setPreview({ citations: lastView.citations, index: Math.max(0, focus) });
+    if (previewable.length > 0) {
+      const focus = previewable.findIndex((c) => c.id === lastAnswer.focus_citation_id);
+      setPreview({ citations: previewable, index: Math.max(0, focus) });
+    }
   }
   const [speechError, setSpeechError] = useState<string | null>(null);
   useEffect(() => {
@@ -141,6 +174,7 @@ export default function Home() {
   const [tooLong, setTooLong] = useState(false);
   const backend = useBackendStatus(mode === "live");
   const visitors = useVisitorCount(mode);
+  useLockedViewport();
   const quickQuestions = useQuickQuestions(lang, mode);
 
   const ask = (text: string) => {
@@ -158,7 +192,7 @@ export default function Home() {
 
   return (
     <SourcePreviewProvider setState={setPreview} state={preview}>
-      <main className="flex h-dvh overflow-hidden">
+      <main className="flex h-[var(--chat-h,100dvh)] overflow-hidden">
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 bg-linear-to-b from-background via-background/90 to-transparent p-4 pb-6">
             {visitors !== null && (

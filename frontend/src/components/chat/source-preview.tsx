@@ -5,9 +5,23 @@
 // Desktop (≥ 1024 px): a panel next to the chat built from AI Elements WebPreview. Smaller screens: a full-screen
 // sheet with the same iframe. Another citation of the document already shown is re-highlighted over postMessage,
 // without reloading the frame.
+//
+// Whether the quote is on the page is only known after the preview loaded (its "ready" message says found: exact |
+// words | start | none), so the panel shows "looking for it…" first and then the result. What can be known up front:
+// a citation without a line to look for can't be shown in the document at all → canPreview() hides the button.
 
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import { createContext, type ReactNode, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ArrowLeftIcon,
+  CheckCircle2Icon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CircleAlertIcon,
+  ExternalLinkIcon,
+  SearchXIcon,
+  XIcon,
+} from "lucide-react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   WebPreview,
   WebPreviewBody,
@@ -21,16 +35,25 @@ import { type Citation, resolvePreviewUrl } from "@/lib/api";
 import type { UIText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
+/** A preview can point at the quote only when the citation has a line to look for (the backend puts it in the URL). */
+export const canPreview = (c: Citation) => Boolean(c.preview_url) && c.line_ids.length > 0;
+
 // ─────────────── state ───────────────
 
 export type PreviewState = { citations: Citation[]; index: number } | null;
 
+/** searching → found (exact) | approx (the page changed a little) | missing (not on the page) | failed (never loaded) */
+export type LocateStatus = "searching" | "found" | "approx" | "missing" | "failed";
+
 type PreviewApi = {
   state: PreviewState;
-  /** Show `id` out of `citations` (the answer's list: prev/next walk it). */
+  /** Where the shown citation stands; "searching" until the preview answers. */
+  status: LocateStatus;
+  /** Show `id` out of `citations` (the answer's previewable citations: prev/next walk them). */
   open: (citations: Citation[], id: string) => void;
   close: () => void;
   go: (delta: number) => void;
+  report: (citationId: string, status: LocateStatus) => void;
 };
 
 const PreviewContext = createContext<PreviewApi | null>(null);
@@ -50,11 +73,21 @@ export function SourcePreviewProvider({
   setState: (s: PreviewState) => void;
   children: ReactNode;
 }) {
+  // keyed by citation id: a newly shown citation is "searching" without an explicit reset
+  const [located, setLocated] = useState<{ id: string; status: LocateStatus } | null>(null);
+  // stable: the frame's listener and failure timer depend on it
+  const report = useCallback((id: string, status: LocateStatus) => setLocated({ id, status }), []);
+  const current = state?.citations[state.index];
   const api: PreviewApi = {
     state,
-    open: (citations, id) => setState({ citations, index: Math.max(0, citations.findIndex((c) => c.id === id)) }),
+    status: current && located?.id === current.id ? located.status : "searching",
+    open: (citations, id) => {
+      const list = citations.filter(canPreview);
+      if (list.length) setState({ citations: list, index: Math.max(0, list.findIndex((c) => c.id === id)) });
+    },
     close: () => setState(null),
     go: (delta) => state && setState({ ...state, index: Math.min(state.citations.length - 1, Math.max(0, state.index + delta)) }),
+    report,
   };
   return <PreviewContext.Provider value={api}>{children}</PreviewContext.Provider>;
 }
@@ -78,23 +111,32 @@ export function useIsDesktop(): boolean {
 
 type Found = "exact" | "words" | "start" | "none";
 
-/** No "ready" after this long: offer the original next to the frame (the frame stays, it may still finish). */
-const SLOW_MS = 8000;
+const toStatus = (found: Found | undefined): LocateStatus =>
+  found === "exact" ? "found" : found === "none" ? "missing" : found ? "approx" : "found";
+
+/** No "ready" after this long: the document didn't open (unknown doc, site down…). The frame stays: it may finish. */
+const FAIL_MS = 8000;
 
 // allow-same-origin: pdf.js needs it; allow-popups-to-escape-sandbox: "Deschide originalul ↗" inside the preview
 // opens the city hall site outside our sandbox (some pages break in it). docs/FRONTEND-11.md §1.
 const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation";
 
 function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
+  const { status, report } = useSourcePreview();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const src = resolvePreviewUrl(citation);
   // the document loaded in the frame; another citation of it is re-highlighted instead of reloaded
-  const [frame, setFrame] = useState({ docId: citation.doc_id, src, ready: false, found: null as Found | null, slow: false });
+  const [frame, setFrame] = useState({ docId: citation.doc_id, src, ready: false });
   if (frame.docId !== citation.doc_id) {
-    setFrame({ docId: citation.doc_id, src, ready: false, found: null, slow: false });
+    setFrame({ docId: citation.doc_id, src, ready: false });
   }
+  // the citation the next "ready" answers for (read inside the message listener)
+  const citationRef = useRef(citation.id);
+  useEffect(() => {
+    citationRef.current = citation.id;
+  });
 
-  // same document, another quote → ask the loaded preview to move its highlight
+  // same document, another quote → ask the loaded preview to move its highlight; it answers with "ready" again
   useEffect(() => {
     const win = frameRef.current?.contentWindow;
     if (!win || citation.doc_id !== frame.docId) return;
@@ -107,23 +149,31 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow || e.data?.type !== "src-preview:ready") return;
-      setFrame((f) => ({ ...f, ready: true, slow: false, found: e.data.found ?? null }));
+      setFrame((f) => ({ ...f, ready: true }));
+      report(citationRef.current, toStatus(e.data.found));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [report]);
 
+  // still looking after FAIL_MS → the document didn't open
   useEffect(() => {
-    if (frame.ready) return;
-    const timer = setTimeout(() => setFrame((f) => (f.ready ? f : { ...f, slow: true })), SLOW_MS);
+    if (status !== "searching") return;
+    const id = citation.id;
+    const timer = setTimeout(() => report(id, "failed"), FAIL_MS);
     return () => clearTimeout(timer);
-  }, [frame.src, frame.ready]);
+  }, [status, citation.id, report]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {frame.ready && frame.found === "none" && (
-        <div className="flex items-center gap-1.5 border-b bg-warning-bg px-3 py-1.5 text-warning text-xs">
-          <TriangleAlertIcon className="size-3.5 shrink-0" /> {t.preview.changed}
+      {status === "missing" && (
+        <div className="flex gap-2.5 border-b bg-warning-bg px-3 py-2.5 text-sm" role="status">
+          <SearchXIcon className="mt-0.5 size-4 shrink-0 text-warning" />
+          <div className="min-w-0">
+            <p className="font-medium text-warning">{t.preview.notFound}</p>
+            <p className="mt-0.5 text-foreground/70 text-xs">{t.preview.notFoundHint}</p>
+            <blockquote className="mt-1.5 line-clamp-3 border-warning/40 border-l-2 pl-2 text-foreground/80 text-xs italic">{citation.quote}</blockquote>
+          </div>
         </div>
       )}
       <WebPreviewBody
@@ -134,13 +184,16 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
         src={frame.src}
         title={citation.document_title}
       />
-      {!frame.ready && (
-        <div className="absolute inset-0 flex flex-col gap-3 bg-card p-5">
-          {frame.slow ? (
-            <div className="m-auto flex max-w-xs flex-col items-center gap-3 text-center text-muted-foreground text-sm">
-              <p>{t.preview.slow}</p>
+      {/* an answer for a quote of the already loaded document comes fast: only cover a frame that is (re)loading */}
+      {(!frame.ready || status === "failed") && (
+        <div className="absolute inset-0 flex flex-col bg-card/95 p-6 backdrop-blur-[2px]">
+          {status === "failed" ? (
+            <div className="m-auto flex max-w-xs flex-col items-center gap-2 text-center">
+              <CircleAlertIcon className="size-6 text-muted-foreground" />
+              <p className="font-medium text-sm">{t.preview.failed}</p>
+              <p className="text-muted-foreground text-xs">{t.preview.failedHint}</p>
               <a
-                className="inline-flex items-center gap-1.5 font-medium text-brand underline underline-offset-2"
+                className="mt-2 inline-flex items-center gap-1.5 font-medium text-brand text-sm underline underline-offset-2"
                 href={citation.deep_link}
                 rel="noreferrer"
                 target="_blank"
@@ -149,21 +202,37 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
               </a>
             </div>
           ) : (
-            <>
-              <div className="h-7 w-2/3 animate-pulse rounded-md bg-muted" />
-              {[92, 100, 85, 97, 64].map((w, i) => (
-                <div className="h-3 animate-pulse rounded bg-muted" key={i} style={{ width: `${w}%` }} />
-              ))}
-              <div className="mt-2 h-16 animate-pulse rounded-lg bg-brand/10" />
-              {[88, 95, 70].map((w, i) => (
-                <div className="h-3 animate-pulse rounded bg-muted" key={`b${i}`} style={{ width: `${w}%` }} />
-              ))}
-              <Spinner className="mx-auto mt-auto size-5 text-muted-foreground" />
-            </>
+            <div className="m-auto flex w-full max-w-sm flex-col items-center gap-3 text-center">
+              <Spinner className="size-6 text-brand" />
+              <Shimmer className="font-medium text-sm">{t.preview.searching}</Shimmer>
+              <div className="w-full rounded-xl border bg-muted/40 px-3 py-2 text-left">
+                <p className="text-[11px] text-muted-foreground">{t.preview.searchingFor}</p>
+                <p className="mt-0.5 line-clamp-4 text-foreground/80 text-xs italic">“{citation.quote}”</p>
+              </div>
+            </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────── the status next to a citation ───────────────
+
+/** "looking…" / "found" / "approx" / "not found" for the citation shown in the preview (panel caption, chat list). */
+export function LocateBadge({ status, t, className }: { status: LocateStatus; t: UIText; className?: string }) {
+  const map = {
+    searching: { icon: <Spinner className="size-3" />, text: t.preview.searching, tone: "text-muted-foreground" },
+    found: { icon: <CheckCircle2Icon className="size-3.5" />, text: t.preview.found, tone: "text-success" },
+    approx: { icon: <CheckCircle2Icon className="size-3.5" />, text: t.preview.foundApprox, tone: "text-warning" },
+    missing: { icon: <SearchXIcon className="size-3.5" />, text: t.preview.notFound, tone: "text-warning" },
+    failed: { icon: <CircleAlertIcon className="size-3.5" />, text: t.preview.failed, tone: "text-destructive" },
+  }[status];
+  return (
+    <span className={cn("inline-flex min-w-0 items-center gap-1 text-xs", map.tone, className)} role="status">
+      <span className="shrink-0">{map.icon}</span>
+      <span className="truncate">{map.text}</span>
+    </span>
   );
 }
 
@@ -215,15 +284,19 @@ function Header({ state, t, go, onClose, back }: { state: NonNullable<PreviewSta
   );
 }
 
-function Caption({ citation }: { citation: Citation }) {
+function Caption({ citation, t }: { citation: Citation; t: UIText }) {
+  const { status } = useSourcePreview();
   return (
     <div className="border-b px-3 py-2">
       <p className="truncate font-medium text-sm" title={citation.document_title}>
         {citation.document_title}
       </p>
-      <p className="truncate text-muted-foreground text-xs">
-        {[citation.site, citation.location, citation.page ? `p. ${citation.page}` : null].filter(Boolean).join(" · ")}
-      </p>
+      <div className="mt-0.5 flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-muted-foreground text-xs">
+          {[citation.site, citation.location, citation.page ? `p. ${citation.page}` : null].filter(Boolean).join(" · ")}
+        </p>
+        <LocateBadge className="max-w-[60%] shrink-0" status={status} t={t} />
+      </div>
     </div>
   );
 }
@@ -236,7 +309,7 @@ export function SourcePreviewPanel({ t, className }: { t: UIText; className?: st
   return (
     <WebPreview className={cn("overflow-hidden rounded-2xl shadow-sm", className)} defaultUrl={c.url}>
       <Header go={go} onClose={close} state={state} t={t} />
-      <Caption citation={c} />
+      <Caption citation={c} t={t} />
       <PreviewFrame citation={c} t={t} />
     </WebPreview>
   );
@@ -254,7 +327,7 @@ export function SourcePreviewSheet({ t }: { t: UIText }) {
         {state && c && (
           <WebPreview className="rounded-none border-0" defaultUrl={c.url}>
             <Header back go={go} onClose={close} state={state} t={t} />
-            <Caption citation={c} />
+            <Caption citation={c} t={t} />
             <PreviewFrame citation={c} t={t} />
           </WebPreview>
         )}
