@@ -7,7 +7,6 @@
 
 import {
   ApiRequestError,
-  API_MOCK,
   API_URL,
   checked,
   mockAnswer,
@@ -15,9 +14,11 @@ import {
   type AskRequest,
   type AskResponse,
   type Citation,
+  type ErrorCode,
   type StreamEvent,
   type TraceStep,
 } from "./api";
+import { isMock } from "./mode";
 
 export type StreamState = {
   id: string | null;
@@ -26,7 +27,7 @@ export type StreamState = {
   citations: Citation[];
   sentences: (AnswerSentence & { done: boolean; verified: boolean })[];
   response: AskResponse | null; // set by `done` — the final, authoritative answer
-  error: string | null;
+  error: { code: ErrorCode; message: string } | null;
 };
 
 export const emptyStreamState = (): StreamState => ({
@@ -72,7 +73,7 @@ export function applyStreamEvent(s: StreamState, ev: StreamEvent): StreamState {
       };
     }
     case "error":
-      return { ...s, error: ev.message };
+      return { ...s, error: { code: ev.code, message: ev.message } };
   }
 }
 
@@ -140,7 +141,7 @@ export async function askStream(
     onUpdate(state);
   };
   try {
-    if (API_MOCK) {
+    if (isMock()) {
       for await (const ev of mockStream(req.question)) {
         if (signal?.aborted) break;
         push(ev);

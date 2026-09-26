@@ -1,6 +1,7 @@
 // API contract with the backend. Mirrors backend/app/schemas.py field-for-field
 // (backend/tests/test_contract.py fails if they drift). Human-readable spec: docs/API.md.
 
+import { isMock } from "./mode";
 import answeredRo from "./mocks/ask/answered-ro.json";
 import checklistRo from "./mocks/ask/checklist-ro.json";
 import conflictRo from "./mocks/ask/conflict-ro.json";
@@ -302,8 +303,8 @@ export type SearchResponse = {
 // ─────────────── client ───────────────
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-/** NEXT_PUBLIC_API_MOCK=1 → /api/ask answers from mocks/ask/*.json (no backend needed). */
-export const API_MOCK = process.env.NEXT_PUBLIC_API_MOCK === "1";
+// Mock vs live backend is decided per call by isMock() (./mode.ts): runtime toggle, default NEXT_PUBLIC_API_MOCK.
+export { isMock } from "./mode";
 
 /** Throws ApiRequestError with the parsed ApiError body on any non-2xx. */
 export async function checked(res: Response): Promise<Response> {
@@ -355,7 +356,7 @@ export function mockAnswer(question: string): AskResponse {
 }
 
 export async function ask(req: AskRequest): Promise<AskResponse> {
-  if (API_MOCK) {
+  if (isMock()) {
     await new Promise((r) => setTimeout(r, 700));
     return mockAnswer(req.question);
   }
@@ -363,7 +364,7 @@ export async function ask(req: AskRequest): Promise<AskResponse> {
 }
 
 export async function sendFeedback(req: FeedbackRequest): Promise<void> {
-  if (API_MOCK) return;
+  if (isMock()) return;
   await post<{ ok: boolean }>("/api/feedback", req);
 }
 
@@ -381,11 +382,11 @@ export async function health(): Promise<HealthResponse> {
 }
 
 export async function wall(after?: string): Promise<WallResponse> {
-  if (API_MOCK) return wallMock as unknown as WallResponse;
+  if (isMock()) return wallMock as unknown as WallResponse;
   return get<WallResponse>(`/api/wall${after ? `?after=${encodeURIComponent(after)}` : ""}`);
 }
 
 export async function corpusStats(): Promise<CorpusStats> {
-  if (API_MOCK) return corpusStatsMock as unknown as CorpusStats;
+  if (isMock()) return corpusStatsMock as unknown as CorpusStats;
   return get<CorpusStats>("/api/corpus/stats");
 }

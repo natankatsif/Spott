@@ -1,24 +1,82 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
+@source "../components";
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn/ui tokens (AI Elements are built on them), tuned to the design: light grey page, soft blue actions. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --radius: 0.75rem;
+  --background: #f5f6f8;
+  --foreground: #16181d;
+  --card: #ffffff;
+  --card-foreground: #16181d;
+  --popover: #ffffff;
+  --popover-foreground: #16181d;
+  --primary: #b3c8e6;
+  --primary-foreground: #0f2a4a;
+  --secondary: #eef1f6;
+  --secondary-foreground: #1f2937;
+  --muted: #eef0f4;
+  --muted-foreground: #6b7280;
+  --accent: #eef2f8;
+  --accent-foreground: #16181d;
+  --destructive: #d93f3f;
+  --border: #e3e6ec;
+  --input: #e3e6ec;
+  --ring: #6f97cf;
+  /* project extras */
+  --brand: #1d5fae;
+  --warning: #b7791f;
+  --warning-bg: #fff7e6;
+  --success: #1f8a4c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-success: var(--success);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+/* Soft sky gradient under the prompt dock (from the design). */
+.dock-glow {
+  background:
+    radial-gradient(60% 120% at 12% 100%, rgb(214 206 240 / 0.95), transparent 70%),
+    radial-gradient(70% 140% at 88% 100%, rgb(141 192 226 / 0.9), transparent 70%),
+    linear-gradient(to top, rgb(178 208 232 / 0.85), rgb(245 246 248 / 0));
 }

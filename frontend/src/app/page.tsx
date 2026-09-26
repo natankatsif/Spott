@@ -1,115 +1,156 @@
 "use client";
 
-import { useState } from "react";
-import { ask, type AskResponse, type Lang } from "@/lib/api";
+import { useChat } from "@ai-sdk/react";
+import { MessageSquareTextIcon, RotateCcwIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
+import { AssistantAnswer } from "@/components/chat/assistant-answer";
+import { PromptInput } from "@/components/PromptInput";
+import { Button } from "@/components/ui/button";
+import type { ErrorCode, Lang } from "@/lib/api";
+import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
+import { UI, type UILang } from "@/lib/i18n";
+import { setApiMode, useApiMode } from "@/lib/mode";
+import { cn } from "@/lib/utils";
 
-const UI = {
-  ro: {
-    title: "Asistentul Primăriei Chișinău",
-    placeholder: "Scrieți întrebarea…",
-    send: "Trimite",
-    sources: "Surse",
-    error: "Serviciul nu este disponibil. Încercați mai târziu.",
-  },
-  ru: {
-    title: "Ассистент Примэрии Кишинэу",
-    placeholder: "Задайте вопрос…",
-    send: "Отправить",
-    sources: "Источники",
-    error: "Сервис недоступен. Попробуйте позже.",
-  },
-} satisfies Record<Lang, Record<string, string>>;
+const LANGS: Record<string, UILang> = { [UI.ro.langName]: "ro", [UI.ru.langName]: "ru", [UI.en.langName]: "en" };
+const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" };
 
-type Message = { role: "user"; text: string } | { role: "assistant"; response: AskResponse };
+const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+/** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
+const langOfQuestion = (q: string | undefined, fallback: Lang): Lang => (q && /[а-яё]/i.test(q) ? "ru" : q ? "ro" : fallback);
 
 export default function Home() {
-  const [lang, setLang] = useState<Lang>("ro");
-  const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [lang, setLang] = useState<UILang>("ro");
+  const langRef = useRef(lang);
+  langRef.current = lang;
+  const mode = useApiMode();
   const t = UI[lang];
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const text = question.trim();
-    if (!text || loading) return;
-    setMessages((m) => [...m, { role: "user", text }]);
-    setQuestion("");
-    setLoading(true);
-    setError(false);
-    try {
-      const response = await ask({ question: text, lang });
-      setMessages((m) => [...m, { role: "assistant", response }]);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  const transport = useMemo(() => new MunicipalChatTransport({ lang: () => (langRef.current === "en" ? null : langRef.current) }), []);
+  const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat<ChatMessage>({ transport });
+  const busy = status === "submitted" || status === "streaming";
+
+  const ask = (text: string) => {
+    const q = text.trim();
+    if (!q || busy) return;
+    clearError();
+    void sendMessage({ text: q });
+  };
+
+  const errorText = error ? (t.errors[error.message as ErrorCode] ?? t.errors.internal) : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
-      <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t.title}</h1>
-        <div className="flex gap-1">
-          {(["ro", "ru"] as const).map((l) => (
+    <main className="relative flex h-dvh flex-col overflow-hidden">
+      <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
+        {messages.length > 0 && (
+          <Button onClick={() => { stop(); setMessages([]); }} size="sm" variant="ghost">
+            <RotateCcwIcon className="size-3.5" /> {t.newChat}
+          </Button>
+        )}
+        <div className="flex rounded-full border bg-card p-0.5 text-xs shadow-sm" title={t.modeHint}>
+          {(["mock", "live"] as const).map((m) => (
             <button
-              key={l}
-              onClick={() => setLang(l)}
-              className={`rounded px-2 py-1 text-sm uppercase ${
-                l === lang ? "bg-foreground text-background" : "border border-current/20"
-              }`}
+              className={cn(
+                "rounded-full px-3 py-1 font-medium transition-colors",
+                mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              key={m}
+              onClick={() => setApiMode(m)}
+              type="button"
             >
-              {l}
+              {m === "mock" ? t.mock : t.live}
             </button>
           ))}
         </div>
       </header>
 
-      <section className="flex flex-1 flex-col gap-3">
-        {messages.map((m, i) =>
-          m.role === "user" ? (
-            <p key={i} className="self-end rounded-lg bg-current/5 px-3 py-2">
-              {m.text}
-            </p>
+      <Conversation className="flex-1">
+        <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
+          {messages.length === 0 ? (
+            <ConversationEmptyState
+              className="min-h-[55vh]"
+              description={t.subtitle}
+              icon={<MessageSquareTextIcon className="size-10" />}
+              title={t.title}
+            />
           ) : (
-            <article key={i} className="rounded-lg border border-current/15 px-3 py-2">
-              <p>{m.response.answer}</p>
-              {m.response.citations.length > 0 && (
-                <ul className="mt-2 space-y-1 text-sm opacity-80">
-                  <li className="font-medium">{t.sources}:</li>
-                  {m.response.citations.map((c, j) => (
-                    <li key={j}>
-                      <a href={c.url} target="_blank" rel="noreferrer" className="underline">
-                        {c.document_title}
-                      </a>
-                      {c.location && `, ${c.location}`} — «{c.quote}»
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </article>
-          ),
-        )}
-        {error && <p className="text-sm text-red-600">{t.error}</p>}
-      </section>
+            messages.map((m, i) =>
+              m.role === "user" ? (
+                <Message from="user" key={m.id}>
+                  <MessageContent>{textOf(m)}</MessageContent>
+                </Message>
+              ) : (
+                (() => {
+                  const view = viewOf(m);
+                  const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
+                  return (
+                    <AssistantAnswer
+                      key={m.id}
+                      onFollowup={ask}
+                      streaming={busy && i === messages.length - 1}
+                      t={UI[answerLang]}
+                      view={view}
+                    />
+                  );
+                })()
+              ),
+            )
+          )}
+          {status === "submitted" && messages.at(-1)?.role === "user" && (
+            <AssistantAnswer
+              onFollowup={ask}
+              streaming
+              t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
+              view={{ sentences: [], citations: [], trace: [], answer: null }}
+            />
+          )}
+          {errorText && <p className="text-destructive text-sm">{errorText}</p>}
+        </ConversationContent>
+        <ConversationScrollButton className="bottom-48" />
+      </Conversation>
 
-      <form onSubmit={onSubmit} className="flex gap-2">
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+      <div className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
+      <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
+        {messages.length === 0 && (
+          <div className="w-full max-w-[480px]">
+            <Suggestions>
+              {t.suggestions.map((s) => (
+                <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
+              ))}
+            </Suggestions>
+          </div>
+        )}
+        <PromptInput
+          className="w-full"
+          alwaysExpanded
+          efforts={[...t.efforts]}
+          maxAttachments={0}
+          model={UI[lang].langName}
+          models={[UI.ro.langName, UI.ru.langName, UI.en.langName]}
+          onModelChange={(name) => setLang(LANGS[name] ?? "ro")}
+          onSubmit={(value) => ask(value)}
           placeholder={t.placeholder}
-          className="flex-1 rounded border border-current/20 bg-transparent px-3 py-2"
+          speechLang={SPEECH[lang]}
         />
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-foreground px-4 py-2 text-background disabled:opacity-50"
-        >
-          {loading ? "…" : t.send}
-        </button>
-      </form>
+        <p className="text-foreground/80 text-sm">
+          {t.poweredBy}{" "}
+          <a className="underline underline-offset-2" href="/sources">
+            {t.providers}
+          </a>
+        </p>
+      </footer>
     </main>
   );
 }
