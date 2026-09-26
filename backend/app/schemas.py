@@ -538,6 +538,17 @@ class SearchResponse(BaseModel):
     not_found: bool = False
 
 
+# ─────────────── POST /api/visits ───────────────
+
+
+class VisitRequest(Strict):
+    visitor_id: str = Field(min_length=1, max_length=100)
+
+
+class VisitorCount(Strict):
+    visitors: int
+
+
 class HealthResponse(BaseModel):
     status: str
     device: str

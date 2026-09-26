@@ -331,6 +331,12 @@ CREATE TABLE IF NOT EXISTS suggestions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (lang, question)
 );
+
+-- Unique visitors: one row per browser (its anonymous localStorage id), for the counter in the header.
+CREATE TABLE IF NOT EXISTS visitors (
+    visitor_id TEXT PRIMARY KEY,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
 
 

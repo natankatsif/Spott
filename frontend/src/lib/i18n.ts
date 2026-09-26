@@ -54,6 +54,7 @@ export const UI = {
     mock: "Mock",
     live: "Live",
     modeHint: "Sursa răspunsurilor: date demo (Mock) sau serverul real (Live)",
+    visitors: "Vizitatori unici",
     errors: {
       validation_error: "Întrebarea este prea lungă sau goală.",
       not_found: "Documentul nu a fost găsit.",
@@ -118,6 +119,7 @@ export const UI = {
     mock: "Mock",
     live: "Live",
     modeHint: "Источник ответов: демо-данные (Mock) или реальный сервер (Live)",
+    visitors: "Уникальные посетители",
     errors: {
       validation_error: "Вопрос слишком длинный или пустой.",
       not_found: "Документ не найден.",
@@ -182,6 +184,7 @@ export const UI = {
     mock: "Mock",
     live: "Live",
     modeHint: "Answer source: demo data (Mock) or the real server (Live)",
+    visitors: "Unique visitors",
     errors: {
       validation_error: "The question is too long or empty.",
       not_found: "Document not found.",

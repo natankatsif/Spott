@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { RotateCcwIcon } from "lucide-react";
+import { RotateCcwIcon, UsersIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Conversation,
@@ -15,11 +15,12 @@ import { AssistantAnswer } from "@/components/chat/assistant-answer";
 import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
-import { type ErrorCode, health, type Lang } from "@/lib/api";
+import { type ErrorCode, health, type Lang, visit } from "@/lib/api";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
 import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
-import { setApiMode, useApiMode } from "@/lib/mode";
+import { type ApiMode, setApiMode, useApiMode } from "@/lib/mode";
+import { sessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" };
@@ -54,6 +55,19 @@ function useWarmingUp(enabled: boolean): boolean {
   return enabled && warming;
 }
 
+/** Unique visitors for the header: this browser is counted once (POST /api/visits); null until known or on error. */
+function useVisitorCount(mode: ApiMode): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    visit(sessionId())
+      .then((r) => { if (!stopped) setCount(r.visitors); })
+      .catch(() => { if (!stopped) setCount(null); }); // no counter rather than an error
+    return () => { stopped = true; };
+  }, [mode]);
+  return count;
+}
+
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 /** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
 const langOfQuestion = (q: string | undefined, fallback: Lang): Lang => (q && /[а-яё]/i.test(q) ? "ru" : q ? "ro" : fallback);
@@ -76,6 +90,7 @@ export default function Home() {
   // AskRequest.question is 1–2000 characters; say so here instead of a round trip to a 422
   const [tooLong, setTooLong] = useState(false);
   const warming = useWarmingUp(mode === "live");
+  const visitors = useVisitorCount(mode);
 
   const ask = (text: string) => {
     const q = text.trim();
@@ -93,6 +108,13 @@ export default function Home() {
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden">
       <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
+        {visitors !== null && (
+          <span className="flex items-center gap-1 text-muted-foreground text-xs tabular-nums" title={t.visitors}>
+            <UsersIcon aria-hidden className="size-3.5" />
+            <span className="sr-only">{t.visitors}: </span>
+            {visitors.toLocaleString(lang)}
+          </span>
+        )}
         {messages.length > 0 && (
           <Button onClick={() => { stop(); setMessages([]); }} size="sm" variant="ghost">
             <RotateCcwIcon className="size-3.5" /> {t.newChat}
