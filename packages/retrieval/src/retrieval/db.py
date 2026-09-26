@@ -98,8 +98,16 @@ CREATE TABLE IF NOT EXISTS documents (
     found_on TEXT,
     lang TEXT,
     page_sizes JSONB,
+    sha256 TEXT,
+    previous_sha256 TEXT,
+    version INTEGER DEFAULT 1,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
     indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS sha256 TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS previous_sha256 TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
 CREATE INDEX IF NOT EXISTS idx_documents_site ON documents(site);
 

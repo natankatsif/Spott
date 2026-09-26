@@ -58,25 +58,21 @@ def main() -> None:
         print("\n" + generate_markdown_table(m))
         return
 
-    parsed_dir = args.data / "parsed"
-    pages_dir = parsed_dir / "pages"
     chunks_dir = args.data / "chunks"
     chunks_dir.mkdir(parents=True, exist_ok=True)
 
-    file_paths: list[Path] = []
-    if not args.pages_only and parsed_dir.exists():
-        file_paths.extend(sorted(p for p in parsed_dir.glob("*.json") if not p.name.endswith(".docling.json")))
 
-    page_paths: list[Path] = []
-    if not args.files_only and pages_dir.exists():
-        page_paths.extend(sorted(pages_dir.glob("*.json")))
+    from common.loader import load_active_documents
 
-    doc_paths = file_paths + page_paths
-    if args.limit:
-        doc_paths = doc_paths[:args.limit]
+    docs = load_active_documents(
+        args.data,
+        files_only=args.files_only,
+        pages_only=args.pages_only,
+        limit=args.limit,
+    )
 
-    if not doc_paths:
-        print("No parsed documents found in data/parsed/.")
+    if not docs:
+        print("No active parsed documents found.")
         return
 
     started = time.monotonic()
@@ -85,9 +81,8 @@ def main() -> None:
 
     active_files: set[str] = set()
 
-    for path in doc_paths:
+    for doc in docs:
         try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
             chunks = chunk_document(doc)
             if chunks:
                 doc_id = chunks[0]["doc_id"]
@@ -100,7 +95,8 @@ def main() -> None:
                 all_chunks.extend(chunks)
                 docs_processed += 1
         except Exception as e:
-            log.warning("Failed chunking %s: %s", path.name, e)
+            log.warning("Failed chunking %s: %s", doc.get("doc_id", "(unknown)"), e)
+
 
     # Delete stale .jsonl of documents that no longer exist (only on full runs)
     if not args.limit and not args.files_only and not args.pages_only:

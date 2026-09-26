@@ -38,14 +38,19 @@ CREATE TABLE IF NOT EXISTS documents (
     category       TEXT,
     extension      TEXT,
     external       INTEGER NOT NULL DEFAULT 0,
-    status         TEXT NOT NULL DEFAULT 'discovered',  -- discovered | downloaded | not_a_file | failed
+    status         TEXT NOT NULL DEFAULT 'discovered',  -- discovered | downloaded | not_a_file | failed | removed | missing
     sha256         TEXT REFERENCES files(sha256),       -- current content
     etag           TEXT,
     last_modified  TEXT,
     http_status    INTEGER,
     error          TEXT,
     discovered_at  TEXT NOT NULL,
-    checked_at     TEXT                      -- last download attempt
+    checked_at     TEXT,                     -- last download attempt
+    version        INTEGER NOT NULL DEFAULT 1,
+    previous_sha256 TEXT,
+    updated_at     TEXT,
+    consecutive_missing INTEGER NOT NULL DEFAULT 0,
+    removed_at     TEXT
 );
 CREATE INDEX IF NOT EXISTS documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS documents_sha256 ON documents(sha256);
@@ -81,6 +86,7 @@ CREATE TABLE IF NOT EXISTS document_versions (
     document_key  TEXT NOT NULL REFERENCES documents(key),
     sha256        TEXT NOT NULL REFERENCES files(sha256),
     fetched_at    TEXT NOT NULL,
+    version       INTEGER DEFAULT 1,
     PRIMARY KEY (document_key, sha256)
 );
 """
@@ -99,17 +105,32 @@ class Registry:
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
-        self._ensure_pages_columns()
+        self._ensure_columns()
 
-    def _ensure_pages_columns(self) -> None:
+    def _ensure_columns(self) -> None:
         for col, col_def in [
             ("parse_status", "TEXT NOT NULL DEFAULT 'pending'"),
             ("html_hash", "TEXT"),
             ("parsed_at", "TEXT"),
             ("parse_error", "TEXT"),
+            ("consecutive_missing", "INTEGER NOT NULL DEFAULT 0"),
+            ("removed_at", "TEXT"),
         ]:
             with contextlib.suppress(sqlite3.OperationalError):
                 self.conn.execute(f"ALTER TABLE pages ADD COLUMN {col} {col_def}")
+
+        for col, col_def in [
+            ("version", "INTEGER NOT NULL DEFAULT 1"),
+            ("previous_sha256", "TEXT"),
+            ("updated_at", "TEXT"),
+            ("consecutive_missing", "INTEGER NOT NULL DEFAULT 0"),
+            ("removed_at", "TEXT"),
+        ]:
+            with contextlib.suppress(sqlite3.OperationalError):
+                self.conn.execute(f"ALTER TABLE documents ADD COLUMN {col} {col_def}")
+
+        with contextlib.suppress(sqlite3.OperationalError):
+            self.conn.execute("ALTER TABLE document_versions ADD COLUMN version INTEGER DEFAULT 1")
 
     def close(self) -> None:
         self.conn.close()
@@ -146,10 +167,43 @@ class Registry:
             )
         return new
 
+    def record_crawl_missing(self, site: str, seen_keys: set[str]) -> tuple[int, int]:
+        """Called after a crawl run for a site. Any document URL not seen increments consecutive_missing.
+        If consecutive_missing >= 2, marks document as 'removed'. Returns (num_missing, num_removed)."""
+        ts = now()
+        missing_count = 0
+        removed_count = 0
+        with self.conn:
+            docs = self.conn.execute(
+                "SELECT key, status, consecutive_missing FROM documents WHERE site = ?", (site,)
+            ).fetchall()
+            for d in docs:
+                k = d["key"]
+                if k in seen_keys:
+                    self.conn.execute(
+                        "UPDATE documents SET consecutive_missing = 0 WHERE key = ?", (k,)
+                    )
+                else:
+                    curr = (d["consecutive_missing"] or 0) + 1
+                    if curr >= 2:
+                        self.conn.execute(
+                            "UPDATE documents SET status = 'removed', consecutive_missing = ?, "
+                            "removed_at = COALESCE(removed_at, ?) WHERE key = ?",
+                            (curr, ts, k),
+                        )
+                        removed_count += 1
+                    else:
+                        self.conn.execute(
+                            "UPDATE documents SET consecutive_missing = ? WHERE key = ?",
+                            (curr, k),
+                        )
+                        missing_count += 1
+        return missing_count, removed_count
+
     # --- downloader -----------------------------------------------------------
 
     def documents_to_download(self, statuses: list[str], sites: list[str] | None, limit: int | None):
-        query = f"SELECT * FROM documents WHERE status IN ({', '.join('?' * len(statuses))})"
+        query = f"SELECT * FROM documents WHERE status IN ({', '.join('?' * len(statuses))}) AND status != 'removed'"
         params: list = list(statuses)
         if sites:
             query += f" AND site IN ({', '.join('?' * len(sites))})"
@@ -165,7 +219,7 @@ class Registry:
 
     def record_download(self, key: str, *, sha256: str, path: str | None, size: int, content_type: str,
                         extension: str, http_status: int, etag: str | None, last_modified: str | None) -> None:
-        """Stores a successful download. `path` is None when the content was already known."""
+        """Stores a successful download. Handles version incrementing and previous_sha256."""
         ts = now()
         with self.conn:
             if path is not None:
@@ -174,15 +228,58 @@ class Registry:
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (sha256, path, size, content_type, extension, ts),
                 )
+            row = self.conn.execute(
+                "SELECT sha256, version FROM documents WHERE key = ?", (key,)
+            ).fetchone()
+            old_sha = row["sha256"] if row else None
+            old_ver = (row["version"] or 1) if row else 1
+
+            if old_sha and old_sha != sha256:
+                new_ver = old_ver + 1
+                prev_sha = old_sha
+                updated_at = ts
+            else:
+                new_ver = old_ver
+                prev_sha = None
+                updated_at = ts
+
             self.conn.execute(
-                "INSERT OR IGNORE INTO document_versions (document_key, sha256, fetched_at) VALUES (?, ?, ?)",
-                (key, sha256, ts),
+                "INSERT OR IGNORE INTO document_versions (document_key, sha256, version, fetched_at) VALUES (?, ?, ?, ?)",
+                (key, sha256, new_ver, ts),
             )
+            if old_sha and old_sha != sha256:
+                self.conn.execute(
+                    "UPDATE documents SET status = 'downloaded', sha256 = ?, previous_sha256 = ?, "
+                    "version = ?, updated_at = ?, etag = ?, last_modified = ?, "
+                    "http_status = ?, error = NULL, checked_at = ?, consecutive_missing = 0, removed_at = NULL "
+                    "WHERE key = ?",
+                    (sha256, prev_sha, new_ver, updated_at, etag, last_modified, http_status, ts, key),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE documents SET status = 'downloaded', sha256 = ?, "
+                    "etag = ?, last_modified = ?, "
+                    "http_status = ?, error = NULL, checked_at = ?, consecutive_missing = 0, removed_at = NULL "
+                    "WHERE key = ?",
+                    (sha256, etag, last_modified, http_status, ts, key),
+                )
+
+    def record_download_missing(self, key: str, http_status: int) -> bool:
+        """Called when downloader receives 404/410. Increments consecutive_missing.
+        If >= 2, status becomes 'removed'. Returns True if marked removed."""
+        ts = now()
+        with self.conn:
+            row = self.conn.execute("SELECT consecutive_missing FROM documents WHERE key = ?", (key,)).fetchone()
+            curr = ((row["consecutive_missing"] if row else 0) or 0) + 1
+            is_removed = curr >= 2
+            new_status = "removed" if is_removed else "missing"
+            removed_at = ts if is_removed else None
             self.conn.execute(
-                "UPDATE documents SET status = 'downloaded', sha256 = ?, etag = ?, last_modified = ?, "
-                "http_status = ?, error = NULL, checked_at = ? WHERE key = ?",
-                (sha256, etag, last_modified, http_status, ts, key),
+                "UPDATE documents SET status = ?, http_status = ?, checked_at = ?, "
+                "consecutive_missing = ?, removed_at = COALESCE(removed_at, ?) WHERE key = ?",
+                (new_status, http_status, ts, curr, removed_at, key),
             )
+            return is_removed
 
     def mark_checked(self, key: str, status: str, *, http_status: int | None = None, error: str | None = None) -> None:
         with self.conn:
@@ -193,7 +290,10 @@ class Registry:
 
     def mark_not_modified(self, key: str) -> None:
         with self.conn:
-            self.conn.execute("UPDATE documents SET http_status = 304, checked_at = ? WHERE key = ?", (now(), key))
+            self.conn.execute(
+                "UPDATE documents SET http_status = 304, checked_at = ?, consecutive_missing = 0 WHERE key = ?",
+                (now(), key),
+            )
 
     # --- parsing --------------------------------------------------------------
 
@@ -217,7 +317,8 @@ class Registry:
             "WHERE d.sha256 = ? ORDER BY s.depth IS NULL, s.depth, s.discovered_at",
             (sha256,),
         ).fetchall()
-        return [{k: row[k] for k in row if row[k] not in (None, "")} for row in rows]
+        return [{k: v for k, v in dict(row).items() if v not in (None, "")} for row in rows]
+
 
     def mark_parsed(self, sha256: str, status: str, *, parser_version: str | None = None,
                     error: str | None = None) -> None:
@@ -257,4 +358,79 @@ class Registry:
         files = dict(self.conn.execute("SELECT parse_status, COUNT(*) FROM files GROUP BY parse_status").fetchall())
         pages = dict(self.conn.execute("SELECT parse_status, COUNT(*) FROM pages GROUP BY parse_status").fetchall())
         return {"documents": docs, "files": files, "pages": pages}
+
+    def active_file_documents(self) -> list[dict]:
+        """Returns active (non-removed) downloaded & parsed documents.
+        Deduplicates identical file content (sha256): primary URL is the earliest discovered,
+        all other URLs are added to sources."""
+        from common.urls import url_key
+
+        rows = self.conn.execute(
+            """
+            SELECT d.key, d.url, d.site, d.category, d.extension, d.sha256,
+                   d.version, d.previous_sha256, d.updated_at, d.discovered_at,
+                   f.path, f.size, f.content_type, f.parse_status, f.parser_version
+            FROM documents d
+            JOIN files f ON d.sha256 = f.sha256
+            WHERE d.status = 'downloaded' AND d.sha256 IS NOT NULL
+              AND f.parse_status = 'parsed'
+            ORDER BY d.sha256, d.discovered_at ASC
+            """
+        ).fetchall()
+
+        by_sha: dict[str, list[sqlite3.Row]] = {}
+        for r in rows:
+            by_sha.setdefault(r["sha256"], []).append(r)
+
+        result = []
+        for sha, doc_rows in by_sha.items():
+            primary = doc_rows[0]
+            primary_key = primary["key"] or url_key(primary["url"])
+            doc_id = f"file:{primary_key}"
+
+            sources = self.file_sources(sha)
+
+            result.append({
+                "doc_id": doc_id,
+                "primary_url": primary["url"],
+                "url_key": primary_key,
+                "sha256": sha,
+                "site": primary["site"],
+                "category": primary["category"],
+                "extension": primary["extension"],
+                "version": primary["version"] or 1,
+                "previous_sha256": primary["previous_sha256"],
+                "updated_at": primary["updated_at"],
+                "sources": sources,
+            })
+        return result
+
+    def active_page_documents(self) -> list[dict]:
+        """Returns all parsed active (non-removed) pages."""
+        from common.urls import url_key
+
+        rows = self.conn.execute(
+            """
+            SELECT url, site, html_hash, title, lang, html_file, fetched_at
+            FROM pages
+            WHERE status < 400 AND parse_status = 'parsed'
+              AND html_file IS NOT NULL
+            ORDER BY fetched_at ASC
+            """
+        ).fetchall()
+        result = []
+        for r in rows:
+            ukey = url_key(r["url"])
+            result.append({
+                "doc_id": f"page:{ukey}",
+                "url": r["url"],
+                "url_key": ukey,
+                "site": r["site"],
+                "html_hash": r["html_hash"],
+                "title": r["title"],
+                "lang": r["lang"],
+                "html_file": r["html_file"],
+                "fetched_at": r["fetched_at"],
+            })
+        return result
 

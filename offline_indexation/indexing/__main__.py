@@ -52,20 +52,16 @@ def load_chunks_from_disk(chunks_dir: Path) -> dict[str, list[dict]]:
 def chunk_all(parsed_dir: Path, chunks_dir: Path) -> dict[str, list[dict]]:
     """Runs chunking over parsed files and pages, writing jsonl and returning by_doc."""
     chunks_dir.mkdir(parents=True, exist_ok=True)
-    pages_dir = parsed_dir / "pages"
+    from common.loader import load_active_documents
 
-    paths = []
-    if parsed_dir.exists():
-        paths.extend(sorted(p for p in parsed_dir.glob("*.json") if not p.name.endswith(".docling.json")))
-    if pages_dir.exists():
-        paths.extend(sorted(pages_dir.glob("*.json")))
+    data_dir = chunks_dir.parent
+    docs = load_active_documents(data_dir)
 
     by_doc: dict[str, list[dict]] = {}
     active_jsonl: set[str] = set()
 
-    for p in paths:
+    for doc in docs:
         try:
-            doc = json.loads(p.read_text(encoding="utf-8"))
             chunks = chunk_document(doc)
             if chunks:
                 doc_id = chunks[0]["doc_id"]
@@ -78,7 +74,7 @@ def chunk_all(parsed_dir: Path, chunks_dir: Path) -> dict[str, list[dict]]:
                     for c in chunks:
                         f.write(json.dumps(c, ensure_ascii=False) + "\n")
         except Exception as e:
-            log.warning("Chunking error on %s: %s", p.name, e)
+            log.warning("Chunking error on %s: %s", doc.get("doc_id", "(unknown)"), e)
 
     # Delete stale .jsonl of documents that no longer exist
     for existing in chunks_dir.glob("*.jsonl"):
@@ -88,13 +84,14 @@ def chunk_all(parsed_dir: Path, chunks_dir: Path) -> dict[str, list[dict]]:
     return by_doc
 
 
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
     parsed_dir = args.data / "parsed"
-    pages_dir = parsed_dir / "pages"
     chunks_dir = args.data / "chunks"
+
 
     # 1. Initialize DB schema
     conn = get_connection(autocommit=True)
@@ -106,12 +103,12 @@ def main() -> None:
     init_db(conn)
 
     # 2. Get chunks to index (default: rechunk from data/parsed)
-    total_parsed_files = len(list(p for p in parsed_dir.glob("*.json") if not p.name.endswith(".docling.json"))) if parsed_dir.exists() else 0
-    total_parsed_pages = len(list(pages_dir.glob("*.json"))) if pages_dir.exists() else 0
-    total_expected_docs = total_parsed_files + total_parsed_pages
+    from common.loader import load_active_documents
+    active_docs = load_active_documents(args.data)
+    total_expected_docs = len(active_docs)
 
     if not args.from_jsonl:
-        log.info("Re-chunking documents from %s...", parsed_dir)
+        log.info("Re-chunking active documents from registry/parsed...")
         by_doc = chunk_all(parsed_dir, chunks_dir)
     else:
         log.info("Loading existing chunks from %s (--from-jsonl)...", chunks_dir)
@@ -149,6 +146,8 @@ def main() -> None:
     reused_lines, computed_lines = indexer.embed_and_store_lines(all_lines)
 
     stale = indexer.delete_stale_chunks(by_doc)
+    by_chunk = {c["chunk_id"]: c.get("lines", []) for c in all_chunks}
+    stale_lines = indexer.delete_stale_lines(by_chunk)
 
     # Orphans are only knowable when the whole corpus was chunked in this run.
     is_full_corpus = not (args.from_jsonl or args.sites or args.limit) and len(by_doc) >= total_expected_docs
@@ -167,9 +166,11 @@ def main() -> None:
     print(f"  Line emb reused:     {reused_lines}")
     print(f"  Line emb computed:   {computed_lines}")
     print(f"  Stale chunks removed:{stale:>4}")
+    print(f"  Stale lines removed: {stale_lines:>4}")
     print(f"  Orphans removed:     {orphans_removed}")
 
     conn.close()
+
 
 
 

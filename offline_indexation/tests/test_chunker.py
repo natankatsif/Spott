@@ -384,3 +384,28 @@ def test_chunk_lines_table_embed_text_has_headers():
     assert "Taxa:" in lines[0]["embed_text"]
     assert "Termen:" in lines[0]["embed_text"]
 
+
+def test_chunk_lines_short_line_glued_to_neighbor():
+    """Short lines (< 15 chars like 'Art. 5' or 'tel.') must NOT be discarded, but glued to the neighbor."""
+    doc = {
+        "sha256": "doc_art_tel",
+        "metadata": {"title": "Regulament", "doc_type": "decizie"},
+        "sources": [{"url": "https://chisinau.md/doc1.pdf", "site": "chisinau.md"}],
+        "blocks": [
+            {
+                "id": 0,
+                "type": "paragraph",
+                "text": "Art. 5\nComitetul consultativ coordonează activitatea.\nContacte:\ntel.\n022 123 456",
+                "lang": "ro",
+            }
+        ],
+    }
+    chunks = chunk_document(doc)
+    assert len(chunks) == 1
+    lines = chunks[0]["lines"]
+    line_texts = [l["text"] for l in lines]
+    assert any("Art. 5 Comitetul" in t for t in line_texts)
+    assert any("tel. 022 123 456" in t for t in line_texts)
+    assert chunks[0]["doc_id"] == "file:chisinau.md/doc1.pdf"
+
+

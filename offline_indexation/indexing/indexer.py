@@ -21,8 +21,11 @@ log = logging.getLogger("indexing.indexer")
 
 WRITE_BATCH = 128  # chunks embedded and written per step
 
-DOCUMENT_COLUMNS = ("doc_id", "kind", "title", "doc_type", "number", "date", "category", "site",
-                    "url", "found_on", "lang", "page_sizes")
+DOCUMENT_COLUMNS = (
+    "doc_id", "kind", "title", "doc_type", "number", "date", "category", "site",
+    "url", "found_on", "lang", "page_sizes",
+    "sha256", "previous_sha256", "version", "updated_at",
+)
 CHUNK_COLUMNS = ("chunk_id", "doc_id", "kind", "text", "embed_text", "citation_label",
                  "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes", "lang",
                  "char_count", "content_hash", "has_contacts", "is_table",
@@ -59,13 +62,21 @@ def row_values(record: dict, columns: tuple[str, ...]) -> list:
             value = bool(value)
         elif col in ("ord", "idx") and value is None:
             value = 0
+        elif col == "version" and value is None:
+            value = 1
         values.append(value)
     return values
 
 
 def document_record(doc_id: str, first_chunk: dict) -> dict:
     """Document metadata is copied onto every chunk by the chunker; take it from the first one."""
-    return {"kind": "file"} | {c: first_chunk.get(c) for c in DOCUMENT_COLUMNS if c in first_chunk} | {"doc_id": doc_id}
+    default_kind = "page" if doc_id.startswith("page:") else "file"
+    return (
+        {"kind": first_chunk.get("kind", default_kind)}
+        | {c: first_chunk.get(c) for c in DOCUMENT_COLUMNS if c in first_chunk}
+        | {"doc_id": doc_id}
+    )
+
 
 
 class Indexer:
@@ -209,9 +220,23 @@ class Indexer:
                 deleted += cur.rowcount
         return deleted
 
+    def delete_stale_lines(self, by_chunk: dict[str, list[dict]]) -> int:
+        """Removes lines of indexed chunks that are no longer produced."""
+        deleted = 0
+        with self.conn.cursor() as cur:
+            for chunk_id, lines in by_chunk.items():
+                if lines:
+                    cur.execute(
+                        "DELETE FROM lines WHERE chunk_id = %s AND line_id <> ALL(%s)",
+                        (chunk_id, [l["line_id"] for l in lines]),
+                    )
+                    deleted += cur.rowcount
+        return deleted
+
     def clean_orphaned_documents(self, active_doc_ids: set[str]) -> int:
         """Removes documents (and their chunks, via CASCADE) no longer in the chunker output."""
         if not active_doc_ids:
+
             return 0
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM documents WHERE doc_id <> ALL(%s)", (list(active_doc_ids),))

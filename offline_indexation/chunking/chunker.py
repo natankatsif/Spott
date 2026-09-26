@@ -9,6 +9,7 @@ import hashlib
 import re
 
 from common.text import check_contacts, format_table_markdown
+from common.urls import url_key
 from parsing.normalize import normalize_lang
 
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
@@ -367,9 +368,14 @@ def build_chunk(
         "url": meta.get("url"),
         "found_on": meta.get("found_on"),
         "ord": ord_val,
+        "sha256": meta.get("sha256"),
+        "previous_sha256": meta.get("previous_sha256"),
+        "version": meta.get("version", 1),
+        "updated_at": meta.get("updated_at"),
     }
     chunk_dict["lines"] = extract_chunk_lines(chunk_dict, blocks=blocks)
     return chunk_dict
+
 
 
 def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
@@ -624,6 +630,8 @@ def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[di
     return filtered
 
 
+
+
 HEADING_TYPES = ("heading", "title", "section_header")
 
 
@@ -669,17 +677,21 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
 
     # Metadata extraction
     if kind == "page":
-        doc_id = doc.get("doc_id") or doc.get("id") or f"page:{doc.get('url', '')}"
+        doc_id = doc.get("doc_id") or doc.get("id") or f"page:{doc.get('url_key') or url_key(doc.get('url') or '')}"
         meta = {
             "title": doc.get("title") or "",
-            "doc_type": None,
+            "doc_type": "page",
             "number": None,
-            "date": None,
+            "date": doc.get("date"),
             "category": doc.get("category") or "",
             "site": doc.get("site") or "",
             "url": doc.get("url") or "",
             "found_on": doc.get("url") or "",
             "lang": normalize_lang(doc.get("lang")),
+            "sha256": doc.get("html_hash") or doc.get("sha256"),
+            "previous_sha256": doc.get("previous_sha256"),
+            "version": doc.get("version", 1),
+            "updated_at": doc.get("updated_at"),
         }
         allow_sub = is_act_or_has_major_legal(meta, raw_blocks)
         tracker = LegalHierarchyTracker(allow_sub_articles=allow_sub)
@@ -690,9 +702,16 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             blocks.append(b_copy)
     else:
         sha256 = doc.get("sha256") or ""
-        doc_id = f"file:{sha256}"
         sources = doc.get("sources", [])
         src0 = sources[0] if sources else {}
+        primary_url = doc.get("primary_url") or (src0.get("url") if src0 else "") or doc.get("url") or ""
+        if doc.get("doc_id"):
+            doc_id = doc["doc_id"]
+        elif primary_url:
+            doc_id = f"file:{url_key(primary_url)}"
+        else:
+            doc_id = f"file:{sha256}"
+
         doc_meta = doc.get("metadata", {})
         meta = {
             "title": doc_meta.get("title") or "",
@@ -701,9 +720,13 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "date": doc_meta.get("date"),
             "category": src0.get("category") or "",
             "site": src0.get("site") or "",
-            "url": src0.get("url") or "",
+            "url": primary_url or (src0.get("url") or ""),
             "found_on": src0.get("found_on") or "",
             "lang": normalize_lang(doc_meta.get("lang")),
+            "sha256": sha256,
+            "previous_sha256": doc.get("previous_sha256"),
+            "version": doc.get("version", 1),
+            "updated_at": doc.get("updated_at"),
         }
 
         # Apply legal hierarchy tracker to assign legal_path to every block
