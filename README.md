@@ -95,10 +95,74 @@ uv run python -m indexing.search --query "компенсация за отопл
 uv run python -m indexing.search --query "plan urbanistic" --doc-type decizie
 ```
 
-**Backend** (http://localhost:8000, документация API — `/docs`):
+**Backend** (http://localhost:8000, документация OpenAPI/Swagger — `/docs`):
 ```bash
-cd backend
-uv run uvicorn app.main:app --reload --port 8000
+# Запуск сервиса поиска и API
+uv run uvicorn backend.app.main:app --port 8000
+```
+
+#### Примеры запросов через curl:
+
+1. **Проверка работоспособности (`GET /health`)**:
+```bash
+curl -s http://localhost:8000/health | jq .
+```
+Ответ:
+```json
+{
+  "status": "ok",
+  "device": "mps",
+  "models_loaded": true,
+  "chunks_count": 2269,
+  "pool_stats": {
+    "pool_size": 2,
+    "pool_available": 2,
+    "requests_waiting": 0
+  }
+}
+```
+
+2. **Быстрый гибридный поиск без реранкера (`POST /api/search`, p95 ~106 ms)**:
+```bash
+curl -s -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "cum obtin autorizatie de constructie in chisinau",
+    "k": 5,
+    "rerank": false
+  }' | jq .
+```
+
+3. **Поиск с кросс-энкодер реранкером (`POST /api/search` + `bge-reranker-v2-m3`)**:
+```bash
+curl -s -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "компенсация за отопление в кишиневе документы",
+    "lang": "ru",
+    "k": 5,
+    "rerank": true
+  }' | jq .
+```
+
+4. **Запрос без ответа в корпусе (`not_found: true`, threshold = 0.0093)**:
+```bash
+curl -s -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "tarife metrou chisinau abonament lunar",
+    "k": 5,
+    "rerank": true
+  }' | jq .
+```
+
+#### Запуск бенчмарка задержек:
+```bash
+# Быстрый прогон без реранкера (48 запросов: 16 запросов x 3 прогона)
+uv run python backend/scripts/bench_search.py --skip-rerank
+
+# Полный бенчмарк (с реранкером и без)
+uv run python backend/scripts/bench_search.py --runs 3
 ```
 
 **Frontend** (http://localhost:3000):
@@ -111,5 +175,7 @@ npm run dev
 
 ## Контракт API
 
-`POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
+- `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
+- `POST /api/search` → `{ query, lang, count, not_found, results: [...], timings_ms: { embed, vector_sql, fts_sql, rerank, total } }`.
+- `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
 Описан в [`backend/app/schemas.py`](backend/app/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).

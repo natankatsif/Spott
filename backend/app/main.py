@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Running warm-up search query...")
     searcher = HybridSearcher()
     try:
-        await run_in_threadpool(searcher.search_rerank, "warmup query", k=2, top_candidates=5)
+        await run_in_threadpool(searcher.search_rerank, "warmup query", k=8, top_candidates=30)
     except Exception as e:
         log.warning("Warmup search query encountered error (ignored): %s", e)
 
