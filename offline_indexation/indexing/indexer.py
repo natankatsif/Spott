@@ -52,7 +52,7 @@ def row_values(record: dict, columns: tuple[str, ...]) -> list:
         if col in JSON_COLUMNS:
             value = json.dumps(value or [], ensure_ascii=False)
         elif col == "embedding" and value is not None:
-            value = np.asarray(value, dtype=np.float32)
+            value = value.to_numpy() if hasattr(value, "to_numpy") else np.asarray(value, dtype=np.float32)
         elif col in ("has_contacts", "is_table"):
             value = bool(value)
         values.append(value)

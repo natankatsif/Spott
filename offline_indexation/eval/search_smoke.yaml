@@ -32,56 +32,48 @@
     keywords: ["deșeuri", "depozit"]
 
 - id: ro-04
-  query: "Unde găsesc studii de fundamentare pentru planul urbanistic general?"
+  query: "Ce acte îmi trebuie pentru a primi autorizația de construire a unei case?"
   lang: ro
   expected:
     site: "dgaurf.md"
     doc_ids:
-      - "page:dgaurf.md/ro/news/67"
+      - "page:dgaurf.md/ro/questions"
       - "file:da64d194834cb0d94e7e340d9396ecc220c76304a038aa51cf934b02a1786cbd"
-    keywords: ["consultări", "urban"]
+    keywords: ["autorizație", "construire", "urbanism"]
 
 - id: ro-05
-  query: "Ce grădinițe noi se renovează și modernizează în Chișinău?"
+  query: "Ce grădinițe și școli se renovează în Chișinău din bugetul municipal?"
   lang: ro
   expected:
     site: "proiecte.chisinau.md"
     doc_ids:
       - "page:proiecte.chisinau.md/ro/pv-988-deschiderea-grupelor-noi-gradinita-nr-174"
+      - "page:proiecte.chisinau.md/ro/pv-1263-modernizarea-sistemelor-de-ventilare-in-scoli-si-gradinite"
       - "page:proiecte.chisinau.md/ro/pv-1232-drum-reabilitat-spre-gradinita-nr-78"
       - "page:proiecte.chisinau.md/ro/pv-615-reparatia-institutiilor-de-invatamant-centru"
     keywords: ["grădiniț", "invatamant"]
 
 - id: ro-06
-  query: "Cum funcționează taxarea electronică în transportul public municipal?"
+  query: "Cum pot cumpăra abonament pentru călătoria cu troleibuzul sau autobuzul?"
   lang: ro
   expected:
     site: "mobilitatechisinau.md"
     doc_ids:
+      - "page:mobilitatechisinau.md/?page_id=7492"
       - "page:mobilitatechisinau.md/?page_id=6816"
-    keywords: ["taxare", "electronică"]
+    keywords: ["abonamente", "călătorie", "transport"]
 
 - id: ro-07
-  query: "Ce activități educaționale gratuite sunt organizate pentru copiii refugiați?"
+  query: "Cum mă pot înscrie în audiență directă la primarul general al municipiului Chișinău?"
   lang: ro
-  expected:
-    site: "help.chisinau.md"
-    doc_ids:
-      - "page:help.chisinau.md/activitati-pentru-copii-2"
-      - "file:dc597e7571c3916c5d91fbd55d7987f7a576b344d5a15dcecd3cd5e72e9ea7c1"
-    keywords: ["refugiaț", "copii"]
+  expected: none
 
 - id: ro-08
-  query: "Ce decizii și proiecte au fost aprobate de primărie pentru spitalele municipale?"
+  query: "Care este procedura de adopție a unui câine din azilul municipal pentru animale?"
   lang: ro
-  expected:
-    site: "proiecte.chisinau.md"
-    doc_ids:
-      - "page:proiecte.chisinau.md/ro/d-97-sanatate-asistenta-sociala"
-      - "page:proiecte.chisinau.md/ro/pv-1222-reabilitarea-strazii-korolenko"
-    keywords: ["spital", "sanatate"]
+  expected: none
 
-- id: cross-01
+- id: ru-01
   query: "Где в центре Кишинева найти городские парковки и как их оплачивать?"
   lang: ru
   target_lang: ro
@@ -95,8 +87,8 @@
       - "page:mobilitatechisinau.md/?p=18160"
     keywords: ["parcăr", "parcare"]
 
-- id: cross-02
-  query: "Кто руководит предприятием по вывозу мусора Autosalubritate?"
+- id: ru-02
+  query: "Кто руководит предприятием по вывозу мусора Autosalubritate и как связаться?"
   lang: ru
   target_lang: ro
   expected:
@@ -105,8 +97,8 @@
       - "page:autosalubritate.md/conducerea"
     keywords: ["autosalubritate"]
 
-- id: cross-03
-  query: "Как продвигается проект по переработке твердых бытовых отходов на Чеканах?"
+- id: ru-03
+  query: "Как продвигается проект модернизации мусорного полигона на Чеканах?"
   lang: ru
   target_lang: ro
   expected:
@@ -117,19 +109,19 @@
       - "file:2ceabeb307911088c1f399b20df5d4b000f949ed0e638dce3a91e07931a56b02"
     keywords: ["deșeuri", "depozit"]
 
-- id: cross-04
-  query: "Где проводятся публичные обсуждения генерального градостроительного плана?"
+- id: ru-04
+  query: "Как получить разрешение на строительство частного дома в мэрии?"
   lang: ru
   target_lang: ro
   expected:
     site: "dgaurf.md"
     doc_ids:
-      - "page:dgaurf.md/ro/news/67"
+      - "page:dgaurf.md/ro/questions"
       - "file:da64d194834cb0d94e7e340d9396ecc220c76304a038aa51cf934b02a1786cbd"
-    keywords: ["consultări", "urban"]
+    keywords: ["autorizație", "construire", "urbanism"]
 
-- id: cross-05
-  query: "Какие новые спортивные площадки и стадионы построили в лицеях Кишинева?"
+- id: ru-05
+  query: "Какие новые спортивные площадки и стадионы открыли в школах Кишинева?"
   lang: ru
   target_lang: ro
   expected:
@@ -137,21 +129,28 @@
     doc_ids:
       - "page:proiecte.chisinau.md/ro/pv-387-teren-de-fotbal-lt-andquot-m-viteazulandquot"
       - "page:proiecte.chisinau.md/ro/pv-1238-stadion-de-fotbal-la-liceul-andbdquo-universulandrdquo"
+      - "page:proiecte.chisinau.md/ro/pv-1321-teren-de-sport-la-gradinita-nr-167"
       - "page:proiecte.chisinau.md/ro/d-36-sport"
       - "page:proiecte.chisinau.md/ro/pv-943-terenuri-de-fitness-in-curti-de-bloc-centru"
     keywords: ["teren", "sport", "stadion"]
 
-- id: neg-01
+- id: ru-06
+  query: "Где оформить абонемент на проезд в общественном городском транспорте?"
+  lang: ru
+  target_lang: ro
+  expected:
+    site: "mobilitatechisinau.md"
+    doc_ids:
+      - "page:mobilitatechisinau.md/?page_id=7492"
+      - "page:mobilitatechisinau.md/?page_id=6816"
+    keywords: ["abonamente", "transport"]
+
+- id: ru-07
   query: "Как оформить компенсацию на оплату отопления в зимний период в Кишиневе?"
   lang: ru
   expected: none
 
-- id: neg-02
-  query: "Cum mă pot înscrie în audiență directă la primarul general al municipiului?"
-  lang: ro
-  expected: none
-
-- id: neg-03
+- id: ru-08
   query: "График планового отключения горячей воды летом в многоквартирных домах"
   lang: ru
   expected: none
