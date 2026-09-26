@@ -26,13 +26,27 @@ import {
   type Job,
   type JobStatus,
   type Lang,
-  type SourceCreate,
+  adminGaps,
+  adminHideGap,
+  adminRecheckGap,
+  type CorpusTotals,
+  type Gap,
+  type GapList,
+  type GapRecheck,
+  type SourceAdded,
+  type SourceList,
   type SourceRow,
   type Suggestion,
   suggestions as publicSuggestions,
 } from "./api";
 import feedbackMock from "./mocks/admin/feedback.json";
+import addBlocked from "./mocks/admin/add-source-blocked.json";
+import addDocument from "./mocks/admin/add-source-document.json";
+import addMerged from "./mocks/admin/add-source-merged.json";
+import addSite from "./mocks/admin/add-source-site.json";
 import feedbackStatsMock from "./mocks/admin/feedback-stats.json";
+import gapRecheckMock from "./mocks/admin/gap-recheck.json";
+import gapsMock from "./mocks/admin/gaps.json";
 import jobsMock from "./mocks/admin/jobs.json";
 import sessionMock from "./mocks/admin/session.json";
 import sourcesMock from "./mocks/admin/sources.json";
@@ -137,10 +151,12 @@ async function withToken<T>(live: (token: string) => Promise<T>, mock: () => T |
 
 const demo = {
   sources: structuredClone(sourcesMock.sources) as SourceRow[],
+  totals: structuredClone(sourcesMock.totals) as CorpusTotals,
   jobs: structuredClone(jobsMock.jobs) as Job[],
+  gaps: structuredClone(gapsMock.items) as Gap[],
   suggestions: structuredClone(suggestionsMock.items) as Suggestion[],
   feedback: structuredClone(feedbackMock.items) as FeedbackItem[],
-  nextId: 100,
+  nextId: 1000,
 };
 
 const DEMO_STAGES: [NonNullable<Job["stage"]>, number, number, number][] = [
@@ -151,64 +167,8 @@ const DEMO_STAGES: [NonNullable<Job["stage"]>, number, number, number][] = [
   ["index", 80, 20, 260],
 ];
 
-/** Moves demo jobs forward a little on every read, so progress, ETA and the log look alive. */
-function tickDemo(): void {
-  const now = new Date().toISOString();
-  for (const job of demo.jobs) {
-    if (job.status === "queued") {
-      job.status = "running";
-      job.started_at = now;
-      job.stage = "crawl";
-      continue;
-    }
-    if (job.status !== "running") continue;
-    job.percent = Math.min(100, job.percent + 1.5 + Math.random() * 2.5);
-    const [stage, start, width, total] = DEMO_STAGES.findLast(([, s]) => job.percent >= s) ?? DEMO_STAGES[0];
-    job.stage = stage;
-    job.stage_total = total;
-    job.stage_done = Math.min(total, Math.round(((job.percent - start) / width) * total));
-    job.eta_s = Math.round((100 - job.percent) * 4.2);
-    const site = demo.sources.find((s) => s.id === job.source_id)?.site_id ?? "all";
-    job.log_tail = [...job.log_tail, `${site} [${job.stage_done}/${total}] ${stage} ok`].slice(-12);
-    if (job.percent >= 100) {
-      Object.assign(job, {
-        status: "done",
-        percent: 100,
-        eta_s: null,
-        finished_at: now,
-        stats: {
-          pages: 118,
-          documents_found: 37,
-          documents_downloaded: 37,
-          files_parsed: 36,
-          chunks: 260,
-          lines: 1804,
-          embeddings_reused: 241,
-          embeddings_computed: 19,
-          errors: 1,
-        },
-      } satisfies Partial<Job>);
-      job.log_tail = [...job.log_tail, "Indexing finished.", "  Chunks: 260"].slice(-12);
-      const source = demo.sources.find((s) => s.id === job.source_id);
-      if (source) source.chunks = 260;
-    }
-  }
-  for (const s of demo.sources) {
-    const jobs = demo.jobs.filter((j) => j.source_id === s.id).sort((a, b) => b.id - a.id);
-    if (jobs[0]) s.last_job = jobs[0];
-  }
-}
-
-function demoError(status: number, error: "conflict" | "not_found" | "validation_error", message: string): never {
-  throw new ApiRequestError(status, { error, message, retry_after_s: null });
-}
-
-function demoStartJob(sourceId: number, kind: Job["kind"]): Job {
-  const source = demo.sources.find((s) => s.id === sourceId) ?? demoError(404, "not_found", "unknown source");
-  if (source.robots === "blocked") demoError(409, "conflict", "robots.txt forbids crawling");
-  if (demo.jobs.some((j) => j.source_id === sourceId && (j.status === "queued" || j.status === "running")))
-    demoError(409, "conflict", "a job is already running");
-  const job: Job = {
+function newJob(sourceId: number | null, kind: Job["kind"], from?: Partial<Job>): Job {
+  return {
     id: demo.nextId++,
     source_id: sourceId,
     kind,
@@ -223,10 +183,168 @@ function demoStartJob(sourceId: number, kind: Job["kind"]): Job {
     stats: {},
     log_tail: [],
     error: null,
+    ...from,
   };
+}
+
+// the mock's rows that are running/queued get a demo job, so their progress moves too
+for (const row of demo.sources) {
+  if (row.progress && !demo.jobs.some((j) => j.id === row.progress?.job_id)) {
+    demo.jobs.unshift(
+      newJob(row.id, "crawl", {
+        id: row.progress.job_id,
+        status: row.status === "running" ? "running" : "queued",
+        stage: row.progress.stage,
+        percent: row.progress.percent,
+        eta_s: row.progress.eta_s,
+        started_at: row.status === "running" ? new Date().toISOString() : null,
+      }),
+    );
+  }
+}
+
+/** docs/API.md: disabled > blocked > running > queued > failed (last job) > indexed (has chunks) > pending. */
+function demoStatus(row: SourceRow, job: Job | undefined): SourceRow["status"] {
+  if (!row.enabled) return "disabled";
+  if (row.robots === "blocked") return "blocked";
+  if (job?.status === "running") return "running";
+  if (job?.status === "queued") return "queued";
+  if (row.last_job?.status === "failed") return "failed";
+  return row.chunks > 0 ? "indexed" : "pending";
+}
+
+/** Moves demo jobs forward a little on every read, so progress, ETA and the log look alive; rows follow their jobs. */
+function tickDemo(): void {
+  const now = new Date().toISOString();
+  for (const job of demo.jobs) {
+    if (job.status === "queued") {
+      Object.assign(job, { status: "running", started_at: now, stage: "crawl" } satisfies Partial<Job>);
+      continue;
+    }
+    if (job.status !== "running") continue;
+    job.percent = Math.min(100, job.percent + 1.5 + Math.random() * 2.5);
+    const [stage, start, width, total] = DEMO_STAGES.findLast(([, st]) => job.percent >= st) ?? DEMO_STAGES[0];
+    job.stage = stage;
+    job.stage_total = total;
+    job.stage_done = Math.min(total, Math.round(((job.percent - start) / width) * total));
+    job.eta_s = Math.round((100 - job.percent) * 4.2);
+    const site = demo.sources.find((x) => x.id === job.source_id)?.site_id ?? "all";
+    job.log_tail = [...job.log_tail, `${site} [${job.stage_done}/${total}] ${stage} ok`].slice(-12);
+    if (job.percent >= 100) {
+      Object.assign(job, {
+        status: "done",
+        percent: 100,
+        eta_s: null,
+        finished_at: now,
+        stats: { pages: 118, documents_found: 37, documents_downloaded: 37, files_parsed: 36, chunks: 260, lines: 1804, embeddings_reused: 241, embeddings_computed: 19, errors: 1 },
+      } satisfies Partial<Job>);
+      job.log_tail = [...job.log_tail, "Indexing finished.", "  Chunks: 260"].slice(-12);
+      const row = demo.sources.find((x) => x.id === job.source_id);
+      if (row) {
+        const wasEmpty = row.chunks === 0;
+        Object.assign(row, {
+          chunks: Math.max(row.chunks, 260),
+          lines: Math.max(row.lines, 1804),
+          pages: Math.max(row.pages, 118),
+          documents_found: Math.max(row.documents_found, 37),
+          documents_downloaded: Math.max(row.documents_downloaded, 37),
+          last_crawled: now,
+        } satisfies Partial<SourceRow>);
+        if (wasEmpty) demo.totals.sites_indexed += 1;
+      }
+    }
+  }
+  for (const row of demo.sources) {
+    const jobs = demo.jobs.filter((j) => j.source_id === row.id).sort((a, b) => b.id - a.id);
+    if (jobs[0]) row.last_job = jobs[0];
+    const active = jobs.find((j) => j.status === "queued" || j.status === "running");
+    row.progress = active ? { job_id: active.id, stage: active.stage, percent: active.percent, eta_s: active.eta_s } : null;
+    row.status = demoStatus(row, active);
+  }
+}
+
+function demoError(status: number, error: "conflict" | "not_found" | "validation_error", message: string): never {
+  throw new ApiRequestError(status, { error, message, retry_after_s: null });
+}
+
+function demoStartJob(sourceId: number, kind: Job["kind"]): Job {
+  const source = demo.sources.find((x) => x.id === sourceId) ?? demoError(404, "not_found", "unknown source");
+  if (source.robots === "blocked") demoError(409, "conflict", "robots.txt forbids crawling");
+  if (!source.enabled) demoError(409, "conflict", "the source is disabled");
+  if (demo.jobs.some((j) => j.source_id === sourceId && (j.status === "queued" || j.status === "running")))
+    demoError(409, "conflict", "a job is already running");
+  const job = newJob(sourceId, kind);
   demo.jobs.unshift(job);
-  source.last_job = job;
+  tickDemo();
   return job;
+}
+
+const hostOf = (url: string) => new URL(url).hostname.replace(/^www\./, "");
+const isDocumentUrl = (url: string) => /\.(pdf|docx?|odt|rtf)(\?|#|$)/i.test(url);
+
+/**
+ * POST /api/admin/sources {url} in mock mode, shaped like the add-source-*.json mocks: a document link → document;
+ * a deeper path or a document of a known domain → 200 merged; robots-forbidden domains → blocked; "down"/".invalid"
+ * hosts → 422; the same root again → 409.
+ */
+function demoAddSource(url: string): SourceAdded {
+  if (!/^https?:\/\/[^/\s]+\.[^/\s]+/.test(url)) demoError(422, "validation_error", "Only http(s) links");
+  const host = hostOf(url);
+  if (/(^|\.)(down|invalid|example-dead)\b|\.invalid$/.test(host)) demoError(422, "validation_error", "The site doesn't answer (ConnectTimeout)");
+  const path = new URL(url).pathname.replace(/\/+$/, "");
+  const doc = isDocumentUrl(url);
+  const existing = demo.sources.find((x) => x.kind === "site" && x.site_id === host);
+  if (existing && !path && !doc) demoError(409, "conflict", `${host} is already a source`);
+  if (demo.sources.some((x) => x.kind === "document" && x.url === url)) demoError(409, "conflict", "This document is already a source");
+
+  if (existing) {
+    // one row per domain: the path / document joins it and a crawl of it is queued
+    existing.start_urls = [...new Set([...existing.start_urls, url])];
+    const merged = { ...(addMerged as unknown as SourceAdded), ...structuredClone(existing) };
+    if (existing.robots === "allowed" && existing.enabled && !demo.jobs.some((j) => j.source_id === existing.id && (j.status === "queued" || j.status === "running"))) {
+      demo.jobs.unshift(newJob(existing.id, "crawl"));
+    }
+    return {
+      ...merged,
+      merged_into: existing.id,
+      detected: {
+        ...addMerged.detected,
+        kind: doc ? "document" : "site",
+        category: existing.category ?? "other",
+        title: null,
+        crawl_depth: doc ? null : 2,
+        reason: doc ? `Added the document to ${host}; downloading and indexing it.` : `Added the path ${path} to ${host}; crawling it up to depth 2.`,
+      },
+    };
+  }
+
+  const blocked = /(^|\.)(chisinau\.md|actelocale\.gov\.md)$/.test(host);
+  const template = (blocked ? addBlocked : doc ? addDocument : addSite) as unknown as SourceAdded;
+  const row: SourceAdded = {
+    ...structuredClone(template),
+    id: demo.nextId++,
+    url,
+    site_id: host,
+    title: doc ? decodeURIComponent(path.split("/").at(-1) ?? host) : null,
+    start_urls: [url],
+    created_at: new Date().toISOString(),
+    pages: 0,
+    documents_found: 0,
+    documents_downloaded: 0,
+    chunks: 0,
+    lines: 0,
+    last_crawled: null,
+    last_job: null,
+    last_error: null,
+    progress: null,
+    merged_into: null,
+  };
+  demo.sources.unshift({ ...row });
+  demo.totals.sites_total += 1;
+  if (!blocked) demo.jobs.unshift(newJob(row.id, "crawl"));
+  tickDemo();
+  const stored = demo.sources[0];
+  return { ...row, status: stored.status, progress: stored.progress };
 }
 
 // ─────────────── calls ───────────────
@@ -234,50 +352,25 @@ function demoStartJob(sourceId: number, kind: Job["kind"]): Job {
 export const admin = {
   me: () => withToken((t) => adminMe(t), () => ({ login: readSession()?.login ?? "admin" })),
 
+  /** The whole sources page in one call: rows + header totals. */
   sources: () =>
     withToken(
-      async (t) => (await adminSources(t)).sources,
-      () => {
+      (t) => adminSources(t),
+      (): SourceList => {
         tickDemo();
-        return demo.sources;
+        return { sources: demo.sources, totals: demo.totals };
       },
     ),
 
-  addSource: (req: SourceCreate) =>
-    withToken(
-      (t) => adminAddSource(t, req),
-      () => {
-        if (!/^https?:\/\//.test(req.url)) demoError(422, "validation_error", "only http(s)");
-        const host = new URL(req.url).hostname.replace(/^www\./, "");
-        if (req.kind === "site" && demo.sources.some((s) => s.kind === "site" && s.site_id === host))
-          demoError(409, "conflict", "site already added");
-        const row: SourceRow = {
-          id: demo.nextId++,
-          kind: req.kind,
-          url: req.url,
-          site_id: host,
-          category: req.category ?? null,
-          start_urls: [req.url],
-          max_depth: req.max_depth ?? (req.kind === "site" ? 4 : null),
-          max_pages: req.max_pages ?? (req.kind === "site" ? 2000 : null),
-          enabled: true,
-          robots: "allowed",
-          created_at: new Date().toISOString(),
-          last_job: null,
-          chunks: 0,
-        };
-        demo.sources.unshift(row);
-        if (req.start) demoStartJob(row.id, "crawl");
-        return row;
-      },
-    ),
+  addSource: (url: string) => withToken((t) => adminAddSource(t, { url }), () => demoAddSource(url.trim())),
 
   patchSource: (id: number, patch: { enabled?: boolean; max_depth?: number; max_pages?: number; category?: string }) =>
     withToken(
       (t) => adminPatchSource(t, id, patch),
       () => {
-        const row = demo.sources.find((s) => s.id === id) ?? demoError(404, "not_found", "unknown source");
-        Object.assign(row, patch);
+        const row = demo.sources.find((x) => x.id === id) ?? demoError(404, "not_found", "unknown source");
+        Object.assign(row, patch, patch.category ? { category_source: "manual" } : {});
+        tickDemo();
         return row;
       },
     ),
@@ -286,13 +379,55 @@ export const admin = {
     withToken(
       (t) => adminDeleteSource(t, id, purge),
       () => {
-        demo.sources = demo.sources.filter((s) => s.id !== id);
+        demo.sources = demo.sources.filter((x) => x.id !== id);
+        demo.totals.sites_total = Math.max(0, demo.totals.sites_total - 1);
         return { ok: true };
       },
     ),
 
   startJob: (sourceId: number, kind: Job["kind"]) =>
     withToken((t) => adminStartJob(t, sourceId, kind), () => demoStartJob(sourceId, kind)),
+
+  gaps: (hidden: boolean) =>
+    withToken(
+      (t) => adminGaps(t, { hidden }),
+      (): GapList => {
+        const items = demo.gaps.filter((g) => g.hidden === hidden).sort((a, b) => b.count - a.count);
+        const all = demo.gaps.filter((g) => !g.hidden);
+        return {
+          items,
+          totals: {
+            not_found: all.filter((g) => g.status === "not_found").reduce((n, g) => n + g.count, 0),
+            partial: all.filter((g) => g.status === "partial").reduce((n, g) => n + g.count, 0),
+            groups: all.length,
+          },
+        };
+      },
+    ),
+
+  /** One model call on the server: only on a click. */
+  recheckGap: (id: string) =>
+    withToken(
+      (t) => adminRecheckGap(t, id),
+      async () => {
+        await new Promise((r) => setTimeout(r, 1200)); // a model call takes a moment
+        const gap = demo.gaps.find((g) => g.id === id) ?? demoError(404, "not_found", "unknown gap");
+        const result = { ...(gapRecheckMock as GapRecheck), ts: new Date().toISOString() };
+        gap.rechecked = result;
+        if (result.status === "answered") demo.gaps = demo.gaps.filter((g) => g.id !== id); // solved: leaves the list
+        return result;
+      },
+    ),
+
+  hideGap: (id: string, hide: boolean) =>
+    withToken(
+      (t) => adminHideGap(t, id, hide),
+      () => {
+        const gap = demo.gaps.find((g) => g.id === id) ?? demoError(404, "not_found", "unknown gap");
+        gap.hidden = hide;
+        return { ok: true };
+      },
+    ),
 
   jobs: (status?: JobStatus) =>
     withToken(

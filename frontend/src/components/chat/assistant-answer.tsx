@@ -6,6 +6,8 @@
 import {
   AlertTriangleIcon,
   BookOpenIcon,
+  ExternalLinkIcon,
+  ScanSearchIcon,
   CheckIcon,
   CopyIcon,
   FileSearchIcon,
@@ -43,6 +45,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
+import { useSourcePreview } from "@/components/chat/source-preview";
 import type { Citation, TraceStep } from "@/lib/api";
 import { sendFeedback } from "@/lib/api";
 import type { AnswerView } from "@/lib/chat-transport";
@@ -61,7 +64,8 @@ export function citationLabel(c: Citation, t: UIText): string {
   return [c.document_title, c.location, c.page ? `${t.page} ${c.page}` : null].filter(Boolean).join(", ");
 }
 
-function CitationCard({ citations, t }: { citations: Citation[]; t: UIText }) {
+function CitationCard({ citations, all, t }: { citations: Citation[]; all: Citation[]; t: UIText }) {
+  const preview = useSourcePreview();
   if (!citations.length) return null;
   return (
     <InlineCitation>
@@ -86,9 +90,18 @@ function CitationCard({ citations, t }: { citations: Citation[]; t: UIText }) {
                       <span className="font-medium">{t.aiTranslation}:</span> {c.translation}
                     </p>
                   )}
-                  <a className="text-brand text-xs underline underline-offset-2" href={c.deep_link} rel="noreferrer" target="_blank">
-                    {t.openSource} ↗
-                  </a>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <button
+                      className="inline-flex items-center gap-1 font-medium text-brand text-xs hover:underline"
+                      onClick={() => preview.open(all, c.id)}
+                      type="button"
+                    >
+                      <ScanSearchIcon className="size-3.5" /> {t.preview.show}
+                    </button>
+                    <a className="text-muted-foreground text-xs underline underline-offset-2" href={c.deep_link} rel="noreferrer" target="_blank">
+                      {t.openSource} ↗
+                    </a>
+                  </div>
                 </InlineCitationCarouselItem>
               ))}
             </InlineCitationCarouselContent>
@@ -138,6 +151,9 @@ export function AssistantAnswer({
   onFollowup: (q: string) => void;
 }) {
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const preview = useSourcePreview();
+  const shown = preview.state?.citations[preview.state.index];
+  const activeId = shown && view.citations.includes(shown) ? shown.id : undefined;
   const [copied, setCopied] = useState(false);
   const byId = new Map(view.citations.map((c) => [c.id, c]));
   const a = view.answer;
@@ -180,7 +196,7 @@ export function AssistantAnswer({
                 <span className={cn(s.done && !s.verified && s.cites.length > 0 && "decoration-warning/60 decoration-dotted underline")}>
                   {s.text}
                 </span>
-                <CitationCard citations={s.cites.flatMap((id) => byId.get(id) ?? [])} t={t} />{" "}
+                <CitationCard all={view.citations} citations={s.cites.flatMap((id) => byId.get(id) ?? [])} t={t} />{" "}
               </Fragment>
             ))}
           </p>
@@ -193,7 +209,7 @@ export function AssistantAnswer({
               {a.checklist.steps.map((step, i) => (
                 <TaskItem key={i}>
                   <span className="font-medium text-foreground">{i + 1}.</span> {step.text}
-                  <CitationCard citations={step.cites.flatMap((id) => byId.get(id) ?? [])} t={t} />
+                  <CitationCard all={view.citations} citations={step.cites.flatMap((id) => byId.get(id) ?? [])} t={t} />
                 </TaskItem>
               ))}
               {a.checklist.documents_needed.length > 0 && (
@@ -215,10 +231,40 @@ export function AssistantAnswer({
             </SourcesTrigger>
             <SourcesContent>
               {view.citations.map((c) => (
-                <Source href={c.deep_link} key={c.id} title={citationLabel(c, t)} />
+                <Source
+                  className={cn("flex items-center gap-2 rounded-md", activeId === c.id && "text-brand")}
+                  href={c.deep_link}
+                  key={c.id}
+                  onClick={(e) => {
+                    // open our preview; ctrl/cmd-click still opens the original in a new tab
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+                    e.preventDefault();
+                    preview.open(view.citations, c.id);
+                  }}
+                  title={citationLabel(c, t)}
+                />
               ))}
             </SourcesContent>
           </Sources>
+        )}
+
+        {!streaming && view.citations.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 lg:hidden">
+            {view.citations.map((c) => (
+              <button
+                className="inline-flex max-w-full items-center gap-1 rounded-full border bg-card px-3 py-1 text-left text-xs shadow-sm active:scale-[0.98]"
+                key={c.id}
+                onClick={() => preview.open(view.citations, c.id)}
+                type="button"
+              >
+                <span className="truncate">
+                  <span className="text-muted-foreground">{c.site ?? new URL(c.url).hostname}</span> · {c.document_title}
+                  {c.location ? `, ${c.location}` : ""}
+                </span>
+                <ExternalLinkIcon className="size-3 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
         )}
 
         {a && a.nav_links.length > 0 && (

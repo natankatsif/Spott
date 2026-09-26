@@ -12,6 +12,13 @@ import {
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { AssistantAnswer } from "@/components/chat/assistant-answer";
+import {
+  type PreviewState,
+  SourcePreviewPanel,
+  SourcePreviewProvider,
+  SourcePreviewSheet,
+  useIsDesktop,
+} from "@/components/chat/source-preview";
 import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
@@ -95,6 +102,20 @@ export default function Home() {
   const transport = useMemo(() => new MunicipalChatTransport({ lang: () => { const l = getUILang(); return l === "en" ? null : l; }, mode: () => askMode }), []);
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat<ChatMessage>({ transport });
   const busy = status === "submitted" || status === "streaming";
+
+  // Source preview (task 11). On desktop it opens by itself on each new answer: at focus_citation_id, else the first
+  // citation (docs/FRONTEND-11.md §1); smaller screens open it from the citation chips.
+  const isDesktop = useIsDesktop();
+  const [preview, setPreview] = useState<PreviewState>(null);
+  const [autoOpenedFor, setAutoOpenedFor] = useState<string | null>(null);
+  const lastMessage = messages.at(-1);
+  const lastView = !busy && lastMessage?.role === "assistant" ? viewOf(lastMessage) : null;
+  const lastAnswer = lastView?.answer;
+  if (isDesktop && lastView && lastAnswer && lastAnswer.citations.length > 0 && lastAnswer.id !== autoOpenedFor) {
+    setAutoOpenedFor(lastAnswer.id);
+    const focus = lastView.citations.findIndex((c) => c.id === lastAnswer.focus_citation_id);
+    setPreview({ citations: lastView.citations, index: Math.max(0, focus) });
+  }
   const [speechError, setSpeechError] = useState<string | null>(null);
   useEffect(() => {
     if (!speechError) return;
@@ -121,120 +142,130 @@ export default function Home() {
     : error ? (t.errors[error.message as ErrorCode] ?? t.errors.internal) : null;
 
   return (
-    <main className="relative flex h-dvh flex-col overflow-hidden">
-      <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
-        {messages.length > 0 && (
-          <Button onClick={() => { stop(); setMessages([]); }} size="sm" variant="ghost">
-            <RotateCcwIcon className="size-3.5" /> {t.newChat}
-          </Button>
-        )}
-        <div className="flex rounded-full border bg-card p-0.5 text-xs shadow-sm" title={t.modeHint}>
-          {(["mock", "live"] as const).map((m) => (
-            <button
-              className={cn(
-                "rounded-full px-3 py-1 font-medium transition-colors",
-                mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-              key={m}
-              onClick={() => setApiMode(m)}
-              type="button"
-            >
-              {m === "mock" ? t.mock : t.live}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <Conversation className="flex-1">
-        <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
-          {messages.length === 0 ? (
-            <ConversationEmptyState className="min-h-[55vh] gap-4">
-              <LogoMark className="h-[88px] w-auto" />
-              <h1 className="font-semibold text-[32px] leading-tight tracking-tight">{t.greeting}</h1>
-            </ConversationEmptyState>
-          ) : (
-            messages.map((m, i) =>
-              m.role === "user" ? (
-                <Message from="user" key={m.id}>
-                  <MessageContent>{textOf(m)}</MessageContent>
-                </Message>
-              ) : (
-                (() => {
-                  const view = viewOf(m);
-                  const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
-                  return (
-                    <AssistantAnswer
-                      key={m.id}
-                      onFollowup={ask}
-                      streaming={busy && i === messages.length - 1}
-                      t={UI[answerLang]}
-                      view={view}
-                    />
-                  );
-                })()
-              ),
-            )
-          )}
-          {status === "submitted" && messages.at(-1)?.role === "user" && (
-            <AssistantAnswer
-              onFollowup={ask}
-              streaming
-              t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
-              view={{ sentences: [], citations: [], trace: [], answer: null }}
-            />
-          )}
-          {errorText && <p className="text-destructive text-sm">{errorText}</p>}
-        </ConversationContent>
-        <ConversationScrollButton className="bottom-48" />
-      </Conversation>
-
-      <div className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
-      <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
-        {messages.length === 0 && quickQuestions.length > 0 && (
-          <div className="w-full max-w-[480px]">
-            <Suggestions>
-              {quickQuestions.map((s) => (
-                <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
+    <SourcePreviewProvider setState={setPreview} state={preview}>
+      <main className="flex h-dvh overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 bg-linear-to-b from-background via-background/90 to-transparent p-4 pb-6">
+            {messages.length > 0 && (
+              <Button onClick={() => { stop(); setMessages([]); setPreview(null); }} size="sm" variant="ghost">
+                <RotateCcwIcon className="size-3.5" /> {t.newChat}
+              </Button>
+            )}
+            <div className="flex rounded-full border bg-card p-0.5 text-xs shadow-sm" title={t.modeHint}>
+              {(["mock", "live"] as const).map((m) => (
+                <button
+                  className={cn(
+                    "rounded-full px-3 py-1 font-medium transition-colors",
+                    mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  key={m}
+                  onClick={() => setApiMode(m)}
+                  type="button"
+                >
+                  {m === "mock" ? t.mock : t.live}
+                </button>
               ))}
-            </Suggestions>
-          </div>
+            </div>
+          </header>
+
+          <Conversation className="flex-1">
+            <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
+              {messages.length === 0 ? (
+                <ConversationEmptyState className="min-h-[55vh] gap-4">
+                  <LogoMark className="h-[88px] w-auto" />
+                  <h1 className="font-semibold text-[32px] leading-tight tracking-tight">{t.greeting}</h1>
+                </ConversationEmptyState>
+              ) : (
+                messages.map((m, i) =>
+                  m.role === "user" ? (
+                    <Message from="user" key={m.id}>
+                      <MessageContent>{textOf(m)}</MessageContent>
+                    </Message>
+                  ) : (
+                    (() => {
+                      const view = viewOf(m);
+                      const answerLang = lang === "en" ? "en" : (view.answer?.lang ?? langOfQuestion(textOf(messages[i - 1] ?? m), lang));
+                      return (
+                        <AssistantAnswer
+                          key={m.id}
+                          onFollowup={ask}
+                          streaming={busy && i === messages.length - 1}
+                          t={UI[answerLang]}
+                          view={view}
+                        />
+                      );
+                    })()
+                  ),
+                )
+              )}
+              {status === "submitted" && messages.at(-1)?.role === "user" && (
+                <AssistantAnswer
+                  onFollowup={ask}
+                  streaming
+                  t={UI[lang === "en" ? "en" : langOfQuestion(textOf(messages.at(-1)!), lang)]}
+                  view={{ sentences: [], citations: [], trace: [], answer: null }}
+                />
+              )}
+              {errorText && <p className="text-destructive text-sm">{errorText}</p>}
+            </ConversationContent>
+            <ConversationScrollButton className="bottom-48" />
+          </Conversation>
+
+          <div className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
+          <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
+            {messages.length === 0 && quickQuestions.length > 0 && (
+              <div className="w-full max-w-[480px]">
+                <Suggestions>
+                  {quickQuestions.map((s) => (
+                    <Suggestion className="bg-card font-normal shadow-sm" key={s} onClick={ask} suggestion={s} variant="ghost" />
+                  ))}
+                </Suggestions>
+              </div>
+            )}
+            <PromptInput
+              className="w-full"
+              activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
+              alwaysExpanded
+              forceActive={messages.length > 0}
+              efforts={[...t.efforts]}
+              maxAttachments={0}
+              model={lang.toUpperCase()}
+              models={UI_LANGS.map((l) => l.toUpperCase())}
+              onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
+              onSpeechError={(code) => setSpeechError(code)}
+              onSubmit={(value, { effort }) => {
+                askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";
+                ask(value);
+              }}
+              placeholder={t.placeholder}
+              speechLang={SPEECH[lang]}
+            />
+            {backend === "warming" && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
+            {backend === "down" && (
+              <p className="text-center text-muted-foreground text-xs" role="status">
+                {t.errors.unavailable}
+              </p>
+            )}
+            {speechError && (
+              <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
+                {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}
+              </p>
+            )}
+            <p className="text-center text-foreground/80 text-sm">
+              {t.poweredBy}{" "}
+              <a className="underline underline-offset-2" href="/sources">
+                {t.providers}
+              </a>
+            </p>
+          </footer>
+        </div>
+        {isDesktop && preview && (
+          <aside className="w-[min(46vw,760px)] shrink-0 py-3 pr-3 duration-300 animate-in fade-in slide-in-from-right-6">
+            <SourcePreviewPanel className="h-full" t={t} />
+          </aside>
         )}
-        <PromptInput
-          className="w-full"
-          activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
-          alwaysExpanded
-          forceActive={messages.length > 0}
-          efforts={[...t.efforts]}
-          maxAttachments={0}
-          model={lang.toUpperCase()}
-          models={UI_LANGS.map((l) => l.toUpperCase())}
-          onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
-          onSpeechError={(code) => setSpeechError(code)}
-          onSubmit={(value, { effort }) => {
-            askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";
-            ask(value);
-          }}
-          placeholder={t.placeholder}
-          speechLang={SPEECH[lang]}
-        />
-        {backend === "warming" && <p className="text-center text-muted-foreground text-xs">{t.warmingUp}</p>}
-        {backend === "down" && (
-          <p className="text-center text-muted-foreground text-xs" role="status">
-            {t.errors.unavailable}
-          </p>
-        )}
-        {speechError && (
-          <p className="max-w-[480px] text-center text-destructive text-xs animate-in fade-in" role="alert">
-            {t.speechErrors[speechError as keyof typeof t.speechErrors] ?? t.speechErrors.other}
-          </p>
-        )}
-        <p className="text-center text-foreground/80 text-sm">
-          {t.poweredBy}{" "}
-          <a className="underline underline-offset-2" href="/sources">
-            {t.providers}
-          </a>
-        </p>
-      </footer>
-    </main>
+      </main>
+      {!isDesktop && <SourcePreviewSheet t={t} />}
+    </SourcePreviewProvider>
   );
 }

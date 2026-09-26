@@ -79,6 +79,10 @@ export type Citation = {
   site: string | null;
   file_url: string | null; // our PDF copy for the viewer (relative to API_URL)
   bboxes: BBox[];
+  /** The source preview (GET /api/preview/{doc_id}): scrolled to the quote, highlighted. `/api/…` → prefix API_URL;
+   * mocks use a frontend path (`/mocks/preview/…`) → as is. See resolvePreviewUrl(). */
+  preview_url: string;
+  preview_kind: "page" | "pdf" | "text";
 };
 
 export type AnswerSentence = {
@@ -267,30 +271,82 @@ export type Job = {
   error: string | null;
 };
 
+export type SourceStatus = "indexed" | "pending" | "running" | "queued" | "failed" | "blocked" | "disabled";
+
+/** While a job is queued/running: poll GET /sources every 2 s. */
+export type SourceProgress = {
+  job_id: number;
+  stage: "crawl" | "download" | "parse" | "index" | null;
+  percent: number;
+  eta_s: number | null;
+};
+
+/** One row of the admin's single sources table: everything it shows, from one call. */
 export type SourceRow = {
   id: number;
   kind: "site" | "document";
   url: string;
-  site_id: string;
+  site_id: string; // domain
+  title: string | null;
   category: string | null;
+  category_source: string | null; // toml | index | rule | keywords | default | manual
   start_urls: string[];
   max_depth: number | null;
   max_pages: number | null;
   enabled: boolean;
   robots: "allowed" | "blocked"; // blocked: no crawl from the UI
+  // disabled > blocked > running > queued > failed (last job) > indexed (has chunks) > pending
+  status: SourceStatus;
+  pages: number;
+  documents_found: number;
+  documents_downloaded: number;
+  chunks: number;
+  lines: number;
+  last_crawled: string | null;
+  progress: SourceProgress | null;
+  last_error: string | null;
   created_at: string;
   last_job: Job | null;
-  chunks: number;
 };
 
-export type SourceCreate = {
+export type SourceList = { sources: SourceRow[]; totals: CorpusTotals };
+
+/** Only `url`: the server decides kind, category and crawl settings (the other fields are for older clients). */
+export type SourceCreate = { url: string };
+
+export type SourceDetected = {
   kind: "site" | "document";
-  url: string;
-  category?: string;
-  max_depth?: number;
-  max_pages?: number;
-  start?: boolean;
+  category: string;
+  category_source: string; // rule | keywords | default | manual | existing (merged)
+  title: string | null;
+  crawl_depth: number | null;
+  max_pages: number | null;
+  reason: string; // one short English sentence
 };
+
+/** 201 new source · 200 merged into an existing one (`merged_into` = its id). */
+export type SourceAdded = SourceRow & { detected: SourceDetected; merged_into: number | null };
+
+// ─────────────── admin: gaps (questions without a (full) answer) ───────────────
+
+export type GapQuestion = { answer_id: string; question: string; lang: Lang; status: "not_found" | "partial"; ts: string };
+export type GapRecheck = { status: AskStatus; verified: boolean; answer_id: string; ts: string };
+
+export type Gap = {
+  id: string; // the answer_id of the group's first question
+  example: string;
+  questions: GapQuestion[]; // the latest 20, oldest first
+  count: number;
+  last_asked: string;
+  langs: Lang[];
+  status: "not_found" | "partial"; // the worst in the group
+  missing: string[]; // what the partial answers said is missing
+  hint_sites: { site: string; hits: number }[]; // found but not used: whom to ask
+  rechecked: GapRecheck | null;
+  hidden: boolean;
+};
+
+export type GapList = { items: Gap[]; totals: { not_found: number; partial: number; groups: number } };
 
 export type FeedbackItem = {
   answer_id: string;
@@ -487,6 +543,11 @@ export async function search(query: string, lang?: SearchLang, k = 5): Promise<S
   return post<SearchResponse>("/api/search", { query, lang, k });
 }
 
+/** The source preview URL for an iframe / new tab: backend paths get API_URL, mock paths (/mocks/preview/…) stay. */
+export function resolvePreviewUrl(c: Pick<Citation, "preview_url">): string {
+  return c.preview_url.startsWith("/api/") ? `${API_URL}${c.preview_url}` : c.preview_url;
+}
+
 /** Absolute URL of our PDF copy for the source viewer, or null for web pages. */
 export function documentFileUrl(c: Citation): string | null {
   return c.file_url ? `${API_URL}${c.file_url}` : null;
@@ -527,8 +588,8 @@ async function adminCall<T>(token: string, method: string, path: string, body?: 
 export const adminLogin = (req: AdminLogin) => post<AdminSession>("/api/admin/login", req);
 export const adminMe = (token: string) => adminCall<{ login: string }>(token, "GET", "/me");
 
-export const adminSources = (token: string) => adminCall<{ sources: SourceRow[] }>(token, "GET", "/sources");
-export const adminAddSource = (token: string, req: SourceCreate) => adminCall<SourceRow>(token, "POST", "/sources", req);
+export const adminSources = (token: string) => adminCall<SourceList>(token, "GET", "/sources");
+export const adminAddSource = (token: string, req: SourceCreate) => adminCall<SourceAdded>(token, "POST", "/sources", req);
 export const adminPatchSource = (
   token: string,
   id: number,
@@ -553,3 +614,18 @@ export const adminPinSuggestion = (token: string, question: string, lang: Lang, 
   adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned });
 export const adminHideSuggestion = (token: string, id: number) =>
   adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);
+
+export type GapQuery = { status?: ("not_found" | "partial")[]; lang?: Lang; days?: number; limit?: number; hidden?: boolean };
+export const adminGaps = (token: string, q: GapQuery = {}) => {
+  const p = new URLSearchParams();
+  if (q.status?.length) p.set("status", q.status.join(","));
+  if (q.lang) p.set("lang", q.lang);
+  if (q.days) p.set("days", String(q.days));
+  if (q.limit) p.set("limit", String(q.limit));
+  if (q.hidden) p.set("hidden", "1");
+  return adminCall<GapList>(token, "GET", `/gaps${p.size ? `?${p}` : ""}`);
+};
+/** One model call: only on a click, never automatically. */
+export const adminRecheckGap = (token: string, id: string) => adminCall<GapRecheck>(token, "POST", `/gaps/${encodeURIComponent(id)}/recheck`);
+export const adminHideGap = (token: string, id: string, hide = true) =>
+  adminCall<{ ok: boolean }>(token, "POST", `/gaps/${encodeURIComponent(id)}/${hide ? "hide" : "unhide"}`);

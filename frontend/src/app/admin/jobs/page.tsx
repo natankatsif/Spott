@@ -49,7 +49,7 @@ function Jobs() {
   );
   const sources = useAdminQuery(`sources-${mode}`, admin.sources);
   const siteOf = (job: Job) =>
-    job.source_id == null ? t.jobs.allSources : (sources.data?.find((s) => s.id === job.source_id)?.site_id ?? `#${job.source_id}`);
+    job.source_id == null ? t.jobs.allSources : (sources.data?.sources.find((s) => s.id === job.source_id)?.site_id ?? `#${job.source_id}`);
 
   const open = (id: number | null) => router.replace(id == null ? "/admin/jobs" : `/admin/jobs?id=${id}`, { scroll: false });
 
@@ -112,7 +112,7 @@ function Jobs() {
         </ul>
       )}
 
-      <JobSheet id={openId} lang={lang} onClose={() => open(null)} sources={sources.data} t={t} />
+      <JobSheet id={openId} lang={lang} onClose={() => open(null)} sources={sources.data?.sources} t={t} />
     </>
   );
 }

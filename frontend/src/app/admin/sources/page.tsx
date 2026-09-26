@@ -1,18 +1,30 @@
 "use client";
 
-import { DatabaseIcon, FileTextIcon, GlobeIcon, MoreHorizontalIcon, PencilIcon, PlayIcon, PlusIcon, RefreshCwIcon, SearchIcon, ShieldBanIcon, Trash2Icon } from "lucide-react";
+import {
+  CheckIcon,
+  DatabaseIcon,
+  FileTextIcon,
+  GlobeIcon,
+  LinkIcon,
+  MoreHorizontalIcon,
+  PowerIcon,
+  RefreshCwIcon,
+  SearchIcon,
+  SquareIcon,
+  TagIcon,
+  Trash2Icon,
+  WorkflowIcon,
+} from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/admin/empty-state";
+import { GapsSection } from "@/components/admin/gaps-section";
 import { PageHeader } from "@/components/admin/page-header";
+import { SourceStatusBadge } from "@/components/admin/source-status-badge";
 import { StageProgress } from "@/components/admin/stage-progress";
-import { StatusBadge } from "@/components/admin/status-badge";
-import { AnimatedCheckbox } from "@/components/spell/animated-checkbox";
-import { Badge } from "@/components/spell/badge";
+import { StatCard } from "@/components/admin/stat-card";
 import { CopyButton } from "@/components/spell/copy-button";
-import { LabelInput } from "@/components/spell/label-input";
 import { Spinner } from "@/components/spell/spinner";
 import {
   AlertDialog,
@@ -29,85 +41,138 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { admin, isActive, useAdminQuery } from "@/lib/admin";
-import { number, timeAgo } from "@/lib/admin-format";
-import { ADMIN_UI, type AdminText, CATEGORIES } from "@/lib/admin-i18n";
-import type { SourceRow } from "@/lib/api";
-import type { UILang } from "@/lib/i18n";
+import { admin, useAdminQuery } from "@/lib/admin";
 import { errorText } from "@/lib/admin-errors";
+import { duration, number, timeAgo } from "@/lib/admin-format";
+import { ADMIN_UI, type AdminText, CATEGORIES } from "@/lib/admin-i18n";
+import { ApiRequestError, type SourceRow, type SourceStatus } from "@/lib/api";
+import type { UILang } from "@/lib/i18n";
 import { useUILang } from "@/lib/lang";
 import { useApiMode } from "@/lib/mode";
 import { cn } from "@/lib/utils";
 
-/** A site shows its domain; a document its file name (the domain is in the URL line under it). */
-const titleOf = (row: SourceRow) =>
-  row.kind === "document" ? decodeURIComponent(row.url.split("/").filter(Boolean).at(-1) ?? row.site_id) : row.site_id;
+type Filter = "all" | "indexed" | "active" | "pending" | "problems";
+const FILTERS: Filter[] = ["all", "indexed", "active", "pending", "problems"];
+const IN_FILTER: Record<Filter, (s: SourceStatus) => boolean> = {
+  all: () => true,
+  indexed: (s) => s === "indexed",
+  active: (s) => s === "running" || s === "queued",
+  pending: (s) => s === "pending",
+  problems: (s) => s === "failed" || s === "blocked" || s === "disabled",
+};
+// running first, then what needs attention; sources that can't be processed at the end
+const ORDER: Record<SourceStatus, number> = { running: 0, queued: 1, failed: 2, indexed: 3, pending: 4, disabled: 5, blocked: 6 };
 
-type Editing = { mode: "add" } | { mode: "edit"; row: SourceRow } | null;
+const isBusy = (r: SourceRow) => r.status === "running" || r.status === "queued";
+/** A site shows its domain (or title); a document its title or file name. */
+const titleOf = (r: SourceRow) =>
+  r.title ?? (r.kind === "document" ? decodeURIComponent(r.url.split("/").filter(Boolean).at(-1) ?? r.site_id) : r.site_id);
 
 export default function SourcesPage() {
   const lang = useUILang();
   const t = ADMIN_UI[lang];
   const mode = useApiMode();
-  const router = useRouter();
-  const query = useAdminQuery(`sources-${mode}`, admin.sources, (rows) => (rows.some((r) => isActive(r.last_job)) ? 2000 : 15000));
+  // docs/API.md: poll every 2 s while any row is running/queued, stop when none is (an add or a refresh reloads)
+  const query = useAdminQuery(`sources-${mode}`, admin.sources, (d) => (d.sources.some(isBusy) ? 2000 : null));
   const [q, setQ] = useState("");
-  const [editing, setEditing] = useState<Editing>(null);
+  const [filter, setFilter] = useState<Filter>("all");
   const [deleting, setDeleting] = useState<SourceRow | null>(null);
+  const [flash, setFlash] = useState<number | null>(null);
+  const addRef = useRef<HTMLInputElement>(null);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (query.data ?? [])
-      .filter((r) => !needle || `${r.url} ${r.site_id} ${r.category ?? ""}`.toLowerCase().includes(needle))
-      // sites robots.txt forbids to crawl can't be processed: keep them at the end (stable, server order otherwise)
-      .toSorted((a, b) => Number(a.robots === "blocked") - Number(b.robots === "blocked"));
-  }, [query.data, q]);
+    return (query.data?.sources ?? [])
+      .filter((r) => IN_FILTER[filter](r.status))
+      .filter((r) => !needle || `${r.url} ${r.site_id} ${r.title ?? ""} ${r.category ?? ""}`.toLowerCase().includes(needle))
+      .toSorted((a, b) => ORDER[a.status] - ORDER[b.status]);
+  }, [query.data, q, filter]);
 
-  const run = async (row: SourceRow, kind: "crawl" | "refresh") => {
+  const counts = useMemo(() => {
+    const all = query.data?.sources ?? [];
+    return Object.fromEntries(FILTERS.map((f) => [f, all.filter((r) => IN_FILTER[f](r.status)).length])) as Record<Filter, number>;
+  }, [query.data]);
+
+  const highlight = (id: number) => {
+    setFlash(id);
+    setTimeout(() => setFlash((f) => (f === id ? null : f)), 2500);
+  };
+
+  const act = async (fn: () => Promise<unknown>, ok: string) => {
     try {
-      await admin.startJob(row.id, kind);
-      toast.success(t.sources.jobStarted, {
-        action: { label: t.nav.jobs, onClick: () => router.push("/admin/jobs") },
-      });
+      await fn();
+      toast.success(ok);
       query.reload();
     } catch (e) {
       toast.error(errorText(e, lang));
     }
   };
 
-  const toggle = async (row: SourceRow, enabled: boolean) => {
-    try {
-      await admin.patchSource(row.id, { enabled });
-      query.reload();
-    } catch (e) {
-      toast.error(errorText(e, lang));
-    }
-  };
+  const totals = query.data?.totals;
 
   return (
     <>
-      <PageHeader
-        actions={
-          <Button className="rounded-xl" onClick={() => setEditing({ mode: "add" })}>
-            <PlusIcon /> {t.sources.add}
-          </Button>
-        }
-        subtitle={t.sources.subtitle}
-        title={t.sources.title}
-      />
+      <PageHeader subtitle={t.sources.subtitle} title={t.sources.title} />
 
-      <div className="relative mb-4 max-w-sm">
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input className="h-9 rounded-xl bg-card pl-9" onChange={(e) => setQ(e.target.value)} placeholder={t.common.search} value={q} />
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {totals ? (
+          <>
+            <StatCard
+              hint={`/ ${number(totals.sites_total, lang)}`}
+              label={t.sources.totals.sites}
+              value={number(totals.sites_indexed, lang)}
+            />
+            <StatCard label={t.sources.totals.pages} value={number(totals.pages, lang)} />
+            <StatCard
+              hint={`/ ${number(totals.documents_found, lang)}`}
+              label={t.sources.totals.documents}
+              value={number(totals.documents_downloaded, lang)}
+            />
+            <StatCard label={t.sources.totals.chunks} value={number(totals.chunks, lang)} />
+          </>
+        ) : (
+          Array.from({ length: 4 }, (_, i) => <Skeleton className="h-[86px] rounded-2xl" key={i} />)
+        )}
+      </div>
+
+      <AddSource inputRef={addRef} lang={lang} onAdded={(id) => { query.reload(); if (id) highlight(id); }} t={t} />
+
+      <GapsSection lang={lang} onAddSource={() => { addRef.current?.focus(); addRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }} t={t} />
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap rounded-full bg-muted/80 p-0.5 text-xs" role="radiogroup">
+          {FILTERS.map((f) => (
+            <button
+              aria-checked={filter === f}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors",
+                filter === f ? "bg-card text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground/80",
+              )}
+              key={f}
+              onClick={() => setFilter(f)}
+              role="radio"
+              type="button"
+            >
+              {t.sources.filter[f]}
+              {query.data && <span className="tabular-nums opacity-60">{counts[f]}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="relative ml-auto w-full max-w-xs">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="h-9 rounded-xl bg-card pl-9" onChange={(e) => setQ(e.target.value)} placeholder={t.sources.search} value={q} />
+        </div>
       </div>
 
       {query.error && !query.data ? (
@@ -117,42 +182,46 @@ export default function SourcesPage() {
           icon={DatabaseIcon}
           title={t.common.loadError}
         />
-      ) : query.data && query.data.length === 0 ? (
-        <EmptyState
-          action={<Button onClick={() => setEditing({ mode: "add" })}><PlusIcon /> {t.sources.add}</Button>}
-          hint={t.sources.emptyHint}
-          icon={DatabaseIcon}
-          title={t.sources.empty}
-        />
+      ) : query.data && query.data.sources.length === 0 ? (
+        <EmptyState icon={DatabaseIcon} title={t.sources.empty} />
       ) : (
         <div className="overflow-hidden rounded-2xl border bg-card">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-4">{t.sources.col.source}</TableHead>
-                <TableHead className="hidden lg:table-cell">{t.sources.col.category}</TableHead>
-                <TableHead className="hidden md:table-cell">{t.sources.col.robots}</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">{t.sources.col.chunks}</TableHead>
-                <TableHead className="hidden w-56 sm:table-cell">{t.sources.col.lastJob}</TableHead>
-                <TableHead className="w-14 text-center">{t.sources.col.enabled}</TableHead>
+                <TableHead className="hidden xl:table-cell">{t.sources.col.category}</TableHead>
+                <TableHead className="w-60">{t.sources.col.status}</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">{t.sources.col.pages}</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">{t.sources.col.documents}</TableHead>
+                <TableHead className="hidden text-right md:table-cell">{t.sources.col.chunks}</TableHead>
+                <TableHead className="hidden md:table-cell">{t.sources.col.lastCrawled}</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {query.loading &&
-                Array.from({ length: 4 }, (_, i) => (
+                Array.from({ length: 6 }, (_, i) => (
                   <TableRow key={i}>
-                    <TableCell className="pl-4" colSpan={7}>
+                    <TableCell className="pl-4" colSpan={8}>
                       <Skeleton className="h-9 w-full rounded-lg" />
                     </TableCell>
                   </TableRow>
                 ))}
               {rows.map((row) => (
-                <SourceTableRow key={row.id} lang={lang} onDelete={setDeleting} onEdit={(r) => setEditing({ mode: "edit", row: r })} onRun={run} onToggle={toggle} row={row} t={t} />
+                <SourceTableRow
+                  flash={flash === row.id}
+                  key={row.id}
+                  lang={lang}
+                  onAct={act}
+                  onDelete={setDeleting}
+                  row={row}
+                  t={t}
+                />
               ))}
-              {query.data && query.data.length > 0 && rows.length === 0 && (
+              {query.data && rows.length === 0 && (
                 <TableRow>
-                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={7}>
+                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={8}>
                     {t.sources.noMatch}
                   </TableCell>
                 </TableRow>
@@ -162,9 +231,63 @@ export default function SourcesPage() {
         </div>
       )}
 
-      <SourceSheet editing={editing} lang={lang} onClose={() => setEditing(null)} onSaved={query.reload} t={t} />
       <DeleteDialog lang={lang} onClose={() => setDeleting(null)} onDeleted={query.reload} row={deleting} t={t} />
     </>
+  );
+}
+
+/** One input + one button: POST {url}; the server decides kind, category and crawl settings. */
+function AddSource({ t, lang, inputRef, onAdded }: { t: AdminText; lang: UILang; inputRef: React.RefObject<HTMLInputElement | null>; onAdded: (id: number | null) => void }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const link = url.trim();
+    if (!link) return;
+    setBusy(true);
+    try {
+      const r = await admin.addSource(link);
+      const d = r.detected;
+      // docs/FRONTEND-11.md §3: 201 new · 200 merged · robots blocked (saved, no crawl)
+      if (r.robots === "blocked") toast.warning(t.sources.blocked, { description: d.reason });
+      else if (r.merged_into != null) toast.success(t.sources.merged(r.site_id), { description: d.reason });
+      else toast.success(t.sources.added(d.kind, d.category, d.crawl_depth), { description: d.reason });
+      setUrl("");
+      onAdded(r.merged_into ?? r.id);
+    } catch (err) {
+      const code = err instanceof ApiRequestError ? err.body.error : null;
+      if (code === "conflict") toast.error(t.sources.exists, { description: (err as ApiRequestError).body.message });
+      else if (code === "validation_error") toast.error(t.sources.unreachable, { description: (err as ApiRequestError).body.message });
+      else toast.error(errorText(err, lang));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="mb-8 rounded-2xl border bg-card p-3 shadow-[0_10px_30px_-24px_rgb(15_42_74/0.5)]" onSubmit={submit}>
+      <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1">
+          <LinkIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label={t.sources.addPlaceholder}
+            className="h-11 rounded-xl border-0 bg-muted/50 pl-10 text-[15px] focus-visible:ring-2 focus-visible:ring-ring/40"
+            inputMode="url"
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={t.sources.addPlaceholder}
+            ref={inputRef}
+            type="url"
+            value={url}
+          />
+        </div>
+        <Button className="h-11 rounded-xl px-5" disabled={busy || !url.trim()} type="submit">
+          {busy && <Spinner className="size-4" />}
+          {t.sources.add}
+        </Button>
+      </div>
+      <p className="mt-2 px-1 text-muted-foreground text-xs">{t.sources.addHint}</p>
+    </form>
   );
 }
 
@@ -172,77 +295,76 @@ function SourceTableRow({
   row,
   t,
   lang,
-  onRun,
-  onToggle,
-  onEdit,
+  flash,
+  onAct,
   onDelete,
 }: {
   row: SourceRow;
   t: AdminText;
   lang: UILang;
-  onRun: (row: SourceRow, kind: "crawl" | "refresh") => void;
-  onToggle: (row: SourceRow, enabled: boolean) => void;
-  onEdit: (row: SourceRow) => void;
+  flash: boolean;
+  onAct: (fn: () => Promise<unknown>, ok: string) => void;
   onDelete: (row: SourceRow) => void;
 }) {
-  const job = row.last_job;
-  const blocked = row.robots === "blocked";
-  const busy = isActive(job);
+  const busy = isBusy(row);
+  const canRefresh = !busy && row.status !== "blocked" && row.status !== "disabled";
   const KindIcon = row.kind === "site" ? GlobeIcon : FileTextIcon;
+  const p = row.progress;
+
   return (
-    <TableRow className={cn(!row.enabled && "opacity-60")}>
-      <TableCell className="max-w-[16rem] pl-4 sm:max-w-[20rem]">
+    <TableRow className={cn("transition-colors duration-700", flash && "bg-accent", row.status === "disabled" && "opacity-60")}>
+      <TableCell className="max-w-[18rem] pl-4">
         <div className="flex items-center gap-3">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-brand" title={t.sources.kind[row.kind]}>
             <KindIcon className="size-4" />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <span className="truncate font-medium">{titleOf(row)}</span>
-              <CopyButton className="size-6 shrink-0 opacity-0 transition-opacity group-hover/row:opacity-100 [tr:hover_&]:opacity-100" size="sm" value={row.url} />
+              <span className="truncate font-medium" title={titleOf(row)}>
+                {titleOf(row)}
+              </span>
+              <CopyButton className="size-6 shrink-0 opacity-0 transition-opacity [tr:hover_&]:opacity-100" size="sm" value={row.url} />
             </div>
             <a className="block truncate text-muted-foreground text-xs hover:underline" href={row.url} rel="noreferrer" target="_blank">
               {row.url.replace(/^https?:\/\//, "")}
             </a>
-            {job && (
-              <div className="mt-1 sm:hidden">
-                <StatusBadge label={busy ? `${t.status[job.status]} · ${Math.round(job.percent)}%` : t.status[job.status]} status={job.status} />
-              </div>
-            )}
           </div>
         </div>
       </TableCell>
-      <TableCell className="hidden lg:table-cell">
-        {row.category ? <Badge variant="slate">{row.category}</Badge> : <span className="text-muted-foreground">—</span>}
-      </TableCell>
-      <TableCell className="hidden md:table-cell">
-        {row.kind === "site" ? (
-          <Badge className="gap-1" variant={blocked ? "red" : "emerald"}>
-            {blocked && <ShieldBanIcon className="size-3" />}
-            {t.sources.robots[row.robots]}
-          </Badge>
+      <TableCell className="hidden xl:table-cell">
+        {row.category ? (
+          <span
+            className="rounded-md bg-muted px-1.5 py-0.5 text-xs"
+            title={row.category_source ? (t.sources.categorySource[row.category_source] ?? row.category_source) : undefined}
+          >
+            {row.category}
+          </span>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell className="hidden text-right tabular-nums sm:table-cell">{number(row.chunks, lang)}</TableCell>
-      <TableCell className="hidden sm:table-cell">
-        {job ? (
-          <Link className="block rounded-lg" href={`/admin/jobs?id=${job.id}`}>
-            <div className="flex items-center justify-between gap-2">
-              <StatusBadge label={t.status[job.status]} status={job.status} />
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {busy ? `${Math.round(job.percent)}%` : timeAgo(job.finished_at ?? job.started_at, lang)}
-              </span>
-            </div>
-            {busy && <StageProgress className="mt-2" job={job} />}
-          </Link>
-        ) : (
-          <span className="text-muted-foreground text-xs">{t.common.never}</span>
+      <TableCell>
+        <div className="flex items-center justify-between gap-2">
+          <SourceStatusBadge error={row.last_error} label={t.sources.status[row.status]} status={row.status} />
+          {p && (
+            <Link className="text-muted-foreground text-xs tabular-nums hover:text-foreground" href={`/admin/jobs?id=${p.job_id}`} title={t.sources.details}>
+              {Math.round(p.percent)}%{p.eta_s != null && ` · ${t.sources.eta(duration(p.eta_s))}`}
+            </Link>
+          )}
+        </div>
+        {p && (
+          <StageProgress className="mt-2" job={{ status: row.status === "running" ? "running" : "queued", stage: p.stage, percent: p.percent }} />
         )}
+        {p?.stage && <p className="mt-1 text-[11px] text-muted-foreground">{t.jobs.stage[p.stage]}</p>}
       </TableCell>
-      <TableCell className="text-center">
-        <Switch aria-label={t.sources.col.enabled} checked={row.enabled} onCheckedChange={(v) => onToggle(row, v)} />
+      <TableCell className="hidden text-right tabular-nums lg:table-cell">{number(row.pages, lang)}</TableCell>
+      <TableCell className="hidden text-right tabular-nums lg:table-cell">
+        {number(row.documents_downloaded, lang)}
+        <span className="text-muted-foreground">/{number(row.documents_found, lang)}</span>
+      </TableCell>
+      <TableCell className="hidden text-right tabular-nums md:table-cell">{number(row.chunks, lang)}</TableCell>
+      <TableCell className="hidden whitespace-nowrap text-muted-foreground text-xs md:table-cell">
+        {row.last_crawled ? timeAgo(row.last_crawled, lang) : t.common.never}
       </TableCell>
       <TableCell className="pr-3">
         <DropdownMenu>
@@ -251,18 +373,44 @@ function SourceTableRow({
               <MoreHorizontalIcon />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem disabled={blocked || busy || !row.enabled} onClick={() => onRun(row, "crawl")}>
-              <PlayIcon /> {t.sources.crawl}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={blocked || busy || !row.enabled} onClick={() => onRun(row, "refresh")}>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem disabled={!canRefresh} onClick={() => onAct(() => admin.startJob(row.id, "refresh"), t.sources.jobStarted)}>
               <RefreshCwIcon /> {t.sources.refresh}
             </DropdownMenuItem>
-            {blocked && <p className="px-2 py-1 text-muted-foreground text-xs">{t.sources.robotsBlocked}</p>}
+            {p && (
+              <DropdownMenuItem onClick={() => onAct(() => admin.cancelJob(p.job_id), t.sources.jobCancelled)}>
+                <SquareIcon /> {t.sources.cancelJob}
+              </DropdownMenuItem>
+            )}
+            {row.last_job && (
+              <DropdownMenuItem asChild>
+                <Link href={`/admin/jobs?id=${p?.job_id ?? row.last_job.id}`}>
+                  <WorkflowIcon /> {t.sources.details}
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onEdit(row)}>
-              <PencilIcon /> {t.sources.edit}
+            <DropdownMenuItem onClick={() => onAct(() => admin.patchSource(row.id, { enabled: !row.enabled }), t.sources.saved)}>
+              <PowerIcon /> {row.enabled ? t.sources.disable : t.sources.enable}
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <TagIcon className="size-4 text-muted-foreground" /> {t.sources.category}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                <DropdownMenuRadioGroup
+                  onValueChange={(category) => onAct(() => admin.patchSource(row.id, { category }), t.sources.saved)}
+                  value={row.category ?? ""}
+                >
+                  {CATEGORIES.map((c) => (
+                    <DropdownMenuRadioItem key={c} value={c}>
+                      {c}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(row)} variant="destructive">
               <Trash2Icon /> {t.common.delete}
             </DropdownMenuItem>
@@ -273,141 +421,15 @@ function SourceTableRow({
   );
 }
 
-function SourceSheet({ editing, t, lang, onClose, onSaved }: { editing: Editing; t: AdminText; lang: UILang; onClose: () => void; onSaved: () => void }) {
-  const row = editing?.mode === "edit" ? editing.row : null;
-  const [kind, setKind] = useState<"site" | "document">("site");
-  const [start, setStart] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [openedFor, setOpenedFor] = useState<Editing>(null);
-  // reset the form each time the sheet opens for another source (state adjusted during render, no effect)
-  if (editing !== openedFor) {
-    setOpenedFor(editing);
-    setKind(row?.kind ?? "site");
-    setStart(true);
-  }
-
-  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const num = (k: string) => (f.get(k) ? Number(f.get(k)) : undefined);
-    const category = String(f.get("category") ?? "") || undefined;
-    setBusy(true);
-    try {
-      if (row) {
-        await admin.patchSource(row.id, { category, max_depth: num("max_depth"), max_pages: num("max_pages") });
-        toast.success(t.sources.saved);
-      } else {
-        await admin.addSource({
-          kind,
-          url: String(f.get("url") ?? "").trim(),
-          category,
-          ...(kind === "site" ? { max_depth: num("max_depth"), max_pages: num("max_pages") } : {}),
-          start,
-        });
-        toast.success(t.sources.added);
-      }
-      onSaved();
-      onClose();
-    } catch (err) {
-      toast.error(errorText(err, lang));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Sheet onOpenChange={(open) => !open && onClose()} open={editing !== null}>
-      <SheetContent className="w-full gap-0 sm:max-w-md">
-        <form className="flex h-full flex-col" onSubmit={submit}>
-          <SheetHeader className="border-b">
-            <SheetTitle>{row ? t.sources.edit : t.sources.add}</SheetTitle>
-            <SheetDescription>{row ? row.url : t.sources.form.urlHint}</SheetDescription>
-          </SheetHeader>
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
-            {!row && (
-              <div className="flex flex-col gap-2">
-                <Label>{t.sources.form.kind}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["site", "document"] as const).map((k) => {
-                    const Icon = k === "site" ? GlobeIcon : FileTextIcon;
-                    return (
-                      <button
-                        className={cn(
-                          "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors",
-                          kind === k ? "border-brand bg-accent font-medium text-accent-foreground" : "hover:bg-muted/50",
-                        )}
-                        key={k}
-                        onClick={() => setKind(k)}
-                        type="button"
-                      >
-                        <Icon className={cn("size-4", kind === k ? "text-brand" : "text-muted-foreground")} />
-                        {t.sources.kind[k]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {!row && (
-              <LabelInput
-                label={t.sources.form.url}
-                name="url"
-                pattern="https?://.+"
-                required
-                ringColor="blue"
-                type="url"
-              />
-            )}
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="category">{t.sources.form.category}</Label>
-              <select
-                className="h-10 rounded-lg border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-blue-600"
-                defaultValue={row?.category ?? ""}
-                id="category"
-                name="category"
-              >
-                <option value="">{t.sources.form.noCategory}</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {(row?.kind ?? kind) === "site" && (
-              <div className="grid grid-cols-2 gap-3">
-                <LabelInput defaultValue={row?.max_depth ?? 4} label={t.sources.form.maxDepth} max={10} min={0} name="max_depth" ringColor="blue" type="number" />
-                <LabelInput defaultValue={row?.max_pages ?? 2000} label={t.sources.form.maxPages} max={100000} min={1} name="max_pages" ringColor="blue" type="number" />
-              </div>
-            )}
-            {!row && (
-              <AnimatedCheckbox className="text-sm" defaultChecked={start} strike={false} key={String(editing !== null)} onCheckedChange={setStart} title={t.sources.form.start} />
-            )}
-          </div>
-          <SheetFooter className="flex-row justify-end border-t">
-            <Button onClick={onClose} type="button" variant="ghost">
-              {t.common.cancel}
-            </Button>
-            <Button className="rounded-xl" disabled={busy} type="submit">
-              {busy && <Spinner className="size-4" />}
-              {row ? t.common.save : t.sources.add}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
+/** DELETE ?purge=true: the documents leave the index too, so it is confirmed first. */
 function DeleteDialog({ row, t, lang, onClose, onDeleted }: { row: SourceRow | null; t: AdminText; lang: UILang; onClose: () => void; onDeleted: () => void }) {
-  const [purge, setPurge] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
     if (!row) return;
     setBusy(true);
     try {
-      await admin.deleteSource(row.id, purge);
+      await admin.deleteSource(row.id, true);
       toast.success(t.sources.deleted);
       onDeleted();
       onClose();
@@ -415,7 +437,6 @@ function DeleteDialog({ row, t, lang, onClose, onDeleted }: { row: SourceRow | n
       toast.error(errorText(e, lang));
     } finally {
       setBusy(false);
-      setPurge(false);
     }
   };
 
@@ -424,9 +445,8 @@ function DeleteDialog({ row, t, lang, onClose, onDeleted }: { row: SourceRow | n
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t.sources.deleteTitle}</AlertDialogTitle>
-          <AlertDialogDescription>{row && t.sources.deleteText(row.site_id)}</AlertDialogDescription>
+          <AlertDialogDescription>{row && t.sources.deleteText(titleOf(row))}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AnimatedCheckbox className="text-sm" key={row?.id} strike={false} onCheckedChange={setPurge} title={t.sources.purge} />
         <AlertDialogFooter>
           <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
           <AlertDialogAction
@@ -437,7 +457,7 @@ function DeleteDialog({ row, t, lang, onClose, onDeleted }: { row: SourceRow | n
               void confirm();
             }}
           >
-            {busy && <Spinner className="size-4" />}
+            {busy ? <Spinner className="size-4" /> : <CheckIcon />}
             {t.common.delete}
           </AlertDialogAction>
         </AlertDialogFooter>
