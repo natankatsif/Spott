@@ -150,25 +150,51 @@ function useLockedViewport(): void {
   }, []);
 }
 
-/** `/?embed=1`: the chat inside the site widget (components/widget): the widget's own header carries new chat and
- * minimize, so this page drops its header, and a new chat can be asked for from the page around it. */
+/** `/?embed=1`: the chat inside the site widget (components/widget): the widget's own header carries the buttons, so
+ * this page drops its header. "Open in the app" moves the conversation to a new tab of the app, relayed by the
+ * widget on the host page (the frame and the tab can't talk directly: a third-party frame's storage is its own):
+ *   widget → frame  {type: "spott:export"}           frame → widget  {type: "spott:chat", messages}
+ *   tab → widget    {type: "spott:ready"}            widget → tab    {type: "spott:chat", messages}
+ * The tab is `/?from=widget`, opened by the widget, so the widget is its opener. */
 const noSubscribe = () => () => {};
-function useEmbed(onNewChat: () => void): boolean {
+function useWidgetBridge(messages: ChatMessage[], onImport: (messages: ChatMessage[]) => void): boolean {
   const embed = useSyncExternalStore(
     noSubscribe,
     () => new URLSearchParams(window.location.search).get("embed") === "1",
     () => false,
   );
-  const newChat = useRef(onNewChat);
+  const current = useRef(messages);
+  const importRef = useRef(onImport);
   useEffect(() => {
-    newChat.current = onNewChat;
+    current.current = messages;
+    importRef.current = onImport;
   });
+  // in the widget: hand the conversation to the page around it when it asks
   useEffect(() => {
     if (!embed) return;
     const onMessage = (e: MessageEvent) => {
-      if (e.origin === window.location.origin && e.data?.type === "spott:new-chat") newChat.current();
+      if (e.source !== window.parent || e.data?.type !== "spott:export") return;
+      window.parent.postMessage({ type: "spott:chat", messages: current.current }, e.origin);
     };
     window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [embed]);
+  // opened from the widget: say we're here, take the conversation, then drop the marker from the address
+  // (read once: in development React runs this effect twice, and the address has changed by the second time)
+  const fromWidget = useRef<boolean | null>(null);
+  useEffect(() => {
+    fromWidget.current ??= new URLSearchParams(window.location.search).get("from") === "widget";
+    if (embed || !fromWidget.current || !window.opener) return;
+    const opener = window.opener as Window;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== opener || e.data?.type !== "spott:chat" || !Array.isArray(e.data.messages)) return;
+      window.removeEventListener("message", onMessage);
+      fromWidget.current = false;
+      if (e.data.messages.length > 0) importRef.current(e.data.messages as ChatMessage[]);
+    };
+    window.addEventListener("message", onMessage);
+    opener.postMessage({ type: "spott:ready" }, "*");
+    if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
     return () => window.removeEventListener("message", onMessage);
   }, [embed]);
   return embed;
@@ -234,7 +260,16 @@ export default function Home() {
       setPreview({ citations: previewable, index: Math.max(0, focus) });
     }
   }
-  const embed = useEmbed(startNewChat);
+  // a conversation carried over from the site widget: a chat of its own here, saved like any other
+  const embed = useWidgetBridge(messages, (carried) => {
+    stop();
+    setPreview(null);
+    const id = newChatId();
+    saveChat(id, carried);
+    savedRef.current = { chatId: id, count: carried.length, lastId: carried.at(-1)?.id };
+    setChatId(id);
+    setMessages(carried);
+  });
   const [speechError, setSpeechError] = useState<string | null>(null);
   useEffect(() => {
     if (!speechError) return;

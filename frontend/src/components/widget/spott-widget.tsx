@@ -1,7 +1,7 @@
 "use client";
 
 import { animate, motion, useMotionValue } from "framer-motion";
-import { XIcon } from "lucide-react";
+import { ExternalLinkIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { LogoMark } from "@/components/logo-mark";
 import { UI } from "@/lib/i18n";
@@ -53,6 +53,7 @@ export function SpottWidget({ src = "/?embed=1" }: { src?: string }) {
   // the frame, and the drag would stop half way
   const [pressed, setPressed] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
   const moved = useRef(false);
   // the disc's place: an offset from its resting corner (bottom right), driven by the drag and by the springs
   const x = useMotionValue(0);
@@ -124,6 +125,34 @@ export function SpottWidget({ src = "/?embed=1" }: { src?: string }) {
     };
   }, []);
 
+  /* "Open in the app": a new tab of the app, and the conversation relayed to it (the protocol is in app/page.tsx,
+     useWidgetBridge): ask the frame for it, wait for the tab to say it's ready, hand it over */
+  const openInApp = () => {
+    const app = new URL(src, window.location.href);
+    const origin = app.origin;
+    const tab = window.open(`${origin}/?from=widget`, "_blank");
+    const win = frame.current?.contentWindow;
+    if (!tab || !win) return;
+    let messages: unknown[] | null = null;
+    let ready = false;
+    const deliver = () => {
+      if (!ready || messages === null) return;
+      tab.postMessage({ type: "spott:chat", messages }, origin);
+      window.removeEventListener("message", onMessage);
+    };
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== origin) return;
+      if (e.source === win && e.data?.type === "spott:chat") messages = Array.isArray(e.data.messages) ? e.data.messages : [];
+      else if (e.source === tab && e.data?.type === "spott:ready") ready = true;
+      else return;
+      deliver();
+    };
+    window.addEventListener("message", onMessage);
+    win.postMessage({ type: "spott:export" }, origin);
+    // nothing came back (the tab was closed, the frame never loaded): stop listening
+    setTimeout(() => window.removeEventListener("message", onMessage), 30000);
+  };
+
   const toggle = () => {
     setMounted(true);
     setHint(false);
@@ -171,6 +200,15 @@ export function SpottWidget({ src = "/?embed=1" }: { src?: string }) {
             <p className="truncate text-white/80 text-xs">{w.subtitle}</p>
           </div>
           <button
+            className="flex h-8 items-center gap-1.5 rounded-full bg-white/15 px-3 font-medium text-white text-xs ring-1 ring-white/25 transition-colors hover:bg-white/25 active:scale-95"
+            onClick={openInApp}
+            title={w.openInAppHint}
+            type="button"
+          >
+            <ExternalLinkIcon className="size-3.5" />
+            {w.openInApp}
+          </button>
+          <button
             aria-label={w.close}
             className="flex size-9 items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/20 hover:text-white active:scale-95"
             onClick={() => setOpen(false)}
@@ -181,7 +219,7 @@ export function SpottWidget({ src = "/?embed=1" }: { src?: string }) {
           </button>
         </header>
         <div className="relative min-h-0 flex-1 bg-background">
-          {mounted && <iframe className="absolute inset-0 size-full border-0" src={src} title={w.title} />}
+          {mounted && <iframe className="absolute inset-0 size-full border-0" ref={frame} src={src} title={w.title} />}
         </div>
       </section>
 
