@@ -42,6 +42,28 @@ class Step:
 
 CHANGES = "{tmp}/changes.json"
 
+# The autopilot's batch: how many files one backlog job parses, and the page cap it crawls under. The cap is
+# deliberately far above a source's own max_pages — a site that stopped at its cap is not finished, and the
+# backlog is what walks it to the end; the crawl continues from the saved queue, so several jobs in a row
+# carry on where the last one stopped.
+BACKLOG_PARSE_BATCH = int(os.getenv("AUTO_BACKLOG_PARSE_BATCH", "200"))
+BACKLOG_MAX_PAGES = int(os.getenv("AUTO_BACKLOG_MAX_PAGES", "20000"))
+
+
+def backlog_plan(site: str) -> list[Step]:
+    """One bounded step towards finishing a site: continue its crawl where it stopped, fetch what was found but
+    never downloaded, parse the next batch of files and its pages, index the site. Every stage is idempotent and
+    exits at once when it has nothing to do, so the same job can be queued again and again until the source is
+    done — that is what the autopilot does (worker/schedule.py: next_backlog)."""
+    return [
+        Step("crawl", ["-m", "crawler", "--sites", site, "--resume", "--max-pages", str(BACKLOG_MAX_PAGES)],
+             WEIGHTS["crawl"]),
+        Step("download", ["-m", "downloader", "--sites", site], WEIGHTS["download"]),
+        Step("parse", ["-m", "parsing", "--sites", site, "--limit", str(BACKLOG_PARSE_BATCH)], WEIGHTS["parse"] / 2),
+        Step("parse", ["-m", "pages_parsing", "--sites", site], WEIGHTS["parse"] / 2),
+        Step("index", ["-m", "indexing", "--sites", site], WEIGHTS["index"]),
+    ]
+
 
 def check_plan(site: str) -> list[Step]:
     """A nightly check (docs/audit/06-freshness-plan.md): find what changed, then crawl only those pages (and links
@@ -82,6 +104,8 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
     again; `check` finds the changes first and crawls only them (check_plan). A job with a `url` (a link added into an
     existing source) does only that link: a document is registered and fetched, a deeper path is crawled
     under its prefix, 2 levels deep."""
+    if job["kind"] == "backlog" and source is not None and source["kind"] == "site":
+        return backlog_plan(source["site_id"])
     if job["kind"] == "check" and source is not None and source["kind"] == "site" and not job.get("url"):
         return check_plan(source["site_id"])
     refresh = job["kind"] in ("refresh", "check")  # a check of a document source is a refresh of it
