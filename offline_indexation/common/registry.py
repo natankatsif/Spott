@@ -148,6 +148,27 @@ class Registry:
                 [page.get(c) for c in columns],
             )
 
+    def page_fetch_failed(self, page: dict) -> None:
+        """A page that couldn't be fetched this time (network error, 5xx). One that was fetched before keeps its
+        last good copy, and so its place in the index, with the error noted; a new one is recorded as failed."""
+        with self.conn:
+            kept = self.conn.execute(
+                "UPDATE pages SET error = ? WHERE url = ? AND status < 400 AND html_file IS NOT NULL",
+                (page.get("error") or f"HTTP {page.get('status')}", page["url"]),
+            ).rowcount
+        if not kept:
+            self.upsert_page(page)
+
+    def drop_unseen_pages(self, site: str, since: str) -> int:
+        """After a complete crawl of a whole site: its pages not reached this time (no longer linked or gone) stop
+        being current, so indexing removes them. Returns how many."""
+        with self.conn:
+            return self.conn.execute(
+                "UPDATE pages SET status = 410, error = 'not reached by the last complete crawl' "
+                "WHERE site = ? AND fetched_at < ? AND (status IS NULL OR status < 400)",
+                (site, since),
+            ).rowcount
+
     def add_document(self, *, key: str, url: str, site: str, category: str, extension: str,
                      external: bool, source: dict) -> bool:
         """Registers a document link and where it was found. Returns True if the document is new."""

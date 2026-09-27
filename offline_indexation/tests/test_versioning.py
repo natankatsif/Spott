@@ -15,7 +15,7 @@ import pytest
 
 from chunking.chunker import chunk_document
 from common.loader import load_active_documents
-from common.registry import Registry
+from common.registry import Registry, now
 
 
 @pytest.fixture()
@@ -382,4 +382,30 @@ class TestTransientFailures:
                          external=False, source={"found_on": "https://a.md/"})
         reg.mark_checked("a.md/x.pdf", "failed", http_status=500)
         assert reg.conn.execute("SELECT status FROM documents").fetchone()[0] == "failed"
+        reg.close()
+
+
+class TestPagesOnRecrawl:
+    def page(self, reg, url, status=200, html="html/a.html"):
+        reg.upsert_page({"url": url, "site": "a.md", "status": status, "html_file": html, "fetched_at": now(),
+                         "title": "t", "lang": "ro"})
+
+    def test_a_failed_fetch_keeps_the_last_good_copy(self, tmp_data: Path):
+        reg = Registry(tmp_data / "registry.sqlite")
+        self.page(reg, "https://a.md/x")
+        reg.page_fetch_failed({"url": "https://a.md/x", "site": "a.md", "status": 503, "fetched_at": now()})
+        row = reg.conn.execute("SELECT status, html_file, error FROM pages").fetchone()
+        assert (row["status"], row["html_file"], row["error"]) == (200, "html/a.html", "HTTP 503")
+        reg.page_fetch_failed({"url": "https://a.md/new", "site": "a.md", "error": "ConnectTimeout", "fetched_at": now()})
+        assert reg.conn.execute("SELECT html_file FROM pages WHERE url = 'https://a.md/new'").fetchone()[0] is None
+        reg.close()
+
+    def test_pages_a_complete_crawl_did_not_reach_are_dropped(self, tmp_data: Path):
+        reg = Registry(tmp_data / "registry.sqlite")
+        reg.upsert_page({"url": "https://a.md/old", "site": "a.md", "status": 200, "html_file": "html/o.html",
+                         "fetched_at": "2026-01-01T00:00:00+00:00"})
+        self.page(reg, "https://a.md/now")
+        assert reg.drop_unseen_pages("a.md", "2026-06-01T00:00:00+00:00") == 1
+        statuses = dict(reg.conn.execute("SELECT url, status FROM pages").fetchall())
+        assert statuses == {"https://a.md/old": 410, "https://a.md/now": 200}
         reg.close()

@@ -84,6 +84,7 @@ class SiteCrawler:
 
     async def run(self, resume: bool = False) -> dict:
         started = time.monotonic()
+        run_started_at = now()
         (self.out / "html").mkdir(parents=True, exist_ok=True)
         resumed = resume and self._load_state()
         await self._load_robots()
@@ -116,6 +117,10 @@ class SiteCrawler:
             missing, removed = self.registry.record_crawl_missing(self.site.id, self.docs_seen)
             self.stats["missing_documents"] = missing
             self.stats["removed_documents"] = removed
+            # a complete, fresh crawl of the whole site (not one path, not a resumed or cancelled run) saw every
+            # page it links to: the ones it didn't reach are no longer part of it
+            if not resume and not self.site.path_prefix and not progress.cancelled():
+                self.stats["pages_dropped"] = self.registry.drop_unseen_pages(self.site.id, run_started_at)
 
         return self.stats | {"queue_left": len(self.queue), "seconds": round(time.monotonic() - started)}
 
@@ -144,7 +149,7 @@ class SiteCrawler:
         except httpx.HTTPError as e:
             self.stats["pages"] += 1
             self.stats["errors"] += 1
-            self.registry.upsert_page(page | {"error": f"{type(e).__name__}: {e}"})
+            self.registry.page_fetch_failed(page | {"error": f"{type(e).__name__}: {e}"})
             return
 
         final = normalize(final_url) or url
@@ -166,7 +171,8 @@ class SiteCrawler:
         page |= {"url": final, "status": status, "content_type": ctype}
         if status >= 400:
             self.stats["errors"] += 1
-            self.registry.upsert_page(page)
+            # a server error is the site's bad moment (keep the last good copy); 4xx means the page is gone
+            (self.registry.page_fetch_failed if status >= 500 else self.registry.upsert_page)(page)
             return
 
         self.registry.upsert_page(page | self._process_html(final, depth, body))
