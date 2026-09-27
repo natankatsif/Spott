@@ -261,7 +261,7 @@ export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export type Job = {
   id: number;
   source_id: number | null; // null = all sources
-  kind: "crawl" | "refresh";
+  kind: "crawl" | "refresh" | "check"; // check: the automatic nightly look for changes
   status: JobStatus;
   stage: "crawl" | "download" | "parse" | "index" | null;
   stage_done: number;
@@ -311,6 +311,12 @@ export type SourceRow = {
   last_error: string | null;
   created_at: string;
   last_job: Job | null;
+  // automatic updates
+  auto_update: boolean;
+  check_method: string | null; // wordpress | sitemap | sitemap-new+fingerprint | fingerprint …
+  last_checked_at: string | null;
+  next_check_at: string | null;
+  stale_signals: number; // people's signals since the last check
 };
 
 export type SourceList = { sources: SourceRow[]; totals: CorpusTotals };
@@ -554,6 +560,15 @@ export async function ask(req: AskRequest): Promise<AskResponse> {
   return post<AskResponse>("/api/ask", req);
 }
 
+const signalled = new Set<string>();
+/** A cited passage the preview no longer finds on the live page: the backend checks that site sooner. Once per
+ * document per visit, and it never gets in the way (errors are ignored). */
+export function signalOutdated(docId: string): void {
+  if (isMock() || signalled.has(docId)) return;
+  signalled.add(docId);
+  void post<{ ok: boolean }>("/api/signals/outdated", { doc_id: docId }).catch(() => {});
+}
+
 export async function sendFeedback(req: FeedbackRequest): Promise<void> {
   if (isMock()) return;
   await post<{ ok: boolean }>("/api/feedback", req);
@@ -620,7 +635,7 @@ export const adminAddSource = (token: string, req: SourceCreate) => adminCall<So
 export const adminPatchSource = (
   token: string,
   id: number,
-  patch: { enabled?: boolean; max_depth?: number; max_pages?: number; category?: string },
+  patch: { enabled?: boolean; auto_update?: boolean; max_depth?: number; max_pages?: number; category?: string },
 ) => adminCall<SourceRow>(token, "PATCH", `/sources/${id}`, patch);
 export const adminDeleteSource = (token: string, id: number, purge = false) =>
   adminCall<{ ok: boolean }>(token, "DELETE", `/sources/${id}${purge ? "?purge=true" : ""}`);

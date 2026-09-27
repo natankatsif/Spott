@@ -168,3 +168,45 @@ def test_eta_counts_down_while_progress_stands_still():
     assert etas == sorted(etas, reverse=True) and etas[-1] == pytest.approx(80.0)
     now[0] += 60.0
     assert runner._eta(10.0, 0.0, state) == 20.0  # still counting down, not climbing
+
+
+def check_stub(ran: list[str], changes: dict):
+    """The freshness step writes `changes` where the plan says; the other steps just run."""
+
+    def run(step, env, on_line):
+        ran.append(step.args[1])
+        if step.args[1] == "freshness":
+            out = step.args[step.args.index("--out") + 1]
+            assert "{tmp}" not in out
+            Path(out).write_text(json.dumps(changes), encoding="utf-8")
+        for arg in step.args:
+            assert "{tmp}" not in arg  # every placeholder filled
+        return 0
+
+    return run
+
+
+def test_a_check_with_nothing_changed_stops_after_finding_out():
+    jobs, ran = FakeJobs(), []
+    status = JobRunner(jobs, run_step=check_stub(ran, {"pages": [], "documents": []})).run(
+        {"id": 5, "kind": "check"}, SITE)
+    assert status == "done" and ran == ["freshness"]
+    assert jobs.updates[-1]["percent"] == 100 and "Nothing changed" in jobs.updates[-1]["log_tail"][-1]
+
+
+def test_a_check_with_changes_crawls_only_them_and_indexes():
+    jobs, ran = FakeJobs(), []
+    status = JobRunner(jobs, run_step=check_stub(ran, {"pages": ["https://acc.md/x"], "documents": []})).run(
+        {"id": 6, "kind": "check"}, SITE)
+    assert status == "done"
+    assert ran == ["freshness", "crawler", "downloader", "parsing", "pages_parsing", "indexing"]
+
+
+def test_check_plan_arguments():
+    steps = plan({"kind": "check"}, SITE)
+    assert sum(s.weight for s in steps) == 100
+    crawl = steps[1].args
+    assert "--partial" in crawl and "--start-urls-file" in crawl and crawl[crawl.index("--max-depth") + 1] == "1"
+    assert "--keys-file" in steps[2].args
+    doc = plan({"kind": "check"}, DOCUMENT)  # a document source: its check is a refresh of it
+    assert doc[0].args[1] == "worker.register" and "--refresh" in doc[1].args

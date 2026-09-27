@@ -41,7 +41,7 @@ from retrieval.tools import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from . import admin, errors, preview
+from . import admin, errors, freshness, preview
 from .admin import PgAdminStore
 from .answering import answer_events, answer_question, replay_events, to_top_left
 from .answers import PgAnswers
@@ -62,6 +62,7 @@ from .schemas import (
     SearchResponse,
     SearchResultItem,
     SearchTimings,
+    StaleSignal,
     SuggestionList,
     ToolGrepRequest,
     ToolOpenRequest,
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.chunk_count = 0
     app.state.wall = Wall()
     app.state.rate_limiter = RateLimiter(limit=ASK_RATE_LIMIT)
+    app.state.signal_limiter = RateLimiter(limit=20)  # outdated-content signals per client per minute
 
     pool = get_pool(min_size=2, max_size=10)
     app.state.pool = pool
@@ -318,11 +320,24 @@ def feedback(req: FeedbackRequest) -> FeedbackResponse:
     if answers is not None:
         if not answers.rate(req):
             raise ApiException(404, "not_found", f"Unknown answer {req.answer_id}")
+        if "outdated" in req.tags and (pool := getattr(app.state, "pool", None)) is not None:
+            try:  # "outdated": check the cited sites sooner (never breaks the rating)
+                freshness.signal_answer(pool, req.answer_id)
+            except Exception as e:
+                log.warning("outdated signal not recorded: %s", e)
         return FeedbackResponse(ok=True)
     record = req.model_dump() | {"rating": req.stars, "ts": datetime.now(UTC).isoformat(timespec="seconds")}
     FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
     with (FEEDBACK_DIR / f"{datetime.now(UTC):%Y-%m-%d}.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return FeedbackResponse(ok=True)
+
+
+@app.post("/api/signals/outdated", response_model=FeedbackResponse)
+def outdated(req: StaleSignal, request: Request) -> FeedbackResponse:
+    """The preview didn't find a cited passage on the live page: the site is checked sooner (at most every 6 h)."""
+    app.state.signal_limiter.check(client_address(request))
+    freshness.signal_documents(require_pool(), [req.doc_id])
     return FeedbackResponse(ok=True)
 
 

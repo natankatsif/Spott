@@ -367,7 +367,7 @@ export const admin = {
 
   addSource: (url: string) => withToken((t) => adminAddSource(t, { url }), () => demoAddSource(url.trim())),
 
-  patchSource: (id: number, patch: { enabled?: boolean; max_depth?: number; max_pages?: number; category?: string }) =>
+  patchSource: (id: number, patch: { enabled?: boolean; auto_update?: boolean; max_depth?: number; max_pages?: number; category?: string }) =>
     withToken(
       (t) => adminPatchSource(t, id, patch),
       () => {
@@ -388,7 +388,7 @@ export const admin = {
       },
     ),
 
-  startJob: (sourceId: number, kind: Job["kind"]) =>
+  startJob: (sourceId: number, kind: "crawl" | "refresh") =>
     withToken((t) => adminStartJob(t, sourceId, kind), () => demoStartJob(sourceId, kind)),
 
   gaps: (hidden: boolean) =>

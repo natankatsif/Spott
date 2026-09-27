@@ -8,6 +8,7 @@ stage, stage_done / stage_total, percent, ETA from the stage's rate, the last 50
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -33,8 +34,36 @@ LOG_TAIL = 50
 @dataclass
 class Step:
     stage: str  # crawl | download | parse | index
-    args: list[str]  # python arguments, run in offline_indexation/
+    args: list[str]  # python arguments, run in offline_indexation/; "{tmp}" is the job's temporary directory
     weight: float  # percent of the whole job
+    # a JSON file this step writes (in {tmp}): when it lists no "pages" and no "documents", the job is done here
+    stop_if_nothing: str | None = None
+
+
+CHANGES = "{tmp}/changes.json"
+
+
+def check_plan(site: str) -> list[Step]:
+    """A nightly check (docs/audit/06-freshness-plan.md): find what changed, then crawl only those pages (and links
+    new to us), fetch only the new or replaced documents it found (the site's backlog of never-downloaded ones waits
+    for the weekly refresh), parse and index. Nothing changed: done after the first step."""
+    return [
+        Step("crawl", ["-m", "freshness", "--site", site, "--out", CHANGES], 5.0, stop_if_nothing=CHANGES),
+        Step("crawl", ["-m", "crawler", "--sites", site, "--start-urls-file", CHANGES, "--max-depth", "1",
+                       "--partial"], WEIGHTS["crawl"] - 5.0),
+        Step("download", ["-m", "downloader", "--sites", site, "--keys-file", CHANGES], WEIGHTS["download"]),
+        Step("parse", ["-m", "parsing", "--keys-file", CHANGES], WEIGHTS["parse"] / 2),
+        Step("parse", ["-m", "pages_parsing", "--sites", site], WEIGHTS["parse"] / 2),
+        Step("index", ["-m", "indexing", "--sites", site], WEIGHTS["index"]),
+    ]
+
+
+def nothing_changed(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False  # no answer from the step: carry on, the next steps find nothing to do anyway
+    return not data.get("pages") and not data.get("documents")
 
 
 class JobStore(Protocol):
@@ -49,10 +78,13 @@ DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
 def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> list[Step]:
     """The stages of a job. A site source is crawled; a document source is registered and fetched as a document;
     `refresh` crawls the site again from its start pages (new pages and documents are found, changed pages
-    re-read) and re-checks the known files with ETag / Last-Modified, so only what changed is parsed and indexed again. A job with a `url` (a link added into an
+    re-read) and re-checks the known files with ETag / Last-Modified, so only what changed is parsed and indexed
+    again; `check` finds the changes first and crawls only them (check_plan). A job with a `url` (a link added into an
     existing source) does only that link: a document is registered and fetched, a deeper path is crawled
     under its prefix, 2 levels deep."""
-    refresh = job["kind"] == "refresh"
+    if job["kind"] == "check" and source is not None and source["kind"] == "site" and not job.get("url"):
+        return check_plan(source["site_id"])
+    refresh = job["kind"] in ("refresh", "check")  # a check of a document source is a refresh of it
     url = job.get("url")
     sites = [source["site_id"]] if source is not None else list(all_sites or [])
     document = source is not None and (source["kind"] == "document" or
@@ -124,6 +156,8 @@ class JobRunner:
                 progress_file.unlink(missing_ok=True)
                 env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
                        "PROGRESS_FILE": str(progress_file), "CANCEL_FILE": str(cancel_file)}
+                step = Step(step.stage, [a.replace("{tmp}", tmp) for a in step.args], step.weight,
+                            step.stop_if_nothing.replace("{tmp}", tmp) if step.stop_if_nothing else None)
                 code = self._run_step(job_id, step, env, tail, progress_file, cancel_file, finished_weight, started,
                                       numbers, eta_state)
                 errors += (read_progress(progress_file) or {}).get("errors", 0)
@@ -134,6 +168,9 @@ class JobRunner:
                     status, error = "failed", f"{step.args[1]} exited with code {code}"
                     break
                 finished_weight += step.weight
+                if step.stop_if_nothing and nothing_changed(Path(step.stop_if_nothing)):
+                    tail.append("Nothing changed since the last check.")
+                    break
         site = source["site_id"] if source else None
         stats = (self.store.site_stats(site) if site else {}) | numbers | {"errors": errors}
         final = {"status": status, "stats": stats, "log_tail": list(tail), "error": error, "eta_s": None,

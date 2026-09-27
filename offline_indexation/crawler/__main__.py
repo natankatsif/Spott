@@ -37,6 +37,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--delay", type=float, help="override delay between requests, seconds")
     p.add_argument("--start-urls", nargs="+", metavar="URL", help="start from these URLs instead of the site's")
     p.add_argument("--path-prefix", help="follow only links under this path (e.g. /ro/servicii)")
+    p.add_argument("--start-urls-file", type=Path,
+                   help="start from the \"pages\" of this JSON (a check's changes); nothing to do when it lists none")
+    p.add_argument("--partial", action="store_true",
+                   help="visit the start pages and only links not crawled before; nothing is marked missing or "
+                        "dropped (a check, not a complete crawl)")
     p.add_argument("--concurrency", type=int, default=6, help="sites crawled in parallel")
     p.add_argument("--ignore-robots", action="store_true", help="ignore robots.txt on every site")
     p.add_argument("--resume", action="store_true", help="continue from data/crawl/<site>/state.json")
@@ -60,6 +65,8 @@ def select_sites(args: argparse.Namespace) -> list[Site]:
             site.delay = args.delay
         if args.start_urls:
             site.start_urls = args.start_urls
+        if args.start_urls_file:
+            site.start_urls = json.loads(args.start_urls_file.read_text(encoding="utf-8")).get("pages") or []
         if args.path_prefix:
             site.path_prefix = args.path_prefix
     return sites
@@ -75,9 +82,14 @@ async def crawl_all(sites: list[Site], args: argparse.Namespace) -> dict[str, di
             async with semaphore:
                 log.info("start %s", site.id)
                 crawler = SiteCrawler(site, client, insecure_client, registry, args.out,
-                                      respect_robots=not args.ignore_robots)
+                                      respect_robots=not args.ignore_robots, partial=args.partial)
                 try:
                     stats = await crawler.run(resume=args.resume)
+                    if args.start_urls_file and crawler.new_documents:  # a check: the downloader takes them too
+                        changes = json.loads(args.start_urls_file.read_text(encoding="utf-8"))
+                        changes["documents"] = sorted({*changes.get("documents", []), *crawler.new_documents})
+                        args.start_urls_file.write_text(json.dumps(changes, ensure_ascii=False, indent=1),
+                                                        encoding="utf-8")
                 except Exception as e:
                     log.exception("%s failed", site.id)
                     stats = {"failed": f"{type(e).__name__}: {e}"}
@@ -112,6 +124,9 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     sites = select_sites(args)
+    if args.start_urls_file and not any(s.start_urls for s in sites):
+        print("No changed pages to crawl.")
+        return
     if args.list:
         for s in sites:
             print(f"{s.id:28} {s.category:16} depth={s.max_depth} pages={s.max_pages}  {' '.join(s.start_urls)}")

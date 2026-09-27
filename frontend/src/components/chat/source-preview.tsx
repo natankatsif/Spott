@@ -31,7 +31,7 @@ import {
 } from "@/components/ai-elements/web-preview";
 import { Spinner } from "@/components/spell/spinner";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { type Citation, resolvePreviewUrl } from "@/lib/api";
+import { type Citation, resolvePreviewUrl, signalOutdated } from "@/lib/api";
 import type { UIText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -132,8 +132,10 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
   }
   // the citation the next "ready" answers for (read inside the message listener)
   const citationRef = useRef(citation.id);
+  const docIdRef = useRef(citation.doc_id);
   useEffect(() => {
     citationRef.current = citation.id;
+    docIdRef.current = citation.doc_id;
   });
 
   // same document, another quote → ask the loaded preview to move its highlight; it answers with "ready" again
@@ -150,7 +152,10 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow || e.data?.type !== "src-preview:ready") return;
       setFrame((f) => ({ ...f, ready: true }));
-      report(citationRef.current, toStatus(e.data.found));
+      const status = toStatus(e.data.found);
+      report(citationRef.current, status);
+      // the live page no longer has the quote: tell the backend, so the site is checked sooner
+      if (status === "missing") signalOutdated(docIdRef.current);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

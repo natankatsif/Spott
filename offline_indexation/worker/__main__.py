@@ -10,6 +10,7 @@ import argparse
 import logging
 import sqlite3
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from psycopg.rows import dict_row
@@ -19,11 +20,13 @@ from retrieval.db import get_connection, init_app_db
 from tools.common import utf8_console
 from tools.pipeline import EXCLUDED_SITES
 
+from . import schedule
 from .core import JobRunner
 
 log = logging.getLogger("worker")
 REGISTRY = Path(__file__).resolve().parents[1] / "data" / "registry.sqlite"
 POLL_S = 2.0
+SCHEDULE_EVERY_S = 60.0
 JSON_FIELDS = {"stats", "log_tail"}
 
 
@@ -68,6 +71,35 @@ class PgJobStore:
             "WHERE status = 'running' RETURNING id").fetchall()
         return [r[0] for r in rows]
 
+    def schedule(self, now: datetime) -> list[tuple[int, str]]:
+        """Automatic updates: sets the night slot of new sites, queues the jobs that are due; returns them."""
+        with self.conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT s.id, s.next_check_at, s.last_full_at,
+                       EXISTS (SELECT 1 FROM jobs j WHERE j.source_id = s.id AND j.status IN ('queued', 'running')) AS busy,
+                       EXISTS (SELECT 1 FROM jobs j WHERE j.source_id = s.id AND j.status = 'done')
+                           OR EXISTS (SELECT 1 FROM chunks c WHERE c.site = s.site_id) AS processed
+                FROM sources s
+                WHERE s.kind = 'site' AND s.enabled AND s.robots = 'allowed' AND s.auto_update
+                ORDER BY s.id""")
+            rows = cur.fetchall()
+        queue, next_at = schedule.decide([schedule.SourceState(**r) for r in rows], now)
+        for source_id, kind in queue:
+            self.conn.execute("INSERT INTO jobs (source_id, kind) VALUES (%s, %s)", (source_id, kind))
+        for source_id, at in next_at.items():
+            self.conn.execute("UPDATE sources SET next_check_at = %s WHERE id = %s", (at, source_id))
+        return queue
+
+    def job_done(self, job: dict, status: str) -> None:
+        """What a finished job means for its source's automatic updates."""
+        if status != "done" or job["source_id"] is None:
+            return
+        if job["kind"] == "refresh" and not job.get("url"):  # a complete crawl is a check too
+            self.conn.execute("UPDATE sources SET last_full_at = NOW(), last_checked_at = NOW(), stale_signals = 0 "
+                              "WHERE id = %s", (job["source_id"],))
+        elif job["kind"] == "check":
+            self.conn.execute("UPDATE sources SET stale_signals = 0 WHERE id = %s", (job["source_id"],))
+
     def cancel_requested(self, job_id: int) -> bool:
         row = self.conn.execute("SELECT cancel_requested FROM jobs WHERE id = %s", (job_id,)).fetchone()
         return bool(row and row[0])
@@ -104,8 +136,16 @@ def main() -> None:
     if interrupted := store.recover_interrupted():
         log.warning("jobs interrupted by a previous worker, marked failed: %s", interrupted)
     runner = JobRunner(store)
-    log.info("worker ready, polling for queued jobs")
+    log.info("worker ready, polling for queued jobs%s", "; automatic updates on" if schedule.ENABLED else "")
+    scheduled_at = 0.0
     while True:
+        if schedule.ENABLED and time.monotonic() - scheduled_at >= SCHEDULE_EVERY_S:
+            scheduled_at = time.monotonic()
+            try:
+                if queued := store.schedule(datetime.now(UTC)):
+                    log.info("automatic updates queued: %s", queued)
+            except Exception:  # scheduling must never stop the worker
+                log.exception("scheduling failed")
         job = store.claim()
         if job is None:
             if args.once:
@@ -120,6 +160,7 @@ def main() -> None:
             log.exception("job %s failed", job["id"])
             store.update_job(job["id"], status="failed", error=f"{type(e).__name__}: {e}", finished=True)
             status = "failed"
+        store.job_done(job, status)
         log.info("job %s: %s", job["id"], status)
         if args.once:
             return

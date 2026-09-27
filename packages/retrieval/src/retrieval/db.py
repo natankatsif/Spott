@@ -275,6 +275,18 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS category_source TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS url TEXT;
+-- Automatic updates (docs/audit/06-freshness-plan.md): a nightly `check` of what changed, a weekly full `refresh`,
+-- earlier when people signal outdated content.
+ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_kind_check;
+ALTER TABLE jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('crawl', 'refresh', 'check'));
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS auto_update BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS check_method TEXT;          -- wordpress | sitemap | fingerprint (+…)
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;  -- the last check or full refresh
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_full_at TIMESTAMPTZ;     -- the last complete refresh
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ;    -- when the scheduler queues the next one
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS fingerprints JSONB NOT NULL DEFAULT '{}';  -- key page → hash of its text
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS stale_signals INTEGER NOT NULL DEFAULT 0;  -- since the last check
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_signal_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS answers (
     answer_id TEXT PRIMARY KEY,

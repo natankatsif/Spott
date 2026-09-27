@@ -55,6 +55,8 @@ def parse_args() -> argparse.Namespace:
                    help="re-derive JSON/Markdown of parsed files from cached Docling output")
     p.add_argument("--pages", action="store_true", help="parse crawled HTML pages instead of files")
     p.add_argument("--sites", nargs="+", metavar="ID", help="site filter when parsing pages")
+    p.add_argument("--keys-file", type=Path,
+                   help="only the pending files of these documents (the \"documents\" of a check's JSON)")
     return p.parse_args()
 
 
@@ -139,7 +141,11 @@ def main() -> None:
             )
             return
 
-        files = registry.files_to_parse(statuses, args.limit, args.sha)
+        if args.keys_file:  # a check: its documents only, not every pending file of every site
+            keys = json.loads(args.keys_file.read_text(encoding="utf-8")).get("documents") or []
+            files = registry.files_of_documents(keys, statuses)
+        else:
+            files = registry.files_to_parse(statuses, args.limit, args.sha)
         if not files:
             print("Nothing to parse.")
             return

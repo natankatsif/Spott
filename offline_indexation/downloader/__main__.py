@@ -8,6 +8,7 @@
 
 import argparse
 import asyncio
+import json
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -34,6 +35,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--retry-failed", action="store_true", help="also retry documents that failed before")
     p.add_argument("--refresh", action="store_true",
                    help="also re-check downloaded documents (conditional GET, 304 if unchanged)")
+    p.add_argument("--keys-file", type=Path,
+                   help="only these documents (the \"documents\" keys of a check's JSON): new ones fetched, known ones "
+                        "re-checked conditionally; the site's backlog waits for the weekly refresh")
     p.add_argument("--delay", type=float, default=0.5, help="pause between requests to one host, seconds")
     p.add_argument("--concurrency", type=int, default=6, help="hosts downloaded from in parallel")
     return p.parse_args()
@@ -45,7 +49,12 @@ async def download_all(args: argparse.Namespace, registry: Registry) -> Download
         statuses.append("failed")
     if args.refresh:  # every known document again: changed, gone (a second 404 removes it) or back
         statuses += ["downloaded", "missing"]
-    docs = registry.documents_to_download(statuses, args.sites, args.limit)
+    if args.keys_file:  # a check found these new or replaced: only them, If-None-Match first for known ones
+        keys = json.loads(args.keys_file.read_text(encoding="utf-8")).get("documents") or []
+        docs = [d for d in registry.documents_by_keys(sorted(set(keys))) if d["status"] != "removed"]
+        args.refresh = True
+    else:
+        docs = registry.documents_to_download(statuses, args.sites, args.limit)
     if not docs:
         print("Nothing to download.")
         return None

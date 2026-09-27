@@ -64,6 +64,7 @@ class SiteCrawler:
         out_dir: Path,
         *,
         respect_robots: bool = True,
+        partial: bool = False,
     ):
         self.site = site
         self.client = client
@@ -71,6 +72,9 @@ class SiteCrawler:
         self.registry = registry
         self.out = out_dir / site.id
         self.respect_robots = respect_robots and not site.ignore_robots
+        # a check's crawl: the changed pages and links new to us, not a complete picture of the site
+        self.partial = partial
+        self.known = registry.site_page_keys(site.id) if partial else set()
         self.delay = site.delay
         self.robots: RobotFileParser | None = None
         self.allowed_hosts = {bare_host(urlsplit(u).hostname or "") for u in site.start_urls}
@@ -79,6 +83,7 @@ class SiteCrawler:
         self.seen: set[str] = set()
         self.docs_seen: set[str] = set()
         self.titles: dict[str, str] = {}
+        self.new_documents: list[str] = []  # keys first seen in this run (a check hands them to the downloader)
         self.stats = {"pages": 0, "errors": 0, "documents": 0, "new_documents": 0, "wp_media": 0,
                       "robots_blocked": 0}
 
@@ -91,7 +96,7 @@ class SiteCrawler:
         if not resumed:
             for url in self.site.start_urls:
                 self._enqueue(url, 0, None, "")
-            if not self.site.path_prefix:  # site-wide: not for a crawl of one path
+            if not self.site.path_prefix and not self.partial:  # site-wide: not for one path or a check
                 await self._discover_wp_media()
 
         steps = 0
@@ -113,13 +118,14 @@ class SiteCrawler:
             self._save_state()
             progress.finish()
 
-        if not self.queue:
+        # Only a complete crawl of the whole site (queue done, not one path, not a check, not cancelled) saw every
+        # document and page it links to: what it didn't see is no longer part of the site. A crawl of one path
+        # or of a check's pages sees a part, and must not count the rest as missing.
+        if not self.queue and not self.site.path_prefix and not self.partial and not progress.cancelled():
             missing, removed = self.registry.record_crawl_missing(self.site.id, self.docs_seen)
             self.stats["missing_documents"] = missing
             self.stats["removed_documents"] = removed
-            # a complete, fresh crawl of the whole site (not one path, not a resumed or cancelled run) saw every
-            # page it links to: the ones it didn't reach are no longer part of it
-            if not resume and not self.site.path_prefix and not progress.cancelled():
+            if not resume:  # a resumed run's pages were fetched across both runs
                 self.stats["pages_dropped"] = self.registry.drop_unseen_pages(self.site.id, run_started_at)
 
         return self.stats | {"queue_left": len(self.queue), "seconds": round(time.monotonic() - started)}
@@ -132,7 +138,7 @@ class SiteCrawler:
         if not url:
             return
         key = url_key(url)
-        if key in self.seen:
+        if key in self.seen or (depth > 0 and key in self.known):  # a check re-reads only changed pages
             return
         self.seen.add(key)
         self.queue.append((url, depth, parent, anchor))
@@ -249,6 +255,8 @@ class SiteCrawler:
             } | extra,
         )
         self.stats["new_documents"] += is_new
+        if is_new:
+            self.new_documents.append(key)
         if key not in self.docs_seen:
             self.docs_seen.add(key)
             self.stats["documents"] += 1

@@ -471,7 +471,10 @@ def source_model(row: dict) -> SourceRow:
         progress=SourceProgress(job_id=active["id"], stage=active.get("stage"), percent=active.get("percent") or 0,
                                 eta_s=active.get("eta_s")) if active else None,
         last_error=error[:200] if error else None, created_at=iso(row["created_at"]),
-        last_job=job_model(job) if job else None)
+        last_job=job_model(job) if job else None,
+        auto_update=row.get("auto_update", True), check_method=row.get("check_method"),
+        last_checked_at=iso(row.get("last_checked_at")), next_check_at=iso(row.get("next_check_at")),
+        stale_signals=row.get("stale_signals") or 0)
 
 
 def store(request: Request) -> AdminStore:

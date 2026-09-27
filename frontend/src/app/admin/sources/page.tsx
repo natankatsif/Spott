@@ -38,6 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -362,7 +363,22 @@ function SourceTableRow({
       </TableCell>
       <TableCell className="hidden text-right tabular-nums md:table-cell">{number(row.chunks, lang)}</TableCell>
       <TableCell className="hidden whitespace-nowrap text-muted-foreground text-xs md:table-cell">
-        {row.last_crawled ? timeAgo(row.last_crawled, lang) : t.common.never}
+        {/* the last check or crawl, and how the site is checked (WordPress, sitemap, key pages) */}
+        {(row.last_checked_at ?? row.last_crawled) ? timeAgo((row.last_checked_at ?? row.last_crawled) as string, lang) : t.common.never}
+        {row.kind === "site" && (
+          <span className="block text-[11px] text-muted-foreground/70">
+            {!row.auto_update
+              ? t.sources.autoOffShort
+              : row.check_method
+                ? row.check_method.split("+").map((m) => t.sources.method[m] ?? m).filter((m, i, a) => a.indexOf(m) === i).join(" + ")
+                : null}
+          </span>
+        )}
+        {row.stale_signals > 0 && (
+          <span className="mt-0.5 block text-[11px] text-amber-600" title={t.sources.signals(row.stale_signals)}>
+            ⚑ {t.sources.signals(row.stale_signals)}
+          </span>
+        )}
       </TableCell>
       <TableCell className="pr-3">
         <DropdownMenu>
@@ -391,6 +407,14 @@ function SourceTableRow({
             <DropdownMenuItem onClick={() => onAct(() => admin.patchSource(row.id, { enabled: !row.enabled }), t.sources.saved)}>
               <PowerIcon /> {row.enabled ? t.sources.disable : t.sources.enable}
             </DropdownMenuItem>
+            {row.kind === "site" && (
+              <DropdownMenuCheckboxItem
+                checked={row.auto_update}
+                onCheckedChange={(on) => onAct(() => admin.patchSource(row.id, { auto_update: on }), t.sources.saved)}
+              >
+                {row.auto_update ? t.sources.autoOn : t.sources.autoOff}
+              </DropdownMenuCheckboxItem>
+            )}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <TagIcon className="size-4 text-muted-foreground" /> {t.sources.category}

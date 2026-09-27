@@ -235,6 +235,10 @@ class Registry:
             params.append(limit)
         return self.conn.execute(query, params).fetchall()
 
+    def documents_by_keys(self, keys: list[str]) -> list:
+        return self.conn.execute(f"SELECT * FROM documents WHERE key IN ({', '.join('?' * len(keys))})",
+                                 keys).fetchall() if keys else []
+
     def has_file(self, sha256: str) -> bool:
         return self.conn.execute("SELECT 1 FROM files WHERE sha256 = ?", (sha256,)).fetchone() is not None
 
@@ -336,6 +340,15 @@ class Registry:
             params.append(limit)
         return self.conn.execute(query, params).fetchall()
 
+    def files_of_documents(self, keys: list[str], statuses: list[str]) -> list:
+        """The files (by status) that these documents currently point to."""
+        if not keys:
+            return []
+        return self.conn.execute(
+            f"SELECT DISTINCT f.* FROM files f JOIN documents d ON d.sha256 = f.sha256 "
+            f"WHERE d.key IN ({', '.join('?' * len(keys))}) AND f.parse_status IN ({', '.join('?' * len(statuses))}) "
+            f"ORDER BY f.downloaded_at", [*keys, *statuses]).fetchall()
+
     def file_sources(self, sha256: str) -> list[dict]:
         """Every document URL with this content and every page it was found on."""
         rows = self.conn.execute(
@@ -371,6 +384,11 @@ class Registry:
             query += " LIMIT ?"
             params.append(limit)
         return self.conn.execute(query, params).fetchall()
+
+    def site_page_keys(self, site: str) -> set[str]:
+        from common.urls import url_key
+
+        return {url_key(r[0]) for r in self.conn.execute("SELECT url FROM pages WHERE site = ?", (site,))}
 
     def site_pages(self, site: str) -> list:
         """Every crawled page of a site with its HTML on disk (context for boilerplate detection)."""

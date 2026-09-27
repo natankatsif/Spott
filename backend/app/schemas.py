@@ -191,6 +191,12 @@ class FeedbackRequest(Strict):
         return self.rating if self.rating is not None else (5 if self.vote == "up" else 1)
 
 
+class StaleSignal(Strict):
+    """A cited passage the preview no longer finds on the live page."""
+
+    doc_id: str = Field(min_length=1, max_length=500)
+
+
 class FeedbackResponse(Strict):
     ok: bool
 
@@ -412,6 +418,12 @@ class SourceRow(Strict):
     last_error: str | None  # the last job's error, short
     created_at: str
     last_job: Job | None
+    # automatic updates (docs/audit/06-freshness-plan.md)
+    auto_update: bool = True
+    check_method: str | None = None  # wordpress | sitemap | sitemap-new+fingerprint | fingerprint …
+    last_checked_at: str | None = None
+    next_check_at: str | None = None
+    stale_signals: int = 0  # people's signals since the last check
 
 
 class SourceList(Strict):
@@ -448,6 +460,7 @@ class SourceAdded(SourceRow):
 
 class SourcePatch(Strict):
     enabled: bool | None = None
+    auto_update: bool | None = None
     max_depth: int | None = Field(default=None, ge=0, le=10)
     max_pages: int | None = Field(default=None, ge=1, le=20000)
     category: str | None = Field(default=None, max_length=50)

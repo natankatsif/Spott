@@ -409,3 +409,15 @@ class TestPagesOnRecrawl:
         statuses = dict(reg.conn.execute("SELECT url, status FROM pages").fetchall())
         assert statuses == {"https://a.md/old": 410, "https://a.md/now": 200}
         reg.close()
+
+
+def test_files_of_documents_are_only_theirs(tmp_data: Path):
+    reg = Registry(tmp_data / "registry.sqlite")
+    for key, sha in (("a.md/1.pdf", "a" * 64), ("a.md/2.pdf", "b" * 64)):
+        reg.add_document(key=key, url=f"https://{key}", site="a.md", category="c", extension=".pdf", external=False,
+                         source={"found_on": "https://a.md/"})
+        reg.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
+                            extension=".pdf", http_status=200, etag=None, last_modified=None)
+    assert [r["sha256"] for r in reg.files_of_documents(["a.md/2.pdf"], ["pending"])] == ["b" * 64]
+    assert reg.files_of_documents([], ["pending"]) == []
+    reg.close()
