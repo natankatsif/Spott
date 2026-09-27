@@ -62,7 +62,9 @@
         }
       ],
       "rechecked": null,
-      "hidden": false
+      "hidden": false,
+      "topic": "urbanism",
+      "last_answer": null
     },
     {
       "id": "ans_g2",
@@ -105,7 +107,9 @@
         }
       ],
       "rechecked": null,
-      "hidden": false
+      "hidden": false,
+      "topic": "transport",
+      "last_answer": null
     },
     {
       "id": "ans_g3",
@@ -146,7 +150,9 @@
         }
       ],
       "rechecked": null,
-      "hidden": false
+      "hidden": false,
+      "topic": "education",
+      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente."
     },
     {
       "id": "ans_g4",
@@ -188,7 +194,9 @@
         "answer_id": "ans_g4_re",
         "ts": "2026-09-26T11:05:00+03:00"
       },
-      "hidden": false
+      "hidden": false,
+      "topic": "documents",
+      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente."
     },
     {
       "id": "ans_g5",
@@ -224,7 +232,9 @@
         }
       ],
       "rechecked": null,
-      "hidden": false
+      "hidden": false,
+      "topic": "utilities",
+      "last_answer": null
     },
     {
       "id": "ans_g6",
@@ -256,7 +266,9 @@
         }
       ],
       "rechecked": null,
-      "hidden": false
+      "hidden": false,
+      "topic": "social",
+      "last_answer": null
     }
   ],
   "totals": {

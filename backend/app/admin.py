@@ -52,6 +52,7 @@ from .schemas import (
     SourceRow,
     Suggestion,
     SuggestionCreate,
+    SuggestionList,
 )
 from .stats import REGISTRY, corpus_stats, registry_counts
 
@@ -620,7 +621,17 @@ async def pin_suggestion(req: SuggestionCreate, request: Request) -> Suggestion:
     suggestions = getattr(request.app.state, "suggestions", None)
     if suggestions is None:
         raise ApiException(503, "unavailable", "Database not initialized")
-    return await run_in_threadpool(suggestions.add, req.question, req.lang, req.pinned)
+    return await run_in_threadpool(suggestions.add, req.question, req.lang, req.pinned,
+                                   getattr(request.app.state, "translate", None))
+
+
+@router.get("/suggestions", response_model=SuggestionList)
+async def admin_suggestions(request: Request, lang: str = Query("ro", pattern="^(ro|ru)$")) -> SuggestionList:
+    """Every quick question of a language, with whether it is shown yet (pending / failed re-check)."""
+    suggestions = getattr(request.app.state, "suggestions", None)
+    if suggestions is None:
+        raise ApiException(503, "unavailable", "Database not initialized")
+    return SuggestionList(items=await run_in_threadpool(suggestions.admin_list, lang))
 
 
 @router.delete("/suggestions/{suggestion_id}")

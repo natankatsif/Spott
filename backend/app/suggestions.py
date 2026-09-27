@@ -12,6 +12,7 @@ With no candidates yet, the seed list (data/suggestions_seed.json) goes through 
 import json
 import logging
 import re
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,17 @@ from .schemas import AskRequest, AskResponse, Suggestion
 from .wall import mask
 
 log = logging.getLogger("backend.suggestions")
+
+LANGS = ("ro", "ru")
+LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian"}
+TRANSLATE_PROMPT = """\
+Translate a resident's question to the Chișinău City Hall assistant from {src} to {dst}. Keep it a short, natural \
+question a resident would type, with the same meaning; keep names of institutions, acts and places (in Russian the \
+City Hall is "Примэрия Кишинэу", in Romanian "Primăria municipiului Chișinău"). At most 120 characters."""
+TRANSLATE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["text"],
+                    "properties": {"text": {"type": "string"}}}
+# (question, from lang, to lang) → the question in the other language, or None
+Translate = Callable[[str, str, str], "str | None"]
 
 SEED = Path(__file__).resolve().parent / "data" / "suggestions_seed.json"
 MIN_ASKED = 2
@@ -139,18 +151,47 @@ class PgSuggestions:
     def list(self, lang: str, limit: int) -> list[Suggestion]:
         rows = self._rows("SELECT * FROM suggestions WHERE ok AND NOT hidden AND lang = %s "
                           "ORDER BY pinned DESC, asked_count DESC, id LIMIT %s", (lang, limit))
-        return [Suggestion(id=r["id"], question=r["question"], lang=r["lang"], answer_id=r["answer_id"],
-                           asked_count=r["asked_count"], rating_avg=r["rating_avg"], pinned=r["pinned"]) for r in rows]
+        return [self.suggestion(r) for r in rows]
 
-    def add(self, question: str, lang: str, pinned: bool) -> Suggestion:
+    def add(self, question: str, lang: str, pinned: bool, translate: Translate | None = None) -> Suggestion:
+        """Pins (or unpins) a question. Pinned, it is also translated and pinned in the other language, so the
+        home screen shows the same questions in RO and RU; unpinning unpins the whole group."""
         [r] = self._rows("INSERT INTO suggestions (question, lang, pinned) VALUES (%s, %s, %s) "
                          "ON CONFLICT (lang, question) DO UPDATE SET pinned = EXCLUDED.pinned, hidden = FALSE "
                          "RETURNING *", (question.strip(), lang, pinned))
-        return Suggestion(id=r["id"], question=r["question"], lang=r["lang"], answer_id=r["answer_id"],
-                          asked_count=r["asked_count"], rating_avg=r["rating_avg"], pinned=r["pinned"])
+        group = r["pin_group"]
+        if pinned:
+            group = group or uuid.uuid4().hex[:12]
+            self._rows("UPDATE suggestions SET pin_group = %s WHERE id = %s", (group, r["id"]))
+            have = {x["lang"] for x in self._rows("SELECT lang FROM suggestions WHERE pin_group = %s", (group,))}
+            for other in (x for x in LANGS if x not in have):
+                text = translate(r["question"], lang, other) if translate else None
+                if text and MIN_CHARS <= len(text.strip()) <= MAX_CHARS:
+                    self._rows("INSERT INTO suggestions (question, lang, pinned, pin_group) VALUES (%s, %s, TRUE, %s) "
+                               "ON CONFLICT (lang, question) DO UPDATE SET pinned = TRUE, hidden = FALSE, "
+                               "pin_group = EXCLUDED.pin_group", (text.strip(), other, group))
+            self._rows("UPDATE suggestions SET pinned = TRUE, hidden = FALSE WHERE pin_group = %s", (group,))
+        elif group:
+            self._rows("UPDATE suggestions SET pinned = FALSE WHERE pin_group = %s", (group,))
+        return self.suggestion(r | {"pinned": pinned})
 
     def hide(self, suggestion_id: int) -> bool:
-        return bool(self._rows("UPDATE suggestions SET hidden = TRUE WHERE id = %s RETURNING id", (suggestion_id,)))
+        """Hides the question and its translations."""
+        return bool(self._rows(
+            "UPDATE suggestions SET hidden = TRUE, pinned = FALSE WHERE id = %s OR pin_group = "
+            "(SELECT pin_group FROM suggestions WHERE id = %s) RETURNING id", (suggestion_id, suggestion_id)))
+
+    def admin_list(self, lang: str, limit: int = 100) -> list[Suggestion]:
+        """Everything not hidden, also what isn't checked yet or failed its check (the admin sees why)."""
+        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden AND lang = %s "
+                          "ORDER BY pinned DESC, ok DESC, asked_count DESC, id LIMIT %s", (lang, limit))
+        return [self.suggestion(r, check="ok" if r["ok"] else "pending" if r["checked_at"] is None else "failed")
+                for r in rows]
+
+    @staticmethod
+    def suggestion(r: dict, check: str | None = None) -> Suggestion:
+        return Suggestion(id=r["id"], question=r["question"], lang=r["lang"], answer_id=r["answer_id"],
+                          asked_count=r["asked_count"], rating_avg=r["rating_avg"], pinned=r["pinned"], check=check)
 
     def cached(self, req: AskRequest) -> AskResponse | None:
         """The checked answer of a quick question, if it was checked against the current index."""
@@ -168,3 +209,20 @@ def default_embed(texts: list[str]) -> np.ndarray:
     from retrieval.embeddings import get_device, get_embedding_model
 
     return np.asarray(get_embedding_model(get_device()).encode(texts, normalize_embeddings=True))
+
+
+def llm_translate(llm) -> Translate:
+    """A pinned question in the other language, by the small model; None when it can't be reached."""
+    from .llm import REWRITE_MODEL
+
+    def translate(question: str, src: str, dst: str) -> str | None:
+        try:
+            r = llm().complete_json(TRANSLATE_PROMPT.format(src=LANGUAGE_NAMES[src], dst=LANGUAGE_NAMES[dst]),
+                                    question, "translate", TRANSLATE_SCHEMA, model=REWRITE_MODEL, effort="none",
+                                    max_tokens=200)
+            return (r.data.get("text") or "").strip() or None
+        except Exception as e:  # noqa: BLE001 - no translation: the question stays pinned in its own language
+            log.warning("pinned question not translated: %s", e)
+            return None
+
+    return translate

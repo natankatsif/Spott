@@ -9,8 +9,10 @@ import { likeShare } from "@/components/admin/votes";
 import { Badge } from "@/components/spell/badge";
 import { Spinner } from "@/components/spell/spinner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { admin, useAdminQuery } from "@/lib/admin";
 import { errorText } from "@/lib/admin-errors";
 import { ADMIN_UI } from "@/lib/admin-i18n";
@@ -38,7 +40,7 @@ export default function SuggestionsPage() {
     setPinning(s.id);
     try {
       await admin.pinSuggestion(s.question, s.lang, !s.pinned);
-      toast.success(s.pinned ? t.suggestions.unpinnedOk : t.suggestions.pinnedOk);
+      toast.success(s.pinned ? t.suggestions.unpinnedOk : t.suggestions.pinnedBoth);
       list.reload();
     } catch (err) {
       toast.error(errorText(err, uiLang));
@@ -55,7 +57,7 @@ export default function SuggestionsPage() {
     setBusy(true);
     try {
       await admin.pinSuggestion(text.trim(), lang);
-      toast.success(t.suggestions.added);
+      toast.success(t.suggestions.pinnedBoth);
       setText("");
       list.reload();
     } catch (err) {
@@ -82,23 +84,13 @@ export default function SuggestionsPage() {
     <>
       <PageHeader
         actions={
-          <div className="flex rounded-full bg-muted/80 p-0.5 text-xs" role="radiogroup">
+          <ToggleGroup onValueChange={(v) => v && setLang(v as Lang)} size="sm" type="single" value={lang} variant="outline">
             {QUESTION_LANGS.map((l) => (
-              <button
-                aria-checked={lang === l}
-                className={cn(
-                  "rounded-full px-3 py-1 font-semibold uppercase transition-colors",
-                  lang === l ? "bg-card text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground/80",
-                )}
-                key={l}
-                onClick={() => setLang(l)}
-                role="radio"
-                type="button"
-              >
+              <ToggleGroupItem className="px-3 font-semibold uppercase" key={l} value={l}>
                 {l}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         }
         subtitle={t.suggestions.subtitle}
         title={t.suggestions.title}
@@ -148,41 +140,47 @@ export default function SuggestionsPage() {
         {pinnedCount === 0 && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-amber-900 text-sm">{t.suggestions.noneOnHome}</p>}
         <ul className="flex flex-col gap-2">
           {list.data?.map((s) => (
-            <li className={cn("flex items-center gap-3 rounded-2xl border bg-card p-4", s.pinned && "border-brand/30 bg-accent/40")} key={s.id}>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-sm" lang={s.lang}>
-                  {s.question}
-                </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-                  {s.pinned ? (
-                    <Badge className="gap-1" variant="blue">
-                      <PinIcon className="size-3" /> {t.suggestions.onHome}
-                    </Badge>
-                  ) : (
-                    <Badge variant="slate">{t.suggestions.proposal}</Badge>
-                  )}
-                  <span>{t.suggestions.asked(s.asked_count)}</span>
-                  {s.rating_avg != null && (
-                    <span className="flex items-center gap-1">
-                      <ThumbsUpIcon className="size-3 text-emerald-600" /> {Math.round(likeShare(s.rating_avg) * 100)}%
-                    </span>
-                  )}
-                </div>
-              </div>
-              <Button
-                className="shrink-0 rounded-xl"
-                disabled={pinning === s.id}
-                onClick={() => togglePin(s)}
-                size="sm"
-                variant={s.pinned ? "ghost" : "outline"}
-              >
-                {pinning === s.id ? <Spinner className="size-4" /> : s.pinned ? <PinOffIcon /> : <PinIcon />}
-                <span className="hidden sm:inline">{s.pinned ? t.suggestions.unpin : t.suggestions.pin}</span>
-              </Button>
-              <Button className="shrink-0 rounded-xl" disabled={hiding === s.id} onClick={() => hide(s.id)} size="sm" variant="ghost">
-                {hiding === s.id ? <Spinner className="size-4" /> : <EyeOffIcon />}
-                <span className="hidden sm:inline">{t.suggestions.hide}</span>
-              </Button>
+            <li key={s.id}>
+              <Card className={cn("rounded-2xl py-4 shadow-none", s.pinned && "border-brand/30 bg-accent/40")}>
+                <CardContent className="flex items-center gap-3 px-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm" lang={s.lang}>
+                      {s.question}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                      {s.pinned ? (
+                        <Badge className="gap-1" variant="blue">
+                          <PinIcon className="size-3" /> {t.suggestions.onHome}
+                        </Badge>
+                      ) : (
+                        <Badge variant="slate">{t.suggestions.proposal}</Badge>
+                      )}
+                      {s.check === "pending" && <Badge variant="amber">{t.suggestions.pending}</Badge>}
+                      {s.check === "failed" && <Badge variant="red">{t.suggestions.failed}</Badge>}
+                      <span>{t.suggestions.asked(s.asked_count)}</span>
+                      {s.rating_avg != null && (
+                        <span className="flex items-center gap-1">
+                          <ThumbsUpIcon className="size-3 text-emerald-600" /> {Math.round(likeShare(s.rating_avg) * 100)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    className="shrink-0 rounded-xl"
+                    disabled={pinning === s.id}
+                    onClick={() => togglePin(s)}
+                    size="sm"
+                    variant={s.pinned ? "ghost" : "outline"}
+                  >
+                    {pinning === s.id ? <Spinner className="size-4" /> : s.pinned ? <PinOffIcon /> : <PinIcon />}
+                    <span className="hidden sm:inline">{s.pinned ? t.suggestions.unpin : t.suggestions.pin}</span>
+                  </Button>
+                  <Button className="shrink-0 rounded-xl" disabled={hiding === s.id} onClick={() => hide(s.id)} size="sm" variant="ghost">
+                    {hiding === s.id ? <Spinner className="size-4" /> : <EyeOffIcon />}
+                    <span className="hidden sm:inline">{t.suggestions.hide}</span>
+                  </Button>
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>

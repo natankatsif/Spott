@@ -126,3 +126,21 @@ def test_gap_endpoints(monkeypatch):
         assert client.get("/api/admin/gaps", headers=token, params={"status": "answered"}).status_code == 422
     finally:
         main.app.state.gaps = None
+
+
+def test_topics_are_classified_once_and_partial_answers_are_kept():
+    asked = []
+
+    def classify(heads):
+        asked.extend(h["answer_id"] for h in heads)
+        return {"a1": "urbanism"}
+
+    rows = [r | {"answer": "Autorizația se eliberează de DGAURF."} for r in ROWS]
+    rows[3] = rows[3] | {"topic": "culture"}  # classified before
+    result = gaps(rows, embed, classify=classify)
+    assert asked == ["a1"]
+    assert [(i["id"], i["topic"]) for i in result["items"]] == [("a1", "urbanism"), ("a4", "culture")]
+    assert result["topics"] == [{"topic": "urbanism", "groups": 1}, {"topic": "culture", "groups": 1}]
+    assert result["items"][0]["last_answer"] == "Autorizația se eliberează de DGAURF."  # from the partial one
+    assert result["items"][1]["last_answer"] is None  # never partly answered
+    GapList.model_validate(result)

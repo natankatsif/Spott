@@ -241,6 +241,8 @@ export type Suggestion = {
   asked_count: number;
   rating_avg: number | null;
   pinned: boolean;
+  /** admin list only: shown to people, waiting for the next re-check, or not answered well */
+  check?: "ok" | "pending" | "failed" | null;
 };
 
 export type SuggestionList = { items: Suggestion[] };
@@ -344,9 +346,20 @@ export type Gap = {
   hint_sites: { site: string; hits: number }[]; // found but not used: whom to ask
   rechecked: GapRecheck | null;
   hidden: boolean;
+  topic: GapTopic; // set by a small model, once per group
+  last_answer: string | null; // what the assistant said the last time it answered part of it
 };
 
-export type GapList = { items: Gap[]; totals: { not_found: number; partial: number; groups: number } };
+export const GAP_TOPICS = [
+  "transport", "urbanism", "education", "health", "social", "utilities", "taxes", "documents", "council", "environment", "culture", "other",
+] as const;
+export type GapTopic = (typeof GAP_TOPICS)[number];
+
+export type GapList = {
+  items: Gap[];
+  totals: { not_found: number; partial: number; groups: number };
+  topics: { topic: GapTopic; groups: number }[]; // biggest first
+};
 
 export type FeedbackItem = {
   answer_id: string;
@@ -622,6 +635,7 @@ export const adminFeedbackStats = (token: string) => adminCall<FeedbackStats>(to
 
 export const adminPinSuggestion = (token: string, question: string, lang: Lang, pinned = true) =>
   adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned });
+export const adminSuggestions = (token: string, lang: Lang) => adminCall<SuggestionList>(token, "GET", `/suggestions?lang=${lang}`);
 export const adminHideSuggestion = (token: string, id: number) =>
   adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);
 

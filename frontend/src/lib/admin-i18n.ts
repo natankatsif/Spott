@@ -1,6 +1,6 @@
 // Admin panel strings, RO / RU / EN (same switch as the rest of the site: ./lang.ts).
 
-import type { FeedbackTag, Job, JobStatus } from "./api";
+import type { FeedbackTag, GapTopic, Job, JobStatus } from "./api";
 import type { UILang } from "./i18n";
 
 const ro = {
@@ -108,6 +108,20 @@ const ro = {
     emptyHidden: "Nimic ascuns.",
     more: (n: number) => `+${n} formulări`,
     status: { not_found: "fără răspuns", partial: "parțial" },
+    all: "Toate",
+    allTopics: "Toate temele",
+    sortBy: "Sortare",
+    sort: { count: "Cele mai întrebate", recent: "Cele mai noi", partial: "Întâi parțiale", not_found: "Întâi fără răspuns" },
+    lastAnswer: "Ce a răspuns asistentul data trecută",
+    prev: "Înapoi",
+    next: "Înainte",
+    shown: (from: number, to: number, total: number) => `${from}–${to} din ${total}`,
+    topic: {
+      transport: "Transport", urbanism: "Urbanism și construcții", education: "Educație", health: "Sănătate",
+      social: "Asistență socială", utilities: "Locuințe și servicii comunale", taxes: "Taxe și plăți",
+      documents: "Acte și cereri", council: "Consiliul municipal", environment: "Mediu", culture: "Cultură și sport",
+      other: "Altele",
+    } satisfies Record<GapTopic, string>,
   },
   jobs: {
     title: "Procesări",
@@ -178,6 +192,9 @@ const ro = {
     added: "Întrebarea a fost fixată. Apare după verificarea răspunsului.",
     empty: "Încă nu sunt propuneri pentru această limbă.",
     tooShort: "Între 10 și 120 de caractere.",
+    pending: "se verifică",
+    failed: "fără răspuns bun",
+    pinnedBoth: "Fixată în română și rusă. Apare după verificarea răspunsului.",
   },
   status: { queued: "în coadă", running: "rulează", done: "gata", failed: "eșuată", cancelled: "oprită" } satisfies Record<JobStatus, string>,
   tags: {
@@ -298,6 +315,19 @@ const ru: AdminText = {
     emptyHidden: "Скрытых нет.",
     more: (n: number) => `+${n} формулировок`,
     status: { not_found: "без ответа", partial: "частично" },
+    all: "Все",
+    allTopics: "Все темы",
+    sortBy: "Сортировка",
+    sort: { count: "Чаще задают", recent: "Сначала новые", partial: "Сначала частичные", not_found: "Сначала без ответа" },
+    lastAnswer: "Что ассистент ответил в прошлый раз",
+    prev: "Назад",
+    next: "Дальше",
+    shown: (from: number, to: number, total: number) => `${from}–${to} из ${total}`,
+    topic: {
+      transport: "Транспорт", urbanism: "Градостроительство", education: "Образование", health: "Здравоохранение",
+      social: "Соцпомощь", utilities: "ЖКХ", taxes: "Налоги и платежи", documents: "Документы и заявления",
+      council: "Муниципальный совет", environment: "Экология", culture: "Культура и спорт", other: "Другое",
+    } satisfies Record<GapTopic, string>,
   },
   jobs: {
     title: "Обработка",
@@ -368,6 +398,9 @@ const ru: AdminText = {
     added: "Вопрос закреплён. Появится после проверки ответа.",
     empty: "Для этого языка предложений пока нет.",
     tooShort: "От 10 до 120 символов.",
+    pending: "проверяется",
+    failed: "нет хорошего ответа",
+    pinnedBoth: "Закреплено на румынском и русском. Появится после проверки ответа.",
   },
   status: { queued: "в очереди", running: "идёт", done: "готово", failed: "ошибка", cancelled: "остановлена" },
   tags: {
@@ -486,6 +519,19 @@ const en: AdminText = {
     emptyHidden: "Nothing hidden.",
     more: (n: number) => `+${n} wordings`,
     status: { not_found: "unanswered", partial: "partial" },
+    all: "All",
+    allTopics: "All topics",
+    sortBy: "Sort",
+    sort: { count: "Most asked", recent: "Newest", partial: "Partial first", not_found: "Unanswered first" },
+    lastAnswer: "What the assistant answered last time",
+    prev: "Previous",
+    next: "Next",
+    shown: (from: number, to: number, total: number) => `${from}–${to} of ${total}`,
+    topic: {
+      transport: "Transport", urbanism: "Urban planning", education: "Education", health: "Health",
+      social: "Social help", utilities: "Housing & utilities", taxes: "Taxes & fees", documents: "Documents",
+      council: "City council", environment: "Environment", culture: "Culture & sport", other: "Other",
+    } satisfies Record<GapTopic, string>,
   },
   jobs: {
     title: "Jobs",
@@ -556,6 +602,9 @@ const en: AdminText = {
     added: "Pinned. It shows up once its answer is checked.",
     empty: "No proposals for this language yet.",
     tooShort: "10 to 120 characters.",
+    pending: "being checked",
+    failed: "no good answer",
+    pinnedBoth: "Pinned in Romanian and Russian. Shows once its answer is checked.",
   },
   status: { queued: "queued", running: "running", done: "done", failed: "failed", cancelled: "stopped" },
   tags: {

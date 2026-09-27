@@ -294,6 +294,8 @@ CREATE INDEX IF NOT EXISTS idx_answers_created ON answers(created_at);
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS missing JSONB;
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS retrieved_sites JSONB;
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_hidden BOOLEAN NOT NULL DEFAULT FALSE;
+-- the admin's gaps: the topic of an unanswered question (set once by a small model, see backend/app/gaps.py)
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS topic TEXT;
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS recheck JSONB;
 
 CREATE TABLE IF NOT EXISTS feedback (
@@ -331,6 +333,8 @@ CREATE TABLE IF NOT EXISTS suggestions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (lang, question)
 );
+-- the same pinned question in each language (one pinned in RO is translated and pinned in RU too)
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS pin_group TEXT;
 
 -- Unique visitors: one row per browser (its anonymous localStorage id), for the counter in the header.
 CREATE TABLE IF NOT EXISTS visitors (

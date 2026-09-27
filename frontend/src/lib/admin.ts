@@ -11,6 +11,7 @@ import {
   adminFeedback,
   adminFeedbackStats,
   adminHideSuggestion,
+  adminSuggestions,
   adminJob,
   adminJobs,
   adminLogin,
@@ -37,7 +38,6 @@ import {
   type SourceList,
   type SourceRow,
   type Suggestion,
-  suggestions as publicSuggestions,
 } from "./api";
 import feedbackMock from "./mocks/admin/feedback.json";
 import addBlocked from "./mocks/admin/add-source-blocked.json";
@@ -390,12 +390,14 @@ export const admin = {
 
   gaps: (hidden: boolean) =>
     withToken(
-      (t) => adminGaps(t, { hidden }),
+      (t) => adminGaps(t, { hidden, limit: 500 }), // all of them: the page filters, sorts and pages them
       (): GapList => {
         const items = demo.gaps.filter((g) => g.hidden === hidden).sort((a, b) => b.count - a.count);
         const all = demo.gaps.filter((g) => !g.hidden);
+        const topics = Object.entries(Object.groupBy(items, (g) => g.topic)).map(([topic, g]) => ({ topic, groups: g?.length ?? 0 }));
         return {
           items,
+          topics: topics.sort((a, b) => b.groups - a.groups) as GapList["topics"],
           totals: {
             not_found: all.filter((g) => g.status === "not_found").reduce((n, g) => n + g.count, 0),
             partial: all.filter((g) => g.status === "partial").reduce((n, g) => n + g.count, 0),
@@ -469,10 +471,11 @@ export const admin = {
    * No admin list endpoint: the public GET /api/suggestions is the list (docs/API.md). It returns only questions
    * whose answers passed the check, pinned first, at most 20.
    */
+  /** Every quick question of the language, also the ones waiting for their check. */
   suggestions: async (lang: Lang) =>
     isMock()
       ? structuredClone(demo.suggestions.filter((s) => s.lang === lang).sort((a, b) => Number(b.pinned) - Number(a.pinned)))
-      : (await publicSuggestions(lang, 20)).items,
+      : (await withToken((t) => adminSuggestions(t, lang), () => ({ items: [] }))).items,
 
   /** Pins (or unpins) by question text: the backend upserts on (lang, question), so an existing one is updated. */
   pinSuggestion: (question: string, lang: Lang, pinned = true) =>

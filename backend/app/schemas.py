@@ -245,6 +245,8 @@ class Suggestion(Strict):
     asked_count: int
     rating_avg: float | None
     pinned: bool
+    # admin list only: "ok" shown to people, "pending" until the next re-check answers it, "failed" not answered well
+    check: Literal["ok", "pending", "failed"] | None = None
 
 
 class SuggestionList(Strict):
@@ -280,6 +282,10 @@ class GapRecheck(Strict):
     ts: str
 
 
+GapTopicKey = Literal["transport", "urbanism", "education", "health", "social", "utilities", "taxes", "documents",
+                      "council", "environment", "culture", "other"]
+
+
 class Gap(Strict):
     id: str  # the answer_id of the group's first question
     example: str
@@ -292,6 +298,13 @@ class Gap(Strict):
     hint_sites: list[GapSite]  # top 3: which department to ask
     rechecked: GapRecheck | None
     hidden: bool
+    topic: GapTopicKey = "other"
+    last_answer: str | None = None  # what the assistant said the last time it answered part of it
+
+
+class GapTopic(Strict):
+    topic: GapTopicKey
+    groups: int
 
 
 class GapTotals(Strict):
@@ -303,6 +316,7 @@ class GapTotals(Strict):
 class GapList(Strict):
     items: list[Gap]
     totals: GapTotals
+    topics: list[GapTopic] = []  # groups per topic, biggest first
 
 
 # ─────────────── admin: login ───────────────

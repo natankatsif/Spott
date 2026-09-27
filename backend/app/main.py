@@ -47,7 +47,7 @@ from .answering import answer_events, answer_question, replay_events, to_top_lef
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter
 from .files import DATA_DIR
-from .gaps import PgGaps
+from .gaps import PgGaps, llm_classify
 from .llm import LLM, LLMUnavailable, OpenAILLM
 from .pdf_source import PdfSource, make_clients
 from .schemas import (
@@ -73,7 +73,7 @@ from .schemas import (
 )
 from .stats import corpus_stats
 from .store import PgStore
-from .suggestions import PgSuggestions
+from .suggestions import PgSuggestions, llm_translate
 from .visitors import PgVisitors
 from .wall import Wall
 
@@ -112,7 +112,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.admin = PgAdminStore(pool)
     app.state.answers = PgAnswers(pool)
     app.state.suggestions = PgSuggestions(pool)
-    app.state.gaps = PgGaps(pool)
+    app.state.translate = llm_translate(get_llm)  # a pinned question into the other language
+    app.state.gaps = PgGaps(pool, classify=llm_classify(get_llm))
     app.state.visitors = PgVisitors(pool)
     # The admin's gap re-check: one question, one model call (no routing or rewrite call, no second pass).
     app.state.ask_once = lambda req: answer_question(app.state.store, get_llm(), req, pool=pool, freshness=False,
