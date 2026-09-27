@@ -288,7 +288,7 @@ function tickDemo(): void {
     const jobs = demo.jobs.filter((j) => j.source_id === row.id).sort((a, b) => b.id - a.id);
     if (jobs[0]) row.last_job = jobs[0];
     const active = jobs.find((j) => j.status === "queued" || j.status === "running");
-    row.progress = active ? { job_id: active.id, stage: active.stage, percent: active.percent, eta_s: active.eta_s } : null;
+    row.progress = active ? { job_id: active.id, stage: active.stage, percent: active.percent, eta_s: active.eta_s, current: null } : null;
     row.status = demoStatus(row, active);
   }
 }
