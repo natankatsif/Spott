@@ -8,6 +8,7 @@ import {
   BookOpenIcon,
   ScanSearchIcon,
   CheckIcon,
+  ChevronDownIcon,
   ClockIcon,
   CopyIcon,
   FileSearchIcon,
@@ -21,7 +22,7 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "lucide-react";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, type ReactNode, useRef, useState } from "react";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -178,41 +179,65 @@ function StatusNote({ view, t }: { view: AnswerView; t: UIText }) {
 }
 
 // "Where to go": phones to call, e-mails, the address on Google Maps, the hours; the name links to where it is written.
-function ContactBlock({ contact: c }: { contact: ContactCard }) {
+/** A card's phones, e-mails, address and hours in one column: the first CONTACT_LINES, the rest behind "N more". */
+const CONTACT_LINES = 4;
+
+function ContactBlock({ contact: c, t }: { contact: ContactCard; t: UIText }) {
+  const [all, setAll] = useState(false);
   const inCity = c.address && /chi[șs]in[ăa]u|кишин/i.test(c.address) ? c.address : `${c.address}, Chișinău`;
+  const lines: ReactNode[] = [
+    ...c.phone.map((p) => (
+      <a className="flex items-center gap-2 text-brand" href={`tel:${p.replace(/[^\d+]/g, "")}`} key={`p-${p}`}>
+        <PhoneIcon className="size-3.5 shrink-0" />
+        {p}
+      </a>
+    )),
+    ...c.email.map((e) => (
+      <a className="flex min-w-0 items-center gap-2 text-brand" href={`mailto:${e}`} key={`e-${e}`}>
+        <MailIcon className="size-3.5 shrink-0" />
+        <span className="truncate">{e}</span>
+      </a>
+    )),
+    ...(c.address
+      ? [
+          <a
+            className="flex items-center gap-2 text-brand"
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inCity)}`}
+            key="address"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <MapPinIcon className="size-3.5 shrink-0" />
+            {c.address}
+          </a>,
+        ]
+      : []),
+    ...(c.hours
+      ? [
+          <span className="flex items-center gap-2 text-muted-foreground" key="hours">
+            <ClockIcon className="size-3.5 shrink-0" />
+            {c.hours}
+          </span>,
+        ]
+      : []),
+  ];
+  const hidden = lines.length - CONTACT_LINES;
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2">
       <a className="font-medium hover:underline" href={c.deep_link} rel="noreferrer" target="_blank">
         {c.name}
       </a>
-      {c.phone.map((p) => (
-        <a className="flex items-center gap-2 text-brand" href={`tel:${p.replace(/[^\d+]/g, "")}`} key={p}>
-          <PhoneIcon className="size-3.5 shrink-0" />
-          {p}
-        </a>
-      ))}
-      {c.email.map((e) => (
-        <a className="flex items-center gap-2 text-brand" href={`mailto:${e}`} key={e}>
-          <MailIcon className="size-3.5 shrink-0" />
-          {e}
-        </a>
-      ))}
-      {c.address && (
-        <a
-          className="flex items-center gap-2 text-brand"
-          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(inCity)}`}
-          rel="noreferrer"
-          target="_blank"
+      {hidden > 0 && !all ? lines.slice(0, CONTACT_LINES) : lines}
+      {hidden > 0 && (
+        <button
+          aria-expanded={all}
+          className="mt-0.5 flex w-fit items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 font-medium text-foreground/70 text-xs transition-colors hover:bg-accent hover:text-foreground"
+          onClick={() => setAll((v) => !v)}
+          type="button"
         >
-          <MapPinIcon className="size-3.5 shrink-0" />
-          {c.address}
-        </a>
-      )}
-      {c.hours && (
-        <span className="flex items-center gap-2 text-muted-foreground">
-          <ClockIcon className="size-3.5 shrink-0" />
-          {c.hours}
-        </span>
+          {all ? t.lessContacts : t.moreContacts(hidden)}
+          <ChevronDownIcon className={cn("size-3.5 transition-transform", all && "rotate-180")} />
+        </button>
       )}
     </div>
   );
@@ -327,7 +352,7 @@ export function AssistantAnswer({
           <div className="flex flex-col gap-2 text-sm">
             <span className="text-muted-foreground">{t.whereToGo}:</span>
             {a.contacts.map((c) => (
-              <ContactBlock contact={c} key={`${c.name}-${c.url}`} />
+              <ContactBlock contact={c} key={`${c.name}-${c.url}`} t={t} />
             ))}
           </div>
         )}
