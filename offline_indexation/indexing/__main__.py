@@ -49,13 +49,21 @@ def load_chunks_from_disk(chunks_dir: Path) -> dict[str, list[dict]]:
     return by_doc
 
 
-def chunk_all(parsed_dir: Path, chunks_dir: Path) -> dict[str, list[dict]]:
-    """Runs chunking over parsed files and pages, writing jsonl and returning by_doc."""
+def doc_site(doc: dict) -> str | None:
+    """The site a parsed document belongs to: a page's own, a file's first source (as the chunker takes it)."""
+    return doc.get("site") or ((doc.get("sources") or [{}])[0] or {}).get("site")
+
+
+def chunk_all(parsed_dir: Path, chunks_dir: Path, sites: list[str] | None = None) -> dict[str, list[dict]]:
+    """Runs chunking over parsed files and pages (only these sites' when given), writing jsonl and returning
+    by_doc. Stale jsonl files are deleted only after a run over every site."""
     chunks_dir.mkdir(parents=True, exist_ok=True)
     from common.loader import load_active_documents
 
     data_dir = chunks_dir.parent
     docs = load_active_documents(data_dir)
+    if sites:
+        docs = [d for d in docs if doc_site(d) in set(sites)]
 
     by_doc: dict[str, list[dict]] = {}
     active_jsonl: set[str] = set()
@@ -76,8 +84,8 @@ def chunk_all(parsed_dir: Path, chunks_dir: Path) -> dict[str, list[dict]]:
         except Exception as e:
             log.warning("Chunking error on %s: %s", doc.get("doc_id", "(unknown)"), e)
 
-    # Delete stale .jsonl of documents that no longer exist
-    for existing in chunks_dir.glob("*.jsonl"):
+    # Delete stale .jsonl of documents that no longer exist (other sites' files are unknown to a partial run)
+    for existing in ([] if sites else chunks_dir.glob("*.jsonl")):
         if existing.name not in active_jsonl:
             existing.unlink()
 
@@ -109,21 +117,24 @@ def main() -> None:
 
     if not args.from_jsonl:
         log.info("Re-chunking active documents from registry/parsed...")
-        by_doc = chunk_all(parsed_dir, chunks_dir)
+        by_doc = chunk_all(parsed_dir, chunks_dir, args.sites)
     else:
         log.info("Loading existing chunks from %s (--from-jsonl)...", chunks_dir)
         by_doc = load_chunks_from_disk(chunks_dir)
-
-    if not by_doc:
-        print("No chunks found to index.")
-        return
 
     if args.sites:
         by_doc = {d: cs for d, cs in by_doc.items() if cs and cs[0].get("site") in set(args.sites)}
     if args.limit:
         by_doc = dict(list(by_doc.items())[:args.limit])
+    # A run over whole sites knows every current document of them: the index keeps no others of these sites
+    # (removed or replaced files, pages that became 404 or empty). --limit / --from-jsonl runs know only a part.
+    site_scoped = bool(args.sites) and not (args.from_jsonl or args.limit)
     if not by_doc:
-        print("No chunks match the filters.")
+        if args.clean_orphans and site_scoped:
+            removed = Indexer(conn=conn).clean_orphaned_documents(set(), sites=args.sites)
+            print(f"No current documents on {', '.join(args.sites)}; removed from the index: {removed}")
+        else:
+            print("No chunks match the filters." if (args.sites or args.limit) else "No chunks found to index.")
         return
 
     indexer = Indexer(conn=conn, batch_size=args.batch_size)
@@ -157,6 +168,8 @@ def main() -> None:
     orphans_removed = 0
     if args.clean_orphans and is_full_corpus:
         orphans_removed = indexer.clean_orphaned_documents(set(by_doc))
+    elif args.clean_orphans and site_scoped:
+        orphans_removed = indexer.clean_orphaned_documents(set(by_doc), sites=args.sites)
     elif args.clean_orphans:
         log.info("Skipping orphan cleanup: partial run (%d of %d documents)", len(by_doc), total_expected_docs)
 

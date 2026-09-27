@@ -69,7 +69,7 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
             crawl += ["--max-depth", str(source["max_depth"])]
         if source is not None and source.get("max_pages") is not None:
             crawl += ["--max-pages", str(source["max_pages"])]
-    download = ["-m", "downloader", "--sites", *sites] + (["--refresh"] if refresh else [])
+    download = ["-m", "downloader", "--sites", *sites] + (["--refresh", "--retry-failed"] if refresh else [])
     steps = [
         Step("crawl", crawl, WEIGHTS["crawl"]),
         Step("download", download, WEIGHTS["download"]),

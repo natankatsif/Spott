@@ -43,8 +43,8 @@ async def download_all(args: argparse.Namespace, registry: Registry) -> Download
     statuses = ["discovered"]
     if args.retry_failed:
         statuses.append("failed")
-    if args.refresh:
-        statuses.append("downloaded")
+    if args.refresh:  # every known document again: changed, gone (a second 404 removes it) or back
+        statuses += ["downloaded", "missing"]
     docs = registry.documents_to_download(statuses, args.sites, args.limit)
     if not docs:
         print("Nothing to download.")

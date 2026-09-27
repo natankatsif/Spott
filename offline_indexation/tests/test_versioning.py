@@ -184,8 +184,9 @@ class TestDocumentRemoval:
         assert not removed
 
         row = reg.conn.execute("SELECT status, consecutive_missing FROM documents WHERE key = ?", (key,)).fetchone()
-        assert row["status"] == "missing"
+        assert row["status"] == "downloaded"  # still in the index: one 404 can be a hiccup
         assert row["consecutive_missing"] == 1
+        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data))
 
         reg.close()
 
@@ -356,3 +357,29 @@ class TestStableDocId:
         }
         chunks = chunk_document(page)
         assert chunks[0]["doc_id"] == f"page:{uk}"
+
+
+class TestTransientFailures:
+    def test_failure_keeps_a_downloaded_document(self, tmp_data: Path):
+        """A timeout / 5xx on refresh must not take a good document out of the index."""
+        url, key = "https://chisinau.md/ok.pdf", "chisinau.md/ok.pdf"
+        sha = hashlib.sha256(b"ok").hexdigest()
+        write_parsed_json(tmp_data, sha, make_file_doc(sha256=sha, title="Ok", url=url, text_blocks=[
+            {"id": 0, "type": "paragraph", "text": "Un document bun, care se descarcă de obicei.", "section": [],
+             "lang": "ro"}]))
+        reg = setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        reg.mark_checked(key, "failed", http_status=503)
+        row = reg.conn.execute("SELECT status, http_status FROM documents WHERE key = ?", (key,)).fetchone()
+        assert (row["status"], row["http_status"]) == ("downloaded", 503)
+        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data))
+        reg.mark_checked(key, "not_a_file", http_status=200)  # now a page: that one is real
+        assert reg.conn.execute("SELECT status FROM documents WHERE key = ?", (key,)).fetchone()[0] == "not_a_file"
+        reg.close()
+
+    def test_failure_of_a_new_document_is_failed(self, tmp_data: Path):
+        reg = Registry(tmp_data / "registry.sqlite")
+        reg.add_document(key="a.md/x.pdf", url="https://a.md/x.pdf", site="a.md", category="c", extension=".pdf",
+                         external=False, source={"found_on": "https://a.md/"})
+        reg.mark_checked("a.md/x.pdf", "failed", http_status=500)
+        assert reg.conn.execute("SELECT status FROM documents").fetchone()[0] == "failed"
+        reg.close()

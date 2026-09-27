@@ -266,13 +266,16 @@ class Registry:
 
     def record_download_missing(self, key: str, http_status: int) -> bool:
         """Called when downloader receives 404/410. Increments consecutive_missing.
-        If >= 2, status becomes 'removed'. Returns True if marked removed."""
+        If >= 2, status becomes 'removed'. Returns True if marked removed. A document that has a downloaded version
+        keeps it (and stays in the index) after the first miss: one 404 can be a hiccup of the site."""
         ts = now()
         with self.conn:
-            row = self.conn.execute("SELECT consecutive_missing FROM documents WHERE key = ?", (key,)).fetchone()
+            row = self.conn.execute("SELECT consecutive_missing, status FROM documents WHERE key = ?",
+                                    (key,)).fetchone()
             curr = ((row["consecutive_missing"] if row else 0) or 0) + 1
             is_removed = curr >= 2
-            new_status = "removed" if is_removed else "missing"
+            keep = row is not None and row["status"] == "downloaded"
+            new_status = "removed" if is_removed else "downloaded" if keep else "missing"
             removed_at = ts if is_removed else None
             self.conn.execute(
                 "UPDATE documents SET status = ?, http_status = ?, checked_at = ?, "
@@ -282,10 +285,13 @@ class Registry:
             return is_removed
 
     def mark_checked(self, key: str, status: str, *, http_status: int | None = None, error: str | None = None) -> None:
+        """A download attempt that got no content. A failure (timeout, 5xx) of a document that has a downloaded
+        version keeps it 'downloaded': a site's bad moment must not take a good document out of the index."""
         with self.conn:
             self.conn.execute(
-                "UPDATE documents SET status = ?, http_status = ?, error = ?, checked_at = ? WHERE key = ?",
-                (status, http_status, error, now(), key),
+                "UPDATE documents SET status = CASE WHEN ? = 'failed' AND status = 'downloaded' THEN status ELSE ? END, "
+                "http_status = ?, error = ?, checked_at = ? WHERE key = ?",
+                (status, status, http_status, error, now(), key),
             )
 
     def mark_not_modified(self, key: str) -> None:
@@ -344,6 +350,11 @@ class Registry:
             query += " LIMIT ?"
             params.append(limit)
         return self.conn.execute(query, params).fetchall()
+
+    def site_pages(self, site: str) -> list:
+        """Every crawled page of a site with its HTML on disk (context for boilerplate detection)."""
+        return self.conn.execute("SELECT * FROM pages WHERE site = ? AND status < 400 AND html_file IS NOT NULL",
+                                 (site,)).fetchall()
 
     def mark_page_parsed(self, url: str, status: str, *, html_hash: str | None = None,
                          error: str | None = None) -> None:

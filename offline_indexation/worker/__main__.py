@@ -59,6 +59,15 @@ class PgJobStore:
         values = [Jsonb(v) if k in JSON_FIELDS else v for k, v in fields.items()]
         self.conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id = %s", (*values, job_id))
 
+    def recover_interrupted(self) -> list[int]:
+        """Jobs left 'running' by a worker that stopped mid-job (restart, sleep, out of memory). One worker per
+        machine, so at start nothing can be running: they are marked failed, so the source can be processed again."""
+        rows = self.conn.execute(
+            "UPDATE jobs SET status = 'failed', finished_at = NOW(), eta_s = NULL, "
+            "error = 'Interrupted: the worker stopped during this job. Run it again.' "
+            "WHERE status = 'running' RETURNING id").fetchall()
+        return [r[0] for r in rows]
+
     def cancel_requested(self, job_id: int) -> bool:
         row = self.conn.execute("SELECT cancel_requested FROM jobs WHERE id = %s", (job_id,)).fetchone()
         return bool(row and row[0])
@@ -92,6 +101,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
     store = PgJobStore()
+    if interrupted := store.recover_interrupted():
+        log.warning("jobs interrupted by a previous worker, marked failed: %s", interrupted)
     runner = JobRunner(store)
     log.info("worker ready, polling for queued jobs")
     while True:

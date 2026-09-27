@@ -175,8 +175,11 @@ def parse_site_pages(
     categories: dict[str, str],
     registry: Registry,
     out_dir: Path,
+    context: list | None = None,
 ) -> dict[str, int]:
-    """Parses all pages for a given site, detects boilerplate, and writes JSON."""
+    """Parses the given pages of one site, drops its boilerplate, and writes JSON. `context`: the site's other
+    crawled pages, read only to count how often a block repeats, so a job that adds one or two pages of a known site
+    still recognizes its menu and footer."""
     stats = {"parsed": 0, "empty": 0, "failed": 0, "boilerplate_dropped": 0}
     if not rows:
         return stats
@@ -223,6 +226,18 @@ def parse_site_pages(
             stats["failed"] += 1
 
     num_pages = len(page_data_list)
+    parsed_urls = {p["row"]["url"] for p in page_data_list}
+    for row in context or []:
+        if row["url"] in parsed_urls:
+            continue
+        html_file = data_dir / "crawl" / row["site"] / (row["html_file"] or "")
+        try:
+            _, raw_blocks = extract_raw_blocks(html_file.read_bytes().decode("utf-8", errors="replace"))
+        except (OSError, ValueError):
+            continue
+        for key in {b["text"].strip().lower() for b in raw_blocks} - {""}:
+            block_freq[key] += 1
+        num_pages += 1
     # If >= 3 pages, blocks appearing on > 30% pages are boilerplate
     boilerplate_texts: set[str] = set()
     if num_pages >= 3:

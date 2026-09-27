@@ -46,6 +46,7 @@ def upsert_sql(table: str, columns: tuple[str, ...], key: str, touch: str | None
             f"ON CONFLICT ({key}) DO UPDATE SET {', '.join(updates)}")
 
 
+ORPHANS_OF_SITES = "DELETE FROM documents WHERE site = ANY(%s) AND doc_id <> ALL(%s)"
 UPSERT_DOCUMENT = upsert_sql("documents", DOCUMENT_COLUMNS, "doc_id", touch="indexed_at")
 UPSERT_CHUNK = upsert_sql("chunks", CHUNK_COLUMNS, "chunk_id")
 UPSERT_LINE = upsert_sql("lines", LINE_COLUMNS, "line_id")
@@ -243,11 +244,15 @@ class Indexer:
                     deleted += cur.rowcount
         return deleted
 
-    def clean_orphaned_documents(self, active_doc_ids: set[str]) -> int:
-        """Removes documents (and their chunks, via CASCADE) no longer in the chunker output."""
-        if not active_doc_ids:
-
-            return 0
+    def clean_orphaned_documents(self, active_doc_ids: set[str], sites: list[str] | None = None) -> int:
+        """Removes documents (and their chunks, via CASCADE) no longer in the chunker output: of these sites when
+        given (a run over whole sites, possibly none left), else of the whole index (never when nothing is active:
+        an empty run must not wipe the index)."""
         with self.conn.cursor() as cur:
+            if sites:
+                cur.execute(ORPHANS_OF_SITES, (list(sites), list(active_doc_ids)))
+                return cur.rowcount
+            if not active_doc_ids:
+                return 0
             cur.execute("DELETE FROM documents WHERE doc_id <> ALL(%s)", (list(active_doc_ids),))
             return cur.rowcount

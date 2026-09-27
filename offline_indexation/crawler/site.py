@@ -47,6 +47,13 @@ WP_MEDIA_MAX_PAGES = 100
 LINK_SELECTORS = (("a[href]", "href"), ("iframe[src]", "src"), ("embed[src]", "src"), ("object[data]", "data"))
 
 
+def under_prefix(path: str, prefix: str) -> bool:
+    """Whether a path is the prefix or below it, by path segments: /ro/servicii/x is under /ro/servicii,
+    /ro/servicii-noi is not."""
+    prefix = prefix.rstrip("/")
+    return not prefix or path.rstrip("/") == prefix or path.startswith(prefix + "/")
+
+
 class SiteCrawler:
     def __init__(
         self,
@@ -200,7 +207,7 @@ class SiteCrawler:
                     self._add_document(target, url, anchor, depth + 1, via=node.tag, external=not internal)
                     docs_found += 1
                 elif (internal and depth < self.site.max_depth and not is_skipped(target)
-                      and urlsplit(target).path.startswith(self.site.path_prefix)):
+                      and under_prefix(urlsplit(target).path, self.site.path_prefix)):
                     before = len(self.queue)
                     self._enqueue(target, depth + 1, url, anchor)
                     links_enqueued += len(self.queue) - before

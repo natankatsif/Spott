@@ -65,7 +65,8 @@ def run_pages_parsing(
         if progress.cancelled():
             break
         t = time.monotonic()
-        stats = parse_site_pages(site_rows, data_dir, categories, registry, out_dir)
+        stats = parse_site_pages(site_rows, data_dir, categories, registry, out_dir,
+                                 context=registry.site_pages(site_id))
         progress.advance(len(site_rows))
         for k in total_stats:
             total_stats[k] += stats.get(k, 0)

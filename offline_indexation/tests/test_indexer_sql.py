@@ -55,3 +55,56 @@ def test_heading_attaches_to_following_content():
     para = {"type": "paragraph", "text": "Text", "section": ["Capitolul I"], "lang": "ro"}
     assert not starts_new_group([heading], 12, para)
     assert starts_new_group([heading, para], 20, {"type": "heading", "text": "Capitolul II", "section": []})
+
+
+class FakeCursor:
+    def __init__(self, log):
+        self.log, self.rowcount = log, 3
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.log.append((sql, params))
+
+
+class FakeConn:
+    def __init__(self):
+        self.log = []
+
+    def cursor(self):
+        return FakeCursor(self.log)
+
+
+def indexer_with(conn):
+    from indexing.indexer import Indexer
+
+    idx = Indexer.__new__(Indexer)  # no model, no device: only the SQL is under test
+    idx.conn = conn
+    return idx
+
+
+def test_a_site_run_removes_that_sites_documents_it_no_longer_has():
+    conn = FakeConn()
+    assert indexer_with(conn).clean_orphaned_documents({"page:a.md/x"}, sites=["a.md"]) == 3
+    [(sql, params)] = conn.log
+    assert "site = ANY" in sql and params == (["a.md"], ["page:a.md/x"])
+
+
+def test_a_site_with_nothing_left_is_emptied_but_an_empty_full_run_wipes_nothing():
+    conn = FakeConn()
+    indexer_with(conn).clean_orphaned_documents(set(), sites=["gone.md"])
+    assert conn.log[0][1] == (["gone.md"], [])
+    conn = FakeConn()
+    assert indexer_with(conn).clean_orphaned_documents(set()) == 0 and conn.log == []
+
+
+def test_doc_site_of_pages_and_files():
+    from indexing.__main__ import doc_site
+
+    assert doc_site({"kind": "page", "site": "a.md"}) == "a.md"
+    assert doc_site({"sources": [{"site": "b.md", "url": "https://b.md/x.pdf"}]}) == "b.md"
+    assert doc_site({"sources": []}) is None
