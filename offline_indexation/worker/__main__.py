@@ -7,6 +7,7 @@ Heavy stages never run in parallel: one job at a time per worker, and one worker
 """
 
 import argparse
+import json
 import logging
 import sqlite3
 import time
@@ -27,6 +28,7 @@ log = logging.getLogger("worker")
 REGISTRY = Path(__file__).resolve().parents[1] / "data" / "registry.sqlite"
 POLL_S = 2.0
 SCHEDULE_EVERY_S = 60.0
+BACKLOG_EVERY_S = 30.0
 JSON_FIELDS = {"stats", "log_tail"}
 
 
@@ -90,6 +92,59 @@ class PgJobStore:
             self.conn.execute("UPDATE sources SET next_check_at = %s WHERE id = %s", (at, source_id))
         return queue
 
+    def backlog_candidates(self) -> list[schedule.SiteWork]:
+        """How much each source still has left to do. Sources with a job of their own queued or running are left
+        alone, and so is one whose last backlog job failed in the past hour: something is wrong with it and the
+        autopilot must not spin on it while other sources wait."""
+        with self.conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT s.id, s.site_id FROM sources s
+                WHERE s.kind = 'site' AND s.enabled AND s.robots = 'allowed' AND s.auto_update
+                  AND NOT EXISTS (SELECT 1 FROM jobs j
+                                  WHERE j.source_id = s.id AND j.status IN ('queued', 'running'))
+                  AND NOT EXISTS (SELECT 1 FROM jobs j
+                                  WHERE j.source_id = s.id AND j.kind = 'backlog' AND j.status = 'failed'
+                                    AND j.finished_at > NOW() - INTERVAL '1 hour')
+                ORDER BY s.id""")
+            rows = [r for r in cur.fetchall() if r["site_id"] not in EXCLUDED_SITES]
+        if not rows or not self.registry.exists():
+            return []
+        with sqlite3.connect(f"file:{self.registry}?mode=ro", uri=True) as db:
+            docs = {site: (undownloaded, pending) for site, undownloaded, pending in db.execute("""
+                SELECT d.site, COALESCE(SUM(d.status = 'discovered'), 0),
+                       COUNT(DISTINCT CASE WHEN f.parse_status = 'pending' THEN f.sha256 END)
+                FROM documents d LEFT JOIN files f ON f.sha256 = d.sha256
+                WHERE d.status IN ('discovered', 'downloaded') GROUP BY d.site""")}
+            pages = dict(db.execute("SELECT site, COUNT(*) FROM pages WHERE parse_status = 'pending' "
+                                    "AND status < 400 AND html_file IS NOT NULL GROUP BY site").fetchall())
+        works = []
+        for row in rows:
+            undownloaded, files_pending = docs.get(row["site_id"], (0, 0))
+            works.append(schedule.SiteWork(
+                id=row["id"], site_id=row["site_id"], queue_left=self.crawl_queue_left(row["site_id"]),
+                undownloaded=undownloaded, files_pending=files_pending,
+                pages_pending=pages.get(row["site_id"], 0)))
+        return works
+
+    def crawl_queue_left(self, site_id: str) -> int:
+        """Pages the last crawl of this site saved and never got to; 0 when it finished or never ran."""
+        state = self.registry.parent / "crawl" / site_id / "state.json"
+        try:
+            return len(json.loads(state.read_text(encoding="utf-8")).get("queue") or [])
+        except (OSError, ValueError):
+            return 0
+
+    def queue_backlog(self) -> schedule.SiteWork | None:
+        """One backlog job for the source with the most work left, and only while nothing else is waiting: the
+        admin's own jobs and the nightly checks always go first."""
+        if self.conn.execute("SELECT 1 FROM jobs WHERE status IN ('queued', 'running') LIMIT 1").fetchone():
+            return None
+        work = schedule.next_backlog(self.backlog_candidates())
+        if work is None:
+            return None
+        self.conn.execute("INSERT INTO jobs (source_id, kind) VALUES (%s, 'backlog')", (work.id,))
+        return work
+
     def job_done(self, job: dict, status: str) -> None:
         """What a finished job means for its source's automatic updates."""
         if status != "done" or job["source_id"] is None:
@@ -136,8 +191,9 @@ def main() -> None:
     if interrupted := store.recover_interrupted():
         log.warning("jobs interrupted by a previous worker, marked failed: %s", interrupted)
     runner = JobRunner(store)
-    log.info("worker ready, polling for queued jobs%s", "; automatic updates on" if schedule.ENABLED else "")
-    scheduled_at = 0.0
+    log.info("worker ready, polling for queued jobs%s%s", "; automatic updates on" if schedule.ENABLED else "",
+             "; autopilot on" if schedule.BACKLOG else "")
+    scheduled_at = backlog_at = 0.0
     while True:
         if schedule.ENABLED and time.monotonic() - scheduled_at >= SCHEDULE_EVERY_S:
             scheduled_at = time.monotonic()
@@ -146,6 +202,13 @@ def main() -> None:
                     log.info("automatic updates queued: %s", queued)
             except Exception:  # scheduling must never stop the worker
                 log.exception("scheduling failed")
+        if schedule.BACKLOG and time.monotonic() - backlog_at >= BACKLOG_EVERY_S:
+            backlog_at = time.monotonic()
+            try:
+                if work := store.queue_backlog():
+                    log.info("autopilot: %s queued (%s)", work.site_id, work.summary())
+            except Exception:  # the autopilot must never stop the worker
+                log.exception("queueing a backlog job failed")
         job = store.claim()
         if job is None:
             if args.once:

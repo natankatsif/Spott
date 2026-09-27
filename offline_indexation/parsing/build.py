@@ -19,6 +19,7 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TesseractCliOcrOptions,
 )
+from docling.datamodel.settings import settings as docling_settings
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import (
     DocItemLabel,
@@ -40,6 +41,14 @@ SUPPORTED_EXTENSIONS = {
 }
 DOCUMENT_TIMEOUT = 900.0  # seconds per document
 TEXT_LAYER_MIN_CHARS = 20
+# A page with at least this much extractable text is not a scan, so OCR has nothing to add. Higher than
+# TEXT_LAYER_MIN_CHARS on purpose: a scan whose page carries a small text header (a stamp, a page number)
+# must still go through OCR, and a thin cover page only costs us the OCR we would have run anyway.
+OCR_SKIP_MIN_CHARS = 100
+# Pages Docling keeps rendered at once (default 4). On the 8 GB server a long PDF at 4 pages per batch, next to the
+# API and Postgres, is what the kernel's OOM killer took down (parsing exited with -9); one at a time is a little
+# slower and fits.
+docling_settings.perf.page_batch_size = int(os.getenv("DOCLING_PAGE_BATCH", "1"))
 
 SKIPPED_LABELS = {DocItemLabel.PAGE_HEADER, DocItemLabel.PAGE_FOOTER}
 BLOCK_TYPES = {
@@ -49,7 +58,13 @@ BLOCK_TYPES = {
 }
 
 
-def make_converter() -> DocumentConverter:
+def make_converter(ocr: bool = True) -> DocumentConverter:
+    """`ocr=False` for files whose every page already has a text layer: the OCR engine is never called and the
+    pages are not rendered to images, which is most of the corpus (documents exported from Word, not scanned)."""
+    if not ocr:
+        pdf = PdfPipelineOptions(do_ocr=False, do_table_structure=True, document_timeout=DOCUMENT_TIMEOUT)
+        pdf.heading_hierarchy_options.enabled = True
+        return DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pdf)})
     if sys.platform == "darwin":
         ocr = OcrMacOptions(lang=["ro-RO", "ru-RU"])  # Apple Vision
     else:
@@ -62,17 +77,31 @@ def make_converter() -> DocumentConverter:
     return DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pdf)})
 
 
-def text_layer_pages(path: Path) -> dict[int, bool]:
-    """Which PDF pages have extractable text; the rest are scans."""
+def page_chars(path: Path) -> dict[int, int]:
+    """Extractable characters per PDF page. Empty for other formats, and for a PDF that cannot be opened
+    (encrypted, truncated) — both are then treated as "might be a scan"."""
     if path.suffix.lower() != ".pdf":
         return {}
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(path)
     try:
-        return {i + 1: pdf[i].get_textpage().count_chars() >= TEXT_LAYER_MIN_CHARS for i in range(len(pdf))}
+        pdf = pdfium.PdfDocument(path)
+    except Exception:
+        return {}
+    try:
+        return {i + 1: pdf[i].get_textpage().count_chars() for i in range(len(pdf))}
     finally:
         pdf.close()
+
+
+def text_layer_pages(chars: dict[int, int]) -> dict[int, bool]:
+    """Which pages have extractable text; the rest went through OCR."""
+    return {n: c >= TEXT_LAYER_MIN_CHARS for n, c in chars.items()}
+
+
+def needs_ocr(chars: dict[int, int]) -> bool:
+    """A document needs OCR unless every one of its pages already carries enough text."""
+    return not chars or any(c < OCR_SKIP_MIN_CHARS for c in chars.values())
 
 
 def page_of(item) -> int | None:

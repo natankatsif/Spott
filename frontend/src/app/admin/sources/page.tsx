@@ -309,6 +309,8 @@ function SourceTableRow({
   const canRefresh = !busy && row.status !== "blocked" && row.status !== "disabled";
   const KindIcon = row.kind === "site" ? GlobeIcon : FileTextIcon;
   const p = row.progress;
+  // everything the autopilot still has to do here; 0 = this source is finished
+  const left = row.crawl_left + row.documents_pending + row.files_pending + row.pages_pending;
 
   return (
     <TableRow className={cn("transition-colors duration-700", flash && "bg-accent", row.status === "disabled" && "opacity-60")}>
@@ -354,7 +356,13 @@ function SourceTableRow({
         {p && (
           <StageProgress className="mt-2" job={{ status: row.status === "running" ? "running" : "queued", stage: p.stage, percent: p.percent }} />
         )}
-        {p?.stage && <p className="mt-1 text-[11px] text-muted-foreground">{t.jobs.stage[p.stage]}</p>}
+        {p?.stage && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {t.jobs.stage[p.stage]}
+            {/* which file or address the stage is on, so "parse 40%" is not the only thing visible */}
+            {p.current && <span className="ml-1 truncate font-mono opacity-70" title={p.current}>· {p.current}</span>}
+          </p>
+        )}
       </TableCell>
       <TableCell className="hidden text-right tabular-nums lg:table-cell">{number(row.pages, lang)}</TableCell>
       <TableCell className="hidden text-right tabular-nums lg:table-cell">
@@ -372,6 +380,14 @@ function SourceTableRow({
               : row.check_method
                 ? row.check_method.split("+").map((m) => t.sources.method[m] ?? m).filter((m, i, a) => a.indexOf(m) === i).join(" + ")
                 : null}
+          </span>
+        )}
+        {left > 0 && (
+          <span
+            className="mt-0.5 block text-[11px] text-muted-foreground"
+            title={t.sources.leftDetails(row.crawl_left, row.documents_pending, row.files_pending, row.pages_pending)}
+          >
+            ↻ {t.sources.left(left)}
           </span>
         )}
         {row.stale_signals > 0 && (

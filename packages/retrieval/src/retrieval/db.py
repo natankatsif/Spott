@@ -278,7 +278,9 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS url TEXT;
 -- Automatic updates (docs/audit/06-freshness-plan.md): a nightly `check` of what changed, a weekly full `refresh`,
 -- earlier when people signal outdated content.
 ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_kind_check;
-ALTER TABLE jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('crawl', 'refresh', 'check'));
+-- `backlog`: the autopilot's own job, queued by the worker when it has nothing else to do, so a source is
+-- finished methodically across as many nights as it takes (docs/audit/06-freshness-plan.md).
+ALTER TABLE jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('crawl', 'refresh', 'check', 'backlog'));
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS auto_update BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS check_method TEXT;          -- wordpress | sitemap | fingerprint (+…)
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;  -- the last check or full refresh

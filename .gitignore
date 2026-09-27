@@ -24,3 +24,6 @@ data/feedback/
 *.egg-info/
 data/eval/
 backend/tests/artifacts/
+
+# Local transfer dumps (index, parsed data, chunks) — never committed
+data/xfer/

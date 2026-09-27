@@ -211,3 +211,15 @@ def test_check_plan_arguments():
     assert "--keys-file" in steps[2].args
     doc = plan({"kind": "check"}, DOCUMENT)  # a document source: its check is a refresh of it
     assert doc[0].args[1] == "worker.register" and "--refresh" in doc[1].args
+
+
+def test_a_backlog_job_continues_the_site_where_it_stopped():
+    steps = plan({"kind": "backlog"}, SITE)
+    assert sum(st.weight for st in steps) == 100
+    assert [st.args[1] for st in steps] == ["crawler", "downloader", "parsing", "pages_parsing", "indexing"]
+    crawl = steps[0].args
+    assert "--resume" in crawl  # carries on with the saved queue instead of crawling the site from scratch
+    # above the source's own max_pages (50 here): a site that stopped at its cap is not finished yet
+    assert int(crawl[crawl.index("--max-pages") + 1]) == core.BACKLOG_MAX_PAGES > SITE["max_pages"]
+    parse = steps[2].args
+    assert parse[parse.index("--limit") + 1] == str(core.BACKLOG_PARSE_BATCH)  # one bounded batch

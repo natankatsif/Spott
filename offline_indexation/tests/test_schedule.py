@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from worker.schedule import SourceState, decide, next_window
+from worker.schedule import SiteWork, SourceState, decide, next_backlog, next_window
 
 NOW = datetime(2026, 9, 27, 14, 30, tzinfo=UTC)
 
@@ -36,3 +36,27 @@ def test_the_window_is_the_next_one_after_now():
     assert next_window(datetime(2026, 9, 27, 23, 59, tzinfo=UTC), 0, 0) == datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
     assert next_window(datetime(2026, 9, 28, 0, 0, tzinfo=UTC), 0, 0) == datetime(2026, 9, 29, 0, 0, tzinfo=UTC)
     assert next_window(NOW, 100, 0).minute == (100 * 3) % 240 % 60
+
+
+# --- the autopilot ---------------------------------------------------------------
+
+
+def test_the_autopilot_takes_the_source_with_the_most_work_left():
+    works = [SiteWork(1, "a.md", files_pending=10), SiteWork(2, "b.md", queue_left=300),
+             SiteWork(3, "c.md", undownloaded=5, pages_pending=5)]
+    assert next_backlog(works).site_id == "b.md"
+
+
+def test_every_kind_of_leftover_work_counts():
+    work = SiteWork(1, "a.md", queue_left=1, undownloaded=2, files_pending=3, pages_pending=4)
+    assert work.total == 10
+    assert next_backlog([work]) is work
+
+
+def test_the_autopilot_stops_when_nothing_is_left():
+    assert next_backlog([SiteWork(1, "a.md"), SiteWork(2, "b.md")]) is None
+    assert next_backlog([]) is None
+
+
+def test_a_tie_goes_to_the_source_that_was_added_first():
+    assert next_backlog([SiteWork(2, "b.md", files_pending=7), SiteWork(1, "a.md", files_pending=7)]).id == 1

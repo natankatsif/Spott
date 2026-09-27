@@ -439,7 +439,25 @@ def registry_fields(row: dict, registry: dict[str, dict]) -> dict:
     """Pages, documents and last crawl of a site source from registry.sqlite (when this machine has it)."""
     reg = registry.get(row["site_id"], {}) if row["kind"] == "site" else {}
     return {"pages": reg.get("pages", 0), "documents_found": reg.get("documents_found", 0),
-            "documents_downloaded": reg.get("documents_downloaded", 0), "last_crawled": reg.get("last_crawled")}
+            "documents_downloaded": reg.get("documents_downloaded", 0), "last_crawled": reg.get("last_crawled"),
+            **{k: reg.get(k, 0) for k in ("crawl_left", "documents_pending", "files_pending", "pages_pending")}}
+
+
+# What a stage prints per item: "acc.md [12/340] downloaded https://acc.md/f/x.pdf" (downloader),
+# "[12/200] parsed (ocr) raw/ab/cd.pdf 3.2s" (parsing).
+ITEM_LINE = re.compile(r"\[\d+/\d+]\s+(?P<outcome>\S+)(?:\s+\(ocr\))?\s+(?P<target>\S+)")
+
+
+def current_item(log_tail: list[str]) -> str | None:
+    """The file or address the running stage is on, for the admin to see what is happening right now. Taken from
+    the last per-item line the stage printed; the crawler and the indexer report counts, not items, so they have
+    none. Only the name is shown — a full path or URL would not fit the table."""
+    for line in reversed(log_tail or []):
+        if m := ITEM_LINE.search(line):
+            target = m["target"].rstrip("/")
+            name = target.rsplit("/", 1)[-1] or target
+            return f"{m['outcome']} {name}"[:120]
+    return None
 
 
 def status_of(row: dict) -> str:
@@ -469,12 +487,14 @@ def source_model(row: dict) -> SourceRow:
         documents_downloaded=row.get("documents_downloaded", 0), chunks=row.get("chunks", 0),
         lines=row.get("lines", 0), last_crawled=iso(row.get("last_crawled")),
         progress=SourceProgress(job_id=active["id"], stage=active.get("stage"), percent=active.get("percent") or 0,
-                                eta_s=active.get("eta_s")) if active else None,
+                                eta_s=active.get("eta_s"),
+                                current=current_item(active.get("log_tail") or [])) if active else None,
         last_error=error[:200] if error else None, created_at=iso(row["created_at"]),
         last_job=job_model(job) if job else None,
         auto_update=row.get("auto_update", True), check_method=row.get("check_method"),
         last_checked_at=iso(row.get("last_checked_at")), next_check_at=iso(row.get("next_check_at")),
-        stale_signals=row.get("stale_signals") or 0)
+        stale_signals=row.get("stale_signals") or 0,
+        **{k: row.get(k) or 0 for k in ("crawl_left", "documents_pending", "files_pending", "pages_pending")})
 
 
 def store(request: Request) -> AdminStore:
