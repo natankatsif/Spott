@@ -1,26 +1,37 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin", "latin-ext", "cyrillic"], variable: "--font-inter" });
 
-export const metadata: Metadata = {
+const METADATA: Metadata = {
   title: "Spott",
   description: "Răspunsuri din documentele publice ale Primăriei, cu surse / Ответы по публичным документам Примэрии, с источниками",
   // iOS "Add to Home Screen": name under the icon; the icon itself is app/apple-icon.png
   appleWebApp: { title: "Spott", capable: true, statusBarStyle: "default" },
-  // the link preview: the image is app/opengraph-image.jpg (1200×630); messengers need its absolute URL, hence
-  // the site's address (unset: Next uses the host it is served from in dev, localhost otherwise)
-  metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
+  // the link preview: the image is app/opengraph-image.jpg (1200×630), also used for twitter:image
   openGraph: {
     type: "website",
+    url: "/",
     siteName: "Spott",
     title: "Spott — a spotlight in the maze of bureaucracy",
     description: "Răspunsuri din documentele publice ale Primăriei Chișinău, cu surse / Ответы по публичным документам Примэрии, с источниками",
   },
   twitter: { card: "summary_large_image" },
 };
+
+/** Messengers fetch the preview image by its absolute URL, so the metadata needs the site's own address. Next.js
+ * only knows it on Vercel production (and falls back to localhost elsewhere, which no messenger can reach):
+ * NEXT_PUBLIC_SITE_URL when set, else the address this request came to — right on any domain, preview or server. */
+export async function generateMetadata(): Promise<Metadata> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto")?.split(",")[0] ?? (host && /^(localhost|127\.)/.test(host) ? "http" : "https");
+  const base = process.env.NEXT_PUBLIC_SITE_URL || (host ? `${proto}://${host}` : undefined);
+  return { ...METADATA, metadataBase: base ? new URL(base) : undefined };
+}
 
 // colour of the mobile browser bar / Android task switcher, same as the page background
 export const viewport: Viewport = {
