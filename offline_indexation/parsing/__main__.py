@@ -34,6 +34,8 @@ from .build import (
     build_document,
     build_markdown,
     make_converter,
+    needs_ocr,
+    page_chars,
     text_layer_pages,
 )
 
@@ -67,28 +69,31 @@ class FileParser:
         self.out_dir = data_dir / "parsed"
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.use_cache = use_cache
-        self._converter: DocumentConverter | None = None
+        self._converters: dict[bool, DocumentConverter] = {}
 
-    @property
-    def converter(self) -> DocumentConverter:
-        # Created on first use: loading models is slow and --rebuild usually doesn't need them.
-        if self._converter is None:
-            self._converter = make_converter()
-        return self._converter
+    def converter(self, ocr: bool) -> DocumentConverter:
+        # Created on first use: loading models is slow, --rebuild usually needs none, and a batch without
+        # scans never builds the OCR one.
+        if ocr not in self._converters:
+            self._converters[ocr] = make_converter(ocr=ocr)
+        return self._converters[ocr]
 
-    def parse(self, row: sqlite3.Row) -> str:
+    def parse(self, row: sqlite3.Row) -> tuple[str, bool]:
+        """(outcome, whether this file went through OCR)."""
         sha, ext = row["sha256"], row["extension"]
         if ext not in SUPPORTED_EXTENSIONS:
             self.registry.mark_parsed(sha, "unsupported", error=f"extension {ext or '(none)'}")
-            return "unsupported"
+            return "unsupported", False
 
         path = self.data_dir / row["path"]
         cache = self.out_dir / f"{sha}.docling.json"
+        chars = page_chars(path)  # decides OCR below, and which pages count as scans in the corpus JSON
+        ocr = needs_ocr(chars)
         try:
             if self.use_cache and cache.exists():
                 doc = DoclingDocument.load_from_json(cache)
             else:
-                result = self.converter.convert(path, raises_on_error=False)
+                result = self.converter(ocr).convert(path, raises_on_error=False)
                 if result.status not in OK_STATUSES:
                     errors = "; ".join(e.error_message for e in result.errors) or "no details"
                     raise RuntimeError(f"docling {result.status.value}: {errors}")
@@ -99,7 +104,7 @@ class FileParser:
                 doc,
                 file={k: row[k] for k in ("sha256", "path", "extension", "size", "content_type")},
                 sources=self.registry.file_sources(sha),
-                text_layer=text_layer_pages(path),
+                text_layer=text_layer_pages(chars),
             )
             (self.out_dir / f"{sha}.json").write_text(
                 json.dumps(parsed, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -107,10 +112,10 @@ class FileParser:
         except Exception as e:
             log.warning("%s failed: %s: %s", sha[:12], type(e).__name__, e)
             self.registry.mark_parsed(sha, "failed", error=f"{type(e).__name__}: {e}")
-            return "failed"
+            return "failed", ocr
 
         self.registry.mark_parsed(sha, "parsed", parser_version=PARSER_VERSION)
-        return "parsed"
+        return "parsed", ocr
 
 
 def main() -> None:
@@ -157,15 +162,18 @@ def main() -> None:
             if progress.cancelled():
                 break
             t = time.monotonic()
-            outcome = parser.parse(row)
+            outcome, ocr = parser.parse(row)
             stats[outcome] += 1
+            stats["ocr" if ocr else "text layer"] += outcome == "parsed"
             progress.advance(error=outcome == "failed")
-            log.info("[%d/%d] %s %s %.1fs", i, len(files), outcome, row["path"], time.monotonic() - t)
+            log.info("[%d/%d] %s%s %s %.1fs", i, len(files), outcome, " (ocr)" if ocr else "", row["path"],
+                     time.monotonic() - t)
         progress.finish()
 
         print(f"\nThis run ({time.monotonic() - started:.0f}s):")
         for outcome in ("parsed", "failed", "unsupported"):
             print(f"  {outcome:12} {stats[outcome]}")
+        print(f"  of them: {stats['text layer']} from the text layer, {stats['ocr']} through OCR")
         counts = registry.status_counts()["files"]
         print("\nRegistry files:", ", ".join(f"{k}={v}" for k, v in counts.items()))
     finally:
