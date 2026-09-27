@@ -1,11 +1,11 @@
 "use client";
 
-import { EyeOffIcon, MessageSquareQuoteIcon, PinIcon, PinOffIcon } from "lucide-react";
+import { EyeOffIcon, MessageSquareQuoteIcon, PinIcon, PinOffIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/admin/empty-state";
 import { PageHeader } from "@/components/admin/page-header";
-import { Stars } from "@/components/admin/stars";
+import { likeShare } from "@/components/admin/votes";
 import { Badge } from "@/components/spell/badge";
 import { Spinner } from "@/components/spell/spinner";
 import { Button } from "@/components/ui/button";
@@ -164,7 +164,7 @@ export default function SuggestionsPage() {
                   <span>{t.suggestions.asked(s.asked_count)}</span>
                   {s.rating_avg != null && (
                     <span className="flex items-center gap-1">
-                      <Stars size={12} value={s.rating_avg} /> {s.rating_avg.toFixed(1)}
+                      <ThumbsUpIcon className="size-3 text-emerald-600" /> {Math.round(likeShare(s.rating_avg) * 100)}%
                     </span>
                   )}
                 </div>

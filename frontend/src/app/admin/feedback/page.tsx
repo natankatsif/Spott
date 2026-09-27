@@ -1,11 +1,11 @@
 "use client";
 
-import { ChevronDownIcon, StarIcon } from "lucide-react";
+import { ChevronDownIcon, ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 import { EmptyState } from "@/components/admin/empty-state";
 import { PageHeader } from "@/components/admin/page-header";
-import { StarBars, Stars } from "@/components/admin/stars";
 import { StatCard } from "@/components/admin/stat-card";
+import { likeShare, likesOf, Vote, VoteBars } from "@/components/admin/votes";
 import { Badge } from "@/components/spell/badge";
 import { Chart } from "@/components/spell/chart";
 import { CopyButton } from "@/components/spell/copy-button";
@@ -26,12 +26,13 @@ export default function FeedbackPage() {
   const lang = useUILang();
   const t = ADMIN_UI[lang];
   const mode = useApiMode();
-  const [maxRating, setMaxRating] = useState(2);
+  const [maxRating, setMaxRating] = useState(2); // 2: dislikes only, 5: all
   const stats = useAdminQuery(`fb-stats-${mode}`, admin.feedbackStats, () => 30000);
   const items = useAdminQuery(`fb-items-${mode}-${maxRating}`, () => admin.feedback(maxRating));
 
   const s = stats.data;
-  const low = s ? (s.per_star["1"] ?? 0) + (s.per_star["2"] ?? 0) : 0;
+  const { likes, dislikes } = s ? likesOf(s.per_star) : { likes: 0, dislikes: 0 };
+  const share = (n: number) => `${Math.round((n / (likes + dislikes || 1)) * 100)}%`;
 
   return (
     <>
@@ -41,7 +42,7 @@ export default function FeedbackPage() {
         <EmptyState
           action={<Button onClick={stats.reload} variant="outline">{t.common.retry}</Button>}
           hint={errorText(stats.error, lang)}
-          icon={StarIcon}
+          icon={ThumbsUpIcon}
           title={t.common.loadError}
         />
       ) : !s ? (
@@ -52,21 +53,23 @@ export default function FeedbackPage() {
           <Skeleton className="h-64 rounded-2xl sm:col-span-3" />
         </div>
       ) : s.count === 0 ? (
-        <EmptyState icon={StarIcon} title={t.feedback.noData} />
+        <EmptyState icon={ThumbsUpIcon} title={t.feedback.noData} />
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <StatCard label={t.feedback.count} value={number(s.count, lang)} />
             <StatCard
-              aside={s.average != null && <Stars size={16} value={s.average} />}
-              label={t.feedback.average}
-              value={s.average != null ? s.average.toFixed(1) : "—"}
+              aside={<ThumbsUpIcon className="text-emerald-600" size={18} />}
+              hint={share(likes)}
+              label={t.feedback.likes}
+              value={number(likes, lang)}
             />
             <StatCard
-              className={low > 0 ? "border-destructive/25" : undefined}
-              hint={`${Math.round((low / s.count) * 100)}%`}
-              label={t.feedback.low}
-              value={number(low, lang)}
+              aside={<ThumbsDownIcon className="text-destructive" size={18} />}
+              className={dislikes > 0 ? "border-destructive/25" : undefined}
+              hint={share(dislikes)}
+              label={t.feedback.dislikes}
+              value={number(dislikes, lang)}
             />
           </div>
 
@@ -77,10 +80,10 @@ export default function FeedbackPage() {
                 <Chart
                   className="-mx-1"
                   color="#1d5fae"
-                  data={s.by_day.map((d) => d.average)}
-                  formatValue={(v, i) => `${v.toFixed(1)} ★ · ${s.by_day[i].count} ${t.feedback.trendCount}`}
+                  data={s.by_day.map((d) => Math.round(likeShare(d.average) * 100))}
+                  formatValue={(v, i) => `${v}% · ${s.by_day[i].count} ${t.feedback.trendCount}`}
                   labels={s.by_day.map((d) => shortDay(d.day, lang))}
-                  name={t.feedback.average}
+                  name={t.feedback.likes}
                   tickCount={Math.min(6, s.by_day.length)}
                 />
               ) : (
@@ -89,8 +92,8 @@ export default function FeedbackPage() {
             </section>
             <div className="flex flex-col gap-3 lg:col-span-2">
               <section className="rounded-2xl border bg-card p-4">
-                <h2 className="mb-3 font-medium text-sm">{t.feedback.perStar}</h2>
-                <StarBars perStar={s.per_star} />
+                <h2 className="mb-3 font-medium text-sm">{t.feedback.votes}</h2>
+                <VoteBars perStar={s.per_star} />
               </section>
               <section className="rounded-2xl border bg-card p-4">
                 <h2 className="mb-3 font-medium text-sm">{t.feedback.tags}</h2>
@@ -112,7 +115,7 @@ export default function FeedbackPage() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-lg tracking-tight">{t.feedback.list}</h2>
           <div className="flex rounded-full bg-muted/80 p-0.5 text-xs" role="radiogroup">
-            {[1, 2, 3].map((n) => (
+            {([2, 5] as const).map((n) => (
               <button
                 aria-checked={maxRating === n}
                 className={cn(
@@ -124,7 +127,7 @@ export default function FeedbackPage() {
                 role="radio"
                 type="button"
               >
-                {t.feedback.maxRating(n)}
+                {n === 2 ? t.feedback.filter.down : t.feedback.filter.all}
               </button>
             ))}
           </div>
@@ -136,7 +139,7 @@ export default function FeedbackPage() {
             ))}
           </div>
         ) : items.data?.length === 0 ? (
-          <EmptyState icon={StarIcon} title={t.feedback.empty} />
+          <EmptyState icon={ThumbsUpIcon} title={t.feedback.empty} />
         ) : (
           <ul className="flex flex-col gap-2">
             {items.data?.map((item) => (
@@ -154,7 +157,7 @@ function FeedbackRow({ item, t, lang }: { item: FeedbackItem; t: AdminText; lang
     <li>
       <Collapsible className="group/fb rounded-2xl border bg-card">
         <CollapsibleTrigger className="flex w-full items-start gap-3 p-4 text-left">
-          <Stars className="mt-0.5 shrink-0" value={item.rating} />
+          <Vote className="mt-0.5 shrink-0" rating={item.rating} />
           <div className="min-w-0 flex-1">
             <p className="line-clamp-2 font-medium text-sm">{item.question ?? "—"}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

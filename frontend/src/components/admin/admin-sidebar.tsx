@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRightIcon, DatabaseIcon, LogOutIcon, MessageSquareQuoteIcon, StarIcon, WorkflowIcon } from "lucide-react";
+import { ArrowUpRightIcon, DatabaseIcon, LogOutIcon, MessageSquareQuoteIcon, ThumbsUpIcon, WorkflowIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LangSwitch } from "@/components/admin/lang-switch";
@@ -37,7 +37,7 @@ export function AdminSidebar() {
   const items = [
     { href: "/admin/sources", label: t.nav.sources, icon: DatabaseIcon },
     { href: "/admin/jobs", label: t.nav.jobs, icon: WorkflowIcon, badge: activeJobs || null },
-    { href: "/admin/feedback", label: t.nav.feedback, icon: StarIcon },
+    { href: "/admin/feedback", label: t.nav.feedback, icon: ThumbsUpIcon },
     { href: "/admin/suggestions", label: t.nav.suggestions, icon: MessageSquareQuoteIcon },
   ];
 

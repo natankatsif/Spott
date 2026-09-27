@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** A number with its label; `hint` under it, `aside` on the right (stars, a mini chart). */
+/** A number with its label; `hint` under it, `aside` on the right (an icon, a mini chart). */
 export function StatCard({
   label,
   value,
