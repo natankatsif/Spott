@@ -4,7 +4,7 @@
 // a slide-over on phones. Our logo, new chat, search over chats, our sources, and the local chat history
 // (lib/chat-history.ts: this browser only, nothing is sent to the backend).
 
-import { LibraryBigIcon, LockIcon, SearchIcon, SquarePenIcon, Trash2Icon, XIcon } from "lucide-react";
+import { AppWindowIcon, LibraryBigIcon, LockIcon, SearchIcon, SquarePenIcon, Trash2Icon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { type CSSProperties, useState, useSyncExternalStore } from "react";
 import { LogoMark } from "@/components/logo-mark";
@@ -160,6 +160,13 @@ export function ChatSidebar({
                 <SidebarMenuButton asChild className={navClass} tooltip={h.sources}>
                   <Link href="/sources">
                     <LibraryBigIcon /> <span>{h.sources}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className={navClass} tooltip={h.demo}>
+                  <Link href="/demo">
+                    <AppWindowIcon /> <span>{h.demo}</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

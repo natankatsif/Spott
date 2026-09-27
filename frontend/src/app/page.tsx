@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { SquarePenIcon, UsersIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -32,7 +32,7 @@ import { UI, type UILang } from "@/lib/i18n";
 import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
 import { type ApiMode, /* setApiMode, */ useApiMode } from "@/lib/mode";
 import { sessionId } from "@/lib/session";
-// import { cn } from "@/lib/utils"; // only the commented Mock/Live switch used it
+import { cn } from "@/lib/utils";
 
 const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" };
 
@@ -150,6 +150,30 @@ function useLockedViewport(): void {
   }, []);
 }
 
+/** `/?embed=1`: the chat inside the site widget (components/widget): the widget's own header carries new chat and
+ * minimize, so this page drops its header, and a new chat can be asked for from the page around it. */
+const noSubscribe = () => () => {};
+function useEmbed(onNewChat: () => void): boolean {
+  const embed = useSyncExternalStore(
+    noSubscribe,
+    () => new URLSearchParams(window.location.search).get("embed") === "1",
+    () => false,
+  );
+  const newChat = useRef(onNewChat);
+  useEffect(() => {
+    newChat.current = onNewChat;
+  });
+  useEffect(() => {
+    if (!embed) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin === window.location.origin && e.data?.type === "spott:new-chat") newChat.current();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [embed]);
+  return embed;
+}
+
 const textOf = (m: ChatMessage) => m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 /** The answer comes in the question's language, so its labels should too (before `done` tells us for sure). */
 
@@ -210,6 +234,7 @@ export default function Home() {
       setPreview({ citations: previewable, index: Math.max(0, focus) });
     }
   }
+  const embed = useEmbed(startNewChat);
   const [speechError, setSpeechError] = useState<string | null>(null);
   useEffect(() => {
     if (!speechError) return;
@@ -251,7 +276,7 @@ export default function Home() {
           <main className="relative flex h-full min-w-0 flex-1 overflow-hidden">
             <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
               <div aria-hidden className="top-blur pointer-events-none absolute inset-x-0 top-0 z-10 h-20" />
-              <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
+              <header className={cn("absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4", embed && "hidden")}>
                 {/* phones: the menu is a slide-over opened from here; on desktop it is docked on the left */}
                 <SidebarTrigger aria-label={t.history.toggle} className="mr-auto md:hidden" />
                 {visitors !== null && (
@@ -286,7 +311,7 @@ export default function Home() {
               </header>
 
               <Conversation className="flex-1">
-                <ConversationContent className="mx-auto w-full max-w-3xl px-4 pt-16 pb-56">
+                <ConversationContent className={cn("mx-auto w-full max-w-3xl px-4 pb-56", embed ? "pt-6" : "pt-16")}>
                   {messages.length === 0 ? (
                     <ConversationEmptyState className="min-h-[55vh] gap-4">
                       <LogoMark className="h-[88px] w-auto" />
