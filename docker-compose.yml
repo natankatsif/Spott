@@ -24,6 +24,7 @@ services:
     image: pgvector/pgvector:pg17
     container_name: qwerty-pgvector
     restart: unless-stopped
+    shm_size: 1g  # parallel HNSW builds (restore, reindex) need more than Docker's default 64 MB
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"  # reachable from this machine only
     environment:
