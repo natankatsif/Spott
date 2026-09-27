@@ -80,8 +80,11 @@ h1{font-size:18px;line-height:1.35;margin:8px 0 4px}
 @media (prefers-color-scheme: dark){body{background:#0f172a;color:#e5e7eb}.src-sub{color:#9ca3af}
 .src-line.src-on{background:#a16207;color:#fff}}
 """
+# The scrollbar is always there (pages are sized to the width left next to it, so no sideways scroll) and dark, so
+# no light scrollbar tracks show at the side and bottom of the grey viewer.
 PDF_STYLE = """
-body{margin:0;background:#525659}
+html{overflow-y:scroll;scrollbar-color:#8b8f94 #525659}
+body{margin:0;background:#525659;overflow-x:hidden}
 #pages{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 8px 60px}
 .page{position:relative;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .page canvas{display:block}

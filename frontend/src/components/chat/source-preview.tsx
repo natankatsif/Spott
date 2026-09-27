@@ -177,7 +177,7 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
         </div>
       )}
       <WebPreviewBody
-        className="bg-white"
+        className="block bg-white"
         ref={frameRef}
         referrerPolicy="no-referrer"
         sandbox={SANDBOX}
