@@ -165,9 +165,9 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
   }, [status, citation.id, report]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col p-1">
       {status === "missing" && (
-        <div className="flex gap-2.5 border-b bg-warning-bg px-3 py-2.5 text-sm" role="status">
+        <div className="mb-1 flex gap-2.5 rounded-xl bg-warning-bg px-3 py-2.5 text-sm" role="status">
           <SearchXIcon className="mt-0.5 size-4 shrink-0 text-warning" />
           <div className="min-w-0">
             <p className="font-medium text-warning">{t.preview.notFound}</p>
@@ -177,7 +177,7 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
         </div>
       )}
       <WebPreviewBody
-        className="block bg-white"
+        className="block rounded-xl bg-white"
         ref={frameRef}
         referrerPolicy="no-referrer"
         sandbox={SANDBOX}
@@ -186,7 +186,7 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
       />
       {/* an answer for a quote of the already loaded document comes fast: only cover a frame that is (re)loading */}
       {(!frame.ready || status === "failed") && (
-        <div className="absolute inset-0 flex flex-col bg-card/95 p-6 backdrop-blur-[2px]">
+        <div className="absolute inset-1 flex flex-col rounded-xl bg-card/95 p-6 backdrop-blur-[2px]">
           {status === "failed" ? (
             <div className="m-auto flex max-w-xs flex-col items-center gap-2 text-center">
               <CircleAlertIcon className="size-6 text-muted-foreground" />
