@@ -56,6 +56,13 @@ TEXT = {
            "scripted": "Эта страница показывает содержимое скриптами; ниже её текст из нашего индекса.",
            "not_found": "Фрагмент не найден на странице точно — страница изменилась. Цитата: «{quote}»",
            "pdf_failed": "PDF сейчас не удалось загрузить. Откройте оригинал.", "loading": "Загрузка PDF…"},
+    "en": {"copy": "Copy from {date}", "live": "Copy from the site, {date}", "open": "Open the original ↗",
+           "open_pdf": "Open the original PDF ↗", "download": "Download the original ↗", "page": "page {n}",
+           "back": "← Back", "saved_text": "The document's text, as we indexed it",
+           "unavailable": "The original page couldn't be loaded now; below is its text as we indexed it.",
+           "scripted": "This page shows its content with scripts; below is its text as we indexed it.",
+           "not_found": "The passage wasn't found exactly on the page — the page has changed. The quote: «{quote}»",
+           "pdf_failed": "The PDF couldn't be loaded now. Open the original.", "loading": "Loading the PDF…"},
 }
 
 STYLE = """

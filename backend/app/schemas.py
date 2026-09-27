@@ -10,7 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from retrieval.config import RERANK_TOP_K
 
-Lang = Literal["ro", "ru"]
+Lang = Literal["ro", "ru", "en"]  # answers follow the question; the documents are RO/RU
 SearchLang = Literal["ro", "ru", "en", "uk"]
 AskStatus = Literal["answered", "partial", "not_found", "conflict", "refused"]
 ErrorCode = Literal["validation_error", "unauthorized", "not_found", "conflict", "rate_limited", "unavailable",

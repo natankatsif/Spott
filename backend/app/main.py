@@ -117,10 +117,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.translate = llm_translate(get_llm)  # a pinned question into the other language
     app.state.gaps = PgGaps(pool, cluster=llm_cluster(get_llm))
     app.state.visitors = PgVisitors(pool)
-    # The admin's gap re-check: one question, one model call (no routing or rewrite call, no second pass).
+    # The admin's gap re-check: one question, one model call (no routing, rewrite or translation call, no second pass).
     app.state.ask_once = lambda req: answer_question(app.state.store, get_llm(), req, pool=pool, freshness=False,
                                                      rewrite=False, routing=False,
-                                                     on_done=answered)
+                                                     translate=False, on_done=answered)
     http_clients = make_clients()
     app.state.http = http_clients[0]
     app.state.pdf_source = PdfSource(*http_clients)
@@ -355,7 +355,7 @@ async def document_file(doc_id: str) -> Response:
 
 @app.get("/api/preview/{doc_id:path}")
 async def source_preview(doc_id: str, line: Annotated[list[str] | None, Query()] = None,
-                         lang: str = Query("ro", pattern="^(ro|ru)$"), embed: int = Query(1, ge=0, le=1)) -> Response:
+                         lang: str = Query("ro", pattern="^(ro|ru|en)$"), embed: int = Query(1, ge=0, le=1)) -> Response:
     """The cited source for the chat's iframe: the page (our sanitized copy) or the PDF (pdf.js), scrolled to the
     quoted lines and highlighted; DOCX and unreachable pages as our text view. See app/preview.py."""
     store = getattr(app.state, "store", None)

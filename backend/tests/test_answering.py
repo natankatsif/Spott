@@ -107,6 +107,10 @@ class FakeLLM:
     route = None  # the routing call: unreachable unless a test sets it, so questions go to the search
 
     def complete_json(self, system, user, schema_name, schema, **kw):
+        if schema_name == "quotes":
+            if getattr(self, "quotes", None) is None:
+                raise answering.LLMUnavailable("no quote translation in this test")
+            return LLMResult(data={"translations": self.quotes}, model="fake-mini", prompt_tokens=20, completion_tokens=5)
         if schema_name == "route":
             if self.route is None:
                 raise answering.LLMUnavailable("no routing in this test")
@@ -733,3 +737,18 @@ def test_where_to_go_is_copied_from_the_lines_and_checked(monkeypatch, tmp_path)
     _, r, _ = run("Cât costă?", [DECISION], model(sentences=[s("Taxa este de 200 lei.", "S1.L1")]),
                   monkeypatch, tmp_path)
     assert r.contacts == []  # not asked where to go: no block
+
+
+def test_untranslated_quotes_of_an_english_answer_get_translated(monkeypatch, tmp_path):
+    llm = FakeLLM(model(sentences=[s("The fee is 200 lei.", "S1.L1")]))
+    llm.quotes = ["5. The fee is 200 lei."]
+    _, r, _ = run("How much is the fee?", [DECISION], llm, monkeypatch, tmp_path, lang="en")
+    assert r.lang == "en" and r.citations[0].translation == "5. The fee is 200 lei."
+
+
+def test_english_questions_are_told_from_romanian_ones():
+    assert detect_lang("Who prepares the General Urban Plan?") == "en"
+    assert detect_lang("How do I register my child at kindergarten?", "ro") == "en"
+    assert detect_lang("Cine elaborează PUG?", "en") == "ro"
+    assert detect_lang("Unde depun cererea pentru autorizatie", "en") == "ro"
+    assert detect_lang("PUG 2021?", "en") == "en"  # too short: the interface language

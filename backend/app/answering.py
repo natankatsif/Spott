@@ -82,16 +82,19 @@ MAX_FOLLOWUPS = 3
 HISTORY_TURNS = 4
 QUERY_LOG_DIR = Path(__file__).resolve().parents[2] / "data" / "query_logs"
 
-LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian"}
+LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian", "en": "English"}
 NOT_FOUND = {
     "ro": "În documentele publice ale Primăriei disponibile asistentului nu există informații despre această "
           "întrebare. Răspund doar pe baza documentelor, deci nu voi ghici.",
     "ru": "В публичных документах Примэрии, доступных ассистенту, нет информации по этому вопросу. "
           "Я отвечаю только по документам, поэтому не буду угадывать.",
+    "en": "The City Hall's public documents available to the assistant have no information on this question. "
+          "I answer only from the documents, so I won't guess.",
 }
 REFUSED = {
     "ro": "Pot răspunde doar la întrebări despre Primăria Chișinău, serviciile și documentele ei.",
     "ru": "Я отвечаю только на вопросы о Примэрии Кишинэу, её услугах и документах.",
+    "en": "I can only answer questions about the Chișinău City Hall, its services and documents.",
 }
 # Greetings, thanks and "who are you": answered by code, without a search (nothing to cite, nothing to show searched).
 SMALL_TALK = re.compile(
@@ -107,17 +110,22 @@ SMALL_TALK_ANSWER = {
           "publice ale Primăriei, iar eu răspund cu trimitere la documentul și pasajul exact.",
     "ru": "Здравствуйте! Я ассистент Примэрии Кишинэу. Спросите меня об услугах, решениях и публичных документах "
           "Примэрии, и я отвечу со ссылкой на конкретный документ и фрагмент.",
+    "en": "Hello! I'm the Chișinău City Hall assistant. Ask me about the City Hall's services, decisions and public "
+          "documents, and I'll answer with a reference to the exact document and passage.",
 }
 SEARCH_SUMMARY = {
     "ro": "Găsite {chunks} fragmente în {docs} documente",
     "ru": "Найдено фрагментов: {chunks}, документов: {docs}",
+    "en": "Found {chunks} passages in {docs} documents",
 }
 VERIFY_SUMMARY = {
     "ro": "Citate confirmate: {ok} din {total} propoziții",
     "ru": "Подтверждено цитатами: {ok} из {total} предложений",
+    "en": "Backed by quotes: {ok} of {total} sentences",
 }
-SOURCE_PAGE = {"ro": "Pagina sursei pe {site}", "ru": "Страница источника на {site}"}
-FRESH_SUMMARY = {"ro": "Caut acte mai noi… găsite {n}", "ru": "Ищу более новые документы… найдено {n}"}
+SOURCE_PAGE = {"ro": "Pagina sursei pe {site}", "ru": "Страница источника на {site}", "en": "Source page on {site}"}
+FRESH_SUMMARY = {"ro": "Caut acte mai noi… găsite {n}", "ru": "Ищу более новые документы… найдено {n}",
+                 "en": "Looking for newer acts… found {n}"}
 # No answer (or a partial one): 1-2 real contacts from the corpus that can help (docs/tasks/09 §4).
 CONTACT_MIN_SIMILARITY = 0.46  # question ↔ "name. area. page" (bge-m3); unrelated questions score 0.31-0.36
 CONTACT_SITE_BOOST = 0.05  # the site of chunks the search found but the answer didn't use
@@ -127,21 +135,27 @@ NO_ANSWER_CONTACTS = {
     "ro": "Din păcate nu putem răspunde la această întrebare din documentele disponibile. "
           "Credem că vă poate ajuta: {names}.",
     "ru": "К сожалению, мы не можем ответить на этот вопрос по имеющимся документам. Думаем, вам поможет: {names}.",
+    "en": "Unfortunately we can't answer this question from the available documents. We think these can help: {names}.",
 }
 PARTIAL_CONTACTS = {"ro": "Pentru ce lipsește din documente, credem că vă poate ajuta: {names}.",
-                    "ru": "По тому, чего нет в документах, думаем, вам поможет: {names}."}
+                    "ru": "По тому, чего нет в документах, думаем, вам поможет: {names}.",
+                    "en": "For what the documents don't cover, we think these can help: {names}."}
 CONTACT_REASON = {"ro": "Pagina lor de pe {site} este cea mai apropiată de întrebarea dvs.",
-                  "ru": "Их страница на {site} ближе всего к вашему вопросу."}
+                  "ru": "Их страница на {site} ближе всего к вашему вопросу.",
+                  "en": "Their page on {site} is the closest to your question."}
 GENERAL_REASON = {"ro": "Contactul general al Primăriei municipiului Chișinău.",
-                  "ru": "Общий контакт Примэрии муниципия Кишинэу."}
+                  "ru": "Общий контакт Примэрии муниципия Кишинэу.",
+                  "en": "The general contact of the Chișinău City Hall."}
 # Said by code, not by the model, when a cited act ended another one (or was ended) and the answer left it out.
-REPEAL_NOTE = {"ro": "De reținut: {act} prevede: „{quote}”", "ru": "Обратите внимание: в документе «{act}» сказано: «{quote}»"}
+REPEAL_NOTE = {"ro": "De reținut: {act} prevede: „{quote}”", "ru": "Обратите внимание: в документе «{act}» сказано: «{quote}»",
+               "en": "Note: {act} says: “{quote}”"}
 MAX_NOTE_QUOTE = 300
 # Added to the question to reach documents about the current state, which rarely reuse its wording.
 FRESH_TERMS = {"ro": "reactualizare modificare abrogare în vigoare actual",
-               "ru": "reactualizare modificare abrogare în vigoare обновление изменение отмена действующий"}
+               "ru": "reactualizare modificare abrogare în vigoare обновление изменение отмена действующий",
+               "en": "reactualizare modificare abrogare în vigoare actual"}
 # "Who / which / when" questions ask about the current state.
-NOW_QUESTION = re.compile(r"^\W*(cine|care|când|cand|кто|какой|какая|какие|каков\w*|когда)\b", re.I)
+NOW_QUESTION = re.compile(r"^\W*(cine|care|când|cand|кто|какой|какая|какие|каков\w*|когда|who|which|when)\b", re.I)
 # "Who is in / members / composition / who chairs": the act that sets up the body lists the people with their
 # roles; a regulation only describes the roles.
 MEMBERS_QUESTION = re.compile(r"\b(membri\w*|componen\w*|cine (?:face|fac) parte|din cine|состав\w*|член\w*|"
@@ -265,8 +279,8 @@ questions, related to the message if any fit.
 need. options: 2-4 concrete questions they most likely meant.
 Never state facts about the City Hall yourself (fees, addresses, deadlines, names): those come only from the \
 documents. Options are full questions as the user would type them, in {language}, each answerable on its own. \
-Name the City Hall "Primăria municipiului Chișinău" in Romanian and "Примэрия Кишинэу" in Russian; address the user \
-politely ("dvs." / "вы").
+Name the City Hall "Primăria municipiului Chișinău" in Romanian, "Примэрия Кишинэу" in Russian and "Chișinău City \
+Hall" in English; address the user politely ("dvs." / "вы").
 """
 ROUTE_SCHEMA = _obj({"route": {"type": "string", "enum": ["search", "chat", "off_topic", "clarify"]},
                      "reply": {"type": "string"}, "options": _STRINGS})
@@ -374,13 +388,34 @@ def build_sources(chunks: list[dict], lines_by_chunk: dict[str, list[dict]],
 # ─────────────── language, labels, links ───────────────
 
 
+# Latin-script questions: Romanian or English, by the Romanian letters and each language's common words.
+RO_LETTERS = re.compile(r"[ăâîșşțţ]", re.I)
+RO_WORDS = {"este", "care", "cum", "unde", "cine", "cand", "când", "pentru", "si", "și", "din", "sunt", "pot", "trebuie",
+            "primaria", "primăria", "cu", "pe", "ale", "al", "la", "de", "ce", "un", "o", "sa", "să", "nu", "mai",
+            "orasul", "chisinau", "acte", "cerere", "taxa", "program"}
+EN_WORDS = {"the", "is", "are", "what", "how", "where", "who", "when", "which", "can", "do", "does", "my", "to", "of",
+            "for", "and", "with", "need", "get", "about", "hall", "city", "have", "there", "should", "much", "cost",
+            "i", "you", "your", "an", "it", "this", "that", "please", "hello", "thanks", "open", "hours"}
+
+
 def detect_lang(text: str, fallback: str | None = None) -> str:
-    """Language of the question; the UI language decides when there are too few letters ("PUG 2021?")."""
+    """Language of the question: Russian (Cyrillic), Romanian or English; the UI language decides when there are
+    too few letters ("PUG 2021?") or the words don't tell."""
     cyr = sum(1 for ch in text if "Ѐ" <= ch <= "ӿ")
     lat = sum(1 for ch in text if ch.isalpha()) - cyr
     if cyr + lat < 5:
         return fallback or ("ru" if cyr > lat else "ro")
-    return "ru" if cyr > lat else "ro"
+    if cyr > lat:
+        return "ru"
+    if RO_LETTERS.search(text):
+        return "ro"
+    words = re.findall(r"[a-z]+", text.lower())
+    ro, en = sum(w in RO_WORDS for w in words), sum(w in EN_WORDS for w in words)
+    if en > ro:
+        return "en"
+    if ro > en:
+        return "ro"
+    return fallback if fallback in ("ro", "en") else "ro"
 
 
 def ro_date(iso: str | None) -> str | None:
@@ -907,6 +942,35 @@ def route_question(llm: LLM, req: AskRequest, lang: str) -> dict | None:
     return {"route": route, "reply": reply, "options": options[:MAX_ROUTE_OPTIONS], "model": r.model}
 
 
+TRANSLATE_QUOTES_PROMPT = """\
+Translate each numbered quote from a document of the Chișinău City Hall into {language}. Keep numbers, dates, names, \
+act numbers and amounts exactly. Return one translation per quote, in the same order."""
+TRANSLATE_QUOTES_SCHEMA = _obj({"translations": _STRINGS})
+
+
+def translate_missing(llm: LLM | None, response: AskResponse) -> AskResponse:
+    """Quotes in another language than the answer that the answer model left untranslated get a translation from
+    the small model (one call); the reader of an English or Russian answer can't read a Romanian quote. A failed
+    call leaves them as they are."""
+    todo = [c for c in response.citations if c.quote_lang != response.lang and not c.translation]
+    if not todo or llm is None:
+        return response
+    try:
+        r = llm.complete_json(TRANSLATE_QUOTES_PROMPT.format(language=LANGUAGE_NAMES[response.lang]),
+                              "\n".join(f"{i + 1}. {c.quote}" for i, c in enumerate(todo)), "quotes",
+                              TRANSLATE_QUOTES_SCHEMA, model=REWRITE_MODEL, effort="none",
+                              max_tokens=200 + 120 * len(todo))
+        texts = [t.strip() for t in r.data.get("translations") or []]
+    except Exception as e:  # noqa: BLE001 - untranslated is still a correct answer
+        log.warning("quotes not translated: %s", e)
+        return response
+    done = {c.id: t for c, t in zip(todo, texts, strict=False) if t}
+    if not done:
+        return response
+    return response.model_copy(update={"citations": [
+        c.model_copy(update={"translation": done[c.id]}) if c.id in done else c for c in response.citations]})
+
+
 def rewrite_query(llm: LLM, req: AskRequest) -> LLMResult | None:
     """The question (and the conversation) as a Romanian and a Russian search query plus keywords."""
     history = "".join(f"{t.role}: {t.text[:300]}\n" for t in req.history[-HISTORY_TURNS:])
@@ -1306,6 +1370,7 @@ def answer_events(
     freshness: bool | None = None,
     rewrite: bool | None = None,
     routing: bool | None = None,
+    translate: bool = True,
 ) -> Iterator[dict]:
     """SSE events for one question. Raises LLMUnavailable if the model can't be reached.
 
@@ -1410,7 +1475,7 @@ def answer_events(
             trace.append(TraceStep(tool="verify", input="", ms=0.0,
                                    summary=VERIFY_SUMMARY[lang].format(ok=sum(checked), total=len(checked))))
 
-    response = built.response
+    response = translate_missing(llm, built.response) if translate else built.response
     if response.status in ("not_found", "partial") and not response.contacts:
         cited_sites = {c.site for c in response.citations}
         contacts = pick_contacts(store, req.question, lang, {c["site"] for c in g.chunks if c.get("site")} - cited_sites)

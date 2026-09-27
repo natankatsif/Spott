@@ -13,7 +13,7 @@ import corpusStatsMock from "./mocks/corpus-stats.json";
 import suggestionsMock from "./mocks/suggestions.json";
 import wallMock from "./mocks/wall.json";
 
-export type Lang = "ro" | "ru";
+export type Lang = "ro" | "ru" | "en"; // answers follow the question; the documents are RO/RU
 export type SearchLang = "ro" | "ru" | "en" | "uk";
 export type AskStatus = "answered" | "partial" | "not_found" | "conflict" | "refused";
 export type ErrorCode =

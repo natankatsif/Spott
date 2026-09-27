@@ -78,7 +78,8 @@ def test_recheck_is_exactly_one_model_call(monkeypatch, tmp_path):
     llm.complete_json = lambda *a, **kw: calls.append(a[2]) or original(*a, **kw)
     r = answering.answer_question(FakeStore(), llm, AskRequest(question="Сколько стоит разрешение?"),
                                   retrieve_fn=lambda *a, **kw: RetrievalResult(items=[DECISION]),
-                                  freshness=False, rewrite=False, routing=False)
+                                  freshness=False, rewrite=False, routing=False,
+                                  translate=False)
     assert r.status == "answered" and len(llm.prompts) == 1 and calls == []
 
 

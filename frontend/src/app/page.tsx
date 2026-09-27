@@ -158,7 +158,7 @@ export default function Home() {
   const mode = useApiMode();
   const t = UI[lang];
 
-  const transport = useMemo(() => new MunicipalChatTransport({ lang: () => { const l = getUILang(); return l === "en" ? null : l; }, mode: () => askMode }), []);
+  const transport = useMemo(() => new MunicipalChatTransport({ lang: () => getUILang(), mode: () => askMode }), []);
   const { messages, sendMessage, status, stop, setMessages, error, clearError } = useChat<ChatMessage>({ transport });
   const busy = status === "submitted" || status === "streaming";
 

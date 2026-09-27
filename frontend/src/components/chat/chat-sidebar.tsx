@@ -38,23 +38,13 @@ import { type ChatMeta, clearChats, deleteChat, useChatHistory } from "@/lib/cha
 import { cn } from "@/lib/utils";
 import type { UIText } from "@/lib/i18n";
 
-// ─────────────── open / collapsed, remembered in this browser ───────────────
+// ─────────────── open / collapsed: closed on every visit, open only while the user keeps it open ───────────────
 
-const OPEN_KEY = "chatSidebarOpen";
+let isOpen = false;
 const openListeners = new Set<() => void>();
-const readOpen = () => {
-  try {
-    return window.localStorage.getItem(OPEN_KEY) === "1"; // collapsed until the user opens it
-  } catch {
-    return false;
-  }
-};
+const readOpen = () => isOpen;
 const writeOpen = (open: boolean) => {
-  try {
-    window.localStorage.setItem(OPEN_KEY, open ? "1" : "0");
-  } catch {
-    /* storage blocked */
-  }
+  isOpen = open;
   openListeners.forEach((l) => l());
 };
 
