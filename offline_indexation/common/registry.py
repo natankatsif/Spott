@@ -374,6 +374,16 @@ class Registry:
                 (status, parser_version, error, now(), sha256),
             )
 
+    def fail_interrupted_parses(self) -> int:
+        """Files left 'parsing' by a run that died on them — the OOM killer does not let the run write anything.
+        They become 'failed', so the next run moves past them instead of dying on the same file again and again;
+        --retry-failed gives them another chance (on a bigger machine, say)."""
+        with self.conn:
+            return self.conn.execute(
+                "UPDATE files SET parse_status = 'failed', parsed_at = ?, "
+                "parse_error = 'Killed while parsing (out of memory?): skipped so the next run does not die on it' "
+                "WHERE parse_status = 'parsing'", (now(),)).rowcount
+
     # --- pages parsing --------------------------------------------------------
 
     def pages_to_parse(self, sites: list[str] | None = None, limit: int | None = None, reparse: bool = False):

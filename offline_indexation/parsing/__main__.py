@@ -14,6 +14,7 @@ Per file, in data/parsed/:
 """
 
 import argparse
+import gc
 import json
 import logging
 import sqlite3
@@ -72,9 +73,12 @@ class FileParser:
         self._converters: dict[bool, DocumentConverter] = {}
 
     def converter(self, ocr: bool) -> DocumentConverter:
-        # Created on first use: loading models is slow, --rebuild usually needs none, and a batch without
-        # scans never builds the OCR one.
+        # Created on first use (loading models is slow, --rebuild usually needs none), and only one at a time: each
+        # holds its own layout and table models, and two of them next to a large PDF do not fit an 8 GB server.
+        # main() puts a batch's text-layer files first, so a run switches at most once.
         if ocr not in self._converters:
+            self._converters.clear()
+            gc.collect()
             self._converters[ocr] = make_converter(ocr=ocr)
         return self._converters[ocr]
 
@@ -89,6 +93,9 @@ class FileParser:
         cache = self.out_dir / f"{sha}.docling.json"
         chars = page_chars(path)  # decides OCR below, and which pages count as scans in the corpus JSON
         ocr = needs_ocr(chars)
+        # If the kernel kills the run on this file, it stays 'parsing' and the next run fails it instead of
+        # picking it first again (Registry.fail_interrupted_parses).
+        self.registry.mark_parsed(sha, "parsing")
         try:
             if self.use_cache and cache.exists():
                 doc = DoclingDocument.load_from_json(cache)
@@ -132,6 +139,8 @@ def main() -> None:
 
     registry = Registry(args.db)
     try:
+        if killed := registry.fail_interrupted_parses():
+            log.warning("%d file(s) were being parsed when a previous run was killed: marked failed", killed)
         if args.pages:
             from pages_parsing.__main__ import run_pages_parsing
 
@@ -154,6 +163,8 @@ def main() -> None:
         if not files:
             print("Nothing to parse.")
             return
+        # text-layer files first, scans last: one converter at a time, so this is at most one model switch
+        files = sorted(files, key=lambda row: needs_ocr(page_chars(args.data / row["path"])))
         parser = FileParser(registry, args.data, use_cache=args.rebuild)
         stats: Counter[str] = Counter()
         started = time.monotonic()

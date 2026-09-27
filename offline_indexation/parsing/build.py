@@ -19,6 +19,7 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TesseractCliOcrOptions,
 )
+from docling.datamodel.settings import settings as docling_settings
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import (
     DocItemLabel,
@@ -44,6 +45,10 @@ TEXT_LAYER_MIN_CHARS = 20
 # TEXT_LAYER_MIN_CHARS on purpose: a scan whose page carries a small text header (a stamp, a page number)
 # must still go through OCR, and a thin cover page only costs us the OCR we would have run anyway.
 OCR_SKIP_MIN_CHARS = 100
+# Pages Docling keeps rendered at once (default 4). On the 8 GB server a long PDF at 4 pages per batch, next to the
+# API and Postgres, is what the kernel's OOM killer took down (parsing exited with -9); one at a time is a little
+# slower and fits.
+docling_settings.perf.page_batch_size = int(os.getenv("DOCLING_PAGE_BATCH", "1"))
 
 SKIPPED_LABELS = {DocItemLabel.PAGE_HEADER, DocItemLabel.PAGE_FOOTER}
 BLOCK_TYPES = {
