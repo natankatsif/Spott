@@ -895,6 +895,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               )}
             >
               {/* project: languages as an inline segmented switch instead of a dropdown; the pill slides to the pick */}
+              {models.length > 1 && (
               <div className="relative mr-1 flex items-center rounded-full bg-muted/70 p-0.5" role="radiogroup">
                 <span
                   aria-hidden
@@ -918,6 +919,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                   </button>
                 ))}
               </div>
+              )}
 
               {/* project: fast/deep switch hidden until the backend has a deep mode (docs/API.md: mode=deep runs the fast path)
               <button

@@ -157,11 +157,10 @@ function StatusNote({ view, t }: { view: AnswerView; t: UIText }) {
   const note =
     a.status === "not_found" ? t.notFoundTitle
     : a.status === "refused" ? t.refusedTitle
-    : a.status === "partial" ? t.partialNote
     : a.status === "conflict" ? (a.conflict?.kind === "outdated" ? t.outdatedTitle : t.conflictTitle)
     : null;
   if (!note) return null;
-  const warn = a.status === "conflict" || a.status === "partial";
+  const warn = a.status === "conflict";
   return (
     <div
       className={cn(
@@ -337,6 +336,9 @@ export function AssistantAnswer({
           <ChainOfThought defaultOpen={false}>
             <ChainOfThoughtHeader>{t.howSearched(view.trace.length)}</ChainOfThoughtHeader>
             <ChainOfThoughtContent>
+              {a?.status === "partial" && (
+                <ChainOfThoughtStep icon={AlertTriangleIcon} label={t.partialNote} status="complete" />
+              )}
               {view.trace.map((step, i) => (
                 <ChainOfThoughtStep
                   description={step.input}
