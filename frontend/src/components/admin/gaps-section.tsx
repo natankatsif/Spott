@@ -239,7 +239,9 @@ export function GapsSection({ t, lang, onAddSource }: { t: AdminText; lang: UILa
 function GapRow({ gap, t, lang, onAddSource, onChanged }: { gap: Gap; t: AdminText; lang: UILang; onAddSource: () => void; onChanged: () => void }) {
   const g = t.gaps;
   const [busy, setBusy] = useState<"recheck" | "hide" | null>(null);
-  const others = gap.questions.filter((q) => q.question !== gap.example);
+  const title = gap.title ? gap.title[lang === "ru" ? "ru" : "ro"] : gap.example;
+  // under a title every wording is shown; without one the first is the row itself
+  const others = gap.title ? gap.questions : gap.questions.filter((q) => q.question !== gap.example);
 
   const recheck = async () => {
     setBusy("recheck");
@@ -274,7 +276,7 @@ function GapRow({ gap, t, lang, onAddSource, onChanged }: { gap: Gap; t: AdminTe
         <CollapsibleTrigger className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left hover:bg-muted/40">
           <span className={cn("size-2 shrink-0 rounded-full", DOT[gap.status])} title={g.status[gap.status]} />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-medium text-sm group-data-[state=open]/gap:whitespace-normal">{gap.example}</p>
+            <p className="truncate font-medium text-sm group-data-[state=open]/gap:whitespace-normal">{title}</p>
             <p className="mt-0.5 truncate text-muted-foreground text-xs">
               {g.topic[gap.topic]} · {g.status[gap.status]} · {timeAgo(gap.last_asked, lang)}
               {gap.langs.length > 0 && ` · ${gap.langs.map((l) => l.toUpperCase()).join(" ")}`}

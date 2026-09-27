@@ -286,9 +286,15 @@ GapTopicKey = Literal["transport", "urbanism", "education", "health", "social", 
                       "council", "environment", "culture", "other"]
 
 
+class GapTitle(Strict):
+    ro: str
+    ru: str
+
+
 class Gap(Strict):
     id: str  # the answer_id of the group's first question
     example: str
+    title: GapTitle | None = None  # what is missing, named by the small model when it grouped the questions
     questions: list[GapQuestion]  # the latest 20
     count: int
     last_asked: str

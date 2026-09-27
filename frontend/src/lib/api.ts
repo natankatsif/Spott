@@ -337,6 +337,7 @@ export type GapRecheck = { status: AskStatus; verified: boolean; answer_id: stri
 export type Gap = {
   id: string; // the answer_id of the group's first question
   example: string;
+  title: { ro: string; ru: string } | null; // what is missing, named by the model that grouped the questions
   questions: GapQuestion[]; // the latest 20, oldest first
   count: number;
   last_asked: string;

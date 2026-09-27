@@ -296,6 +296,8 @@ ALTER TABLE answers ADD COLUMN IF NOT EXISTS retrieved_sites JSONB;
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_hidden BOOLEAN NOT NULL DEFAULT FALSE;
 -- the admin's gaps: the topic of an unanswered question (set once by a small model, see backend/app/gaps.py)
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS topic TEXT;
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_group TEXT;  -- the group a wording group was sorted into
+ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_title JSONB;  -- {"ro", "ru"} on a group's first answer
 ALTER TABLE answers ADD COLUMN IF NOT EXISTS recheck JSONB;
 
 CREATE TABLE IF NOT EXISTS feedback (

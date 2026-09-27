@@ -64,7 +64,11 @@
       "rechecked": null,
       "hidden": false,
       "topic": "urbanism",
-      "last_answer": null
+      "last_answer": null,
+      "title": {
+        "ro": "Autorizația de construire",
+        "ru": "Разрешение на строительство"
+      }
     },
     {
       "id": "ans_g2",
@@ -109,7 +113,11 @@
       "rechecked": null,
       "hidden": false,
       "topic": "transport",
-      "last_answer": null
+      "last_answer": null,
+      "title": {
+        "ro": "Plata parcării prin SMS",
+        "ru": "Оплата парковки по SMS"
+      }
     },
     {
       "id": "ans_g3",
@@ -152,7 +160,11 @@
       "rechecked": null,
       "hidden": false,
       "topic": "education",
-      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente."
+      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente.",
+      "title": {
+        "ro": "Programul Direcției educație",
+        "ru": "График работы Управления образования"
+      }
     },
     {
       "id": "ans_g4",
@@ -195,8 +207,12 @@
         "ts": "2026-09-26T11:05:00+03:00"
       },
       "hidden": false,
-      "topic": "documents",
-      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente."
+      "topic": "education",
+      "last_answer": "Taxa pentru autorizația de construire este stabilită prin decizia Consiliului municipal. Termenul de eliberare nu este indicat în documente.",
+      "title": {
+        "ro": "Înscrierea la grădiniță",
+        "ru": "Запись в детский сад"
+      }
     },
     {
       "id": "ans_g5",
@@ -234,7 +250,11 @@
       "rechecked": null,
       "hidden": false,
       "topic": "utilities",
-      "last_answer": null
+      "last_answer": null,
+      "title": {
+        "ro": "Sesizări privind gunoiul",
+        "ru": "Жалобы на вывоз мусора"
+      }
     },
     {
       "id": "ans_g6",
@@ -267,8 +287,9 @@
       ],
       "rechecked": null,
       "hidden": false,
-      "topic": "social",
-      "last_answer": null
+      "topic": "transport",
+      "last_answer": null,
+      "title": null
     }
   ],
   "totals": {

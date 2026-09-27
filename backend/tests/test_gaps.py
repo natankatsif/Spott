@@ -1,4 +1,4 @@
-"""Admin gaps (docs/tasks/11 D): grouping without an LLM, masking, hidden, re-check = exactly one model call."""
+"""Admin gaps (docs/tasks/11 D): wording groups, the model's sorting (stored once), masking, hidden, re-check = exactly one model call."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -9,6 +9,7 @@ from retrieval.pipeline import RetrievalResult
 from app import answering, main
 from app.gaps import gaps, group
 from app.schemas import AskRequest, GapList
+from app.wall import mask
 from tests.test_admin import LOGIN
 from tests.test_answering import DECISION, FakeLLM, FakeStore, model
 
@@ -128,19 +129,30 @@ def test_gap_endpoints(monkeypatch):
         main.app.state.gaps = None
 
 
-def test_topics_are_classified_once_and_partial_answers_are_kept():
+def test_the_model_joins_groups_one_document_would_answer_once():
     asked = []
 
-    def classify(heads):
-        asked.extend(h["answer_id"] for h in heads)
-        return {"a1": "urbanism"}
+    def cluster(new, existing):
+        asked.append(([h["answer_id"] for h in new], existing))
+        # the garage permit and the pool are different things; a stored decision is not asked again
+        return {"group": {"a1": "a1"}, "topic": {"a1": "urbanism"},
+                "title": {"a1": {"ro": "Taxa pentru autorizația de garaj", "ru": "Плата за разрешение на гараж"}}}
 
     rows = [r | {"answer": "Autorizația se eliberează de DGAURF."} for r in ROWS]
-    rows[3] = rows[3] | {"topic": "culture"}  # classified before
-    result = gaps(rows, embed, classify=classify)
-    assert asked == ["a1"]
-    assert [(i["id"], i["topic"]) for i in result["items"]] == [("a1", "urbanism"), ("a4", "culture")]
+    rows[3] = rows[3] | {"topic": "culture", "gap_group": "a4"}  # sorted before
+    result = gaps(rows, embed, cluster=cluster)
+    assert asked == [(["a1"], [{"id": "a4", "topic": "culture", "title": mask(rows[3]["question"])}])]
+    first, second = result["items"]
+    assert (first["id"], first["topic"], first["count"]) == ("a1", "urbanism", 3)
+    assert first["title"] == {"ro": "Taxa pentru autorizația de garaj", "ru": "Плата за разрешение на гараж"}
+    assert (second["id"], second["topic"], second["title"]) == ("a4", "culture", None)
     assert result["topics"] == [{"topic": "urbanism", "groups": 1}, {"topic": "culture", "groups": 1}]
-    assert result["items"][0]["last_answer"] == "Autorizația se eliberează de DGAURF."  # from the partial one
-    assert result["items"][1]["last_answer"] is None  # never partly answered
+    assert first["last_answer"] == "Autorizația se eliberează de DGAURF."  # from the partial one
+    assert second["last_answer"] is None  # never partly answered
     GapList.model_validate(result)
+
+
+def test_wording_groups_the_model_put_together_are_one_group():
+    rows = [r | {"gap_group": "a1"} for r in ROWS]  # the pool question sorted into the garage group (say)
+    [item] = gaps(rows, embed)["items"]
+    assert (item["id"], item["count"]) == ("a1", 4)
