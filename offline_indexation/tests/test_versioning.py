@@ -421,3 +421,17 @@ def test_files_of_documents_are_only_theirs(tmp_data: Path):
     assert [r["sha256"] for r in reg.files_of_documents(["a.md/2.pdf"], ["pending"])] == ["b" * 64]
     assert reg.files_of_documents([], ["pending"]) == []
     reg.close()
+
+
+def test_files_to_parse_of_some_sites_only(tmp_data: Path):
+    """A job for one site parses that site's files, not every pending file of every site."""
+    reg = Registry(tmp_data / "registry.sqlite")
+    for key, site, sha in (("a.md/1.pdf", "a.md", "a" * 64), ("b.md/1.pdf", "b.md", "b" * 64)):
+        reg.add_document(key=key, url=f"https://{key}", site=site, category="c", extension=".pdf", external=False,
+                         source={"found_on": f"https://{site}/"})
+        reg.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
+                            extension=".pdf", http_status=200, etag=None, last_modified=None)
+    assert [r["sha256"] for r in reg.files_to_parse(["pending"], None, sites=["b.md"])] == ["b" * 64]
+    assert reg.files_to_parse(["pending"], None, sites=["none.md"]) == []
+    assert len(reg.files_to_parse(["pending"], None)) == 2  # no filter: the whole corpus, as `tools.pipeline` wants
+    reg.close()

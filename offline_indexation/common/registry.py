@@ -328,9 +328,14 @@ class Registry:
 
     # --- parsing --------------------------------------------------------------
 
-    def files_to_parse(self, statuses: list[str], limit: int | None, sha_prefixes: list[str] | None = None):
+    def files_to_parse(self, statuses: list[str], limit: int | None, sha_prefixes: list[str] | None = None,
+                       sites: list[str] | None = None):
         query = f"SELECT * FROM files WHERE parse_status IN ({', '.join('?' * len(statuses))})"
         params: list = list(statuses)
+        if sites:  # only files some document of these sites points to (a job for one site parses that site)
+            query += (f" AND sha256 IN (SELECT sha256 FROM documents WHERE sha256 IS NOT NULL "
+                      f"AND site IN ({', '.join('?' * len(sites))}))")
+            params += list(sites)
         if sha_prefixes:
             query += " AND (" + " OR ".join("sha256 LIKE ?" for _ in sha_prefixes) + ")"
             params += [f"{p}%" for p in sha_prefixes]

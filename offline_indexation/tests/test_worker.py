@@ -65,6 +65,7 @@ def test_plans_for_site_document_and_refresh():
     crawl = plan({"kind": "crawl"}, SITE)
     assert crawl[0].args == ["-m", "crawler", "--sites", "acc.md", "--max-depth", "2", "--max-pages", "50"]
     assert [s.args[1] for s in crawl] == ["crawler", "downloader", "parsing", "pages_parsing", "indexing"]
+    assert crawl[2].args == ["-m", "parsing", "--sites", "acc.md"]  # this site's files, not every pending file
     refresh = plan({"kind": "refresh"}, SITE)
     assert "--refresh" in refresh[1].args  # known files re-checked (ETag / Last-Modified)
     assert "--resume" not in refresh[0].args  # the site crawled again: new and changed pages are found

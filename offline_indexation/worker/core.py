@@ -105,7 +105,8 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
     steps = [
         Step("crawl", crawl, WEIGHTS["crawl"]),
         Step("download", download, WEIGHTS["download"]),
-        Step("parse", ["-m", "parsing"], WEIGHTS["parse"] / 2),
+        # the job's sites only: without the filter a job for one small site parsed every pending file of every site
+        Step("parse", ["-m", "parsing", *(["--sites", *sites] if sites else [])], WEIGHTS["parse"] / 2),
         Step("parse", ["-m", "pages_parsing", "--sites", *sites], WEIGHTS["parse"] / 2),
         Step("index", ["-m", "indexing", "--sites", *sites], WEIGHTS["index"]),
     ]
