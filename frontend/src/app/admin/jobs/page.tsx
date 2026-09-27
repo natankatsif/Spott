@@ -157,9 +157,10 @@ function Jobs() {
       />
 
       <Tabs className="mb-4" onValueChange={(v) => setFilter(v as JobStatus | "all")} value={filter}>
-        <TabsList className="h-auto flex-wrap rounded-xl">
+        {/* one row; on a phone it scrolls sideways instead of wrapping out of its background */}
+        <TabsList className="h-auto max-w-full justify-start overflow-x-auto rounded-xl [scrollbar-width:none]">
           {FILTERS.map((f) => (
-            <TabsTrigger className="rounded-lg" key={f} value={f}>
+            <TabsTrigger className="shrink-0 rounded-lg" key={f} value={f}>
               {f === "all" ? t.common.all : t.status[f]}
             </TabsTrigger>
           ))}

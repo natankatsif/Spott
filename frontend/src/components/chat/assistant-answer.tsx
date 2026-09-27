@@ -49,12 +49,15 @@ import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { Task, TaskContent, TaskItem, TaskTrigger } from "@/components/ai-elements/task";
 import { CitationPager } from "@/components/chat/citation-pager";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { canPreview, LocateBadge, useSourcePreview } from "@/components/chat/source-preview";
-import type { Citation, ContactCard, TraceStep } from "@/lib/api";
+import type { Citation, ContactCard, FeedbackTag, TraceStep } from "@/lib/api";
 import { sendFeedback } from "@/lib/api";
 import type { AnswerView } from "@/lib/chat-transport";
 import type { UIText } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+
+const DISLIKE_REASONS = ["wrong", "outdated", "incomplete", "wrong_source", "not_understood"] as const satisfies FeedbackTag[];
 
 const TOOL_ICONS: Record<TraceStep["tool"], typeof SearchIcon> = {
   search: SearchIcon,
@@ -228,6 +231,7 @@ export function AssistantAnswer({
   onFollowup: (q: string) => void;
 }) {
   const [vote, setVote] = useState<"up" | "down" | null>(null);
+  const [reasons, setReasons] = useState<FeedbackTag[]>([]);
   const preview = useSourcePreview();
   const shown = preview.state?.citations[preview.state.index];
   const activeId = shown && view.citations.includes(shown) ? shown.id : undefined;
@@ -377,6 +381,35 @@ export function AssistantAnswer({
               </span>
             )}
           </MessageActions>
+          {/* after a dislike: what was wrong, one tap each; sent as the same rating, so it replaces it */}
+          {vote === "down" && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">{t.whatWrong}</span>
+              <ToggleGroup
+                className="flex-wrap"
+                onValueChange={(v: string[]) => {
+                  const tags = v as FeedbackTag[];
+                  setReasons(tags);
+                  if (a) void sendFeedback({ answer_id: a.id, vote: "down", tags });
+                }}
+                size="sm"
+                spacing={1}
+                type="multiple"
+                value={reasons}
+                variant="outline"
+              >
+                {DISLIKE_REASONS.map((r) => (
+                  <ToggleGroupItem
+                    className="h-7 !rounded-full px-3 text-xs data-[state=on]:border-foreground data-[state=on]:bg-foreground data-[state=on]:text-background"
+                    key={r}
+                    value={r}
+                  >
+                    {t.reasons[r]}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+          )}
           {a.followups.length > 0 && (
             <Suggestions>
               {a.followups.map((q) => (

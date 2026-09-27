@@ -97,13 +97,10 @@ export function GapsSection({ t, lang, onAddSource }: { t: AdminText; lang: UILa
   };
 
   return (
-    <section className="mb-8">
+    <section>
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="font-semibold text-lg tracking-tight">{g.title}</h2>
-        {query.data && query.data.totals.groups > 0 && (
-          <Badge className="rounded-full tabular-nums" variant="red">
-            {query.data.totals.groups}
-          </Badge>
+        {query.data && (
+          <span className="text-muted-foreground text-sm">{g.totals(query.data.totals.not_found, query.data.totals.partial)}</span>
         )}
         <Tooltip>
           <TooltipTrigger asChild>

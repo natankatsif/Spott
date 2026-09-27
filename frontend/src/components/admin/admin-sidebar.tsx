@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRightIcon, DatabaseIcon, LogOutIcon, MessageSquareQuoteIcon, ThumbsUpIcon, WorkflowIcon } from "lucide-react";
+import { ArrowUpRightIcon, DatabaseIcon, LogOutIcon, MessageCircleQuestionIcon, MessageSquareQuoteIcon, ThumbsUpIcon, WorkflowIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LangSwitch } from "@/components/admin/lang-switch";
@@ -33,9 +33,13 @@ export function AdminSidebar() {
   const mode = useApiMode();
   const running = useAdminQuery(`nav-running-${mode}`, () => admin.jobs("running"), () => 5000);
   const activeJobs = running.data?.length ?? 0;
+  // once per page: the list groups every unanswered question, not something to poll
+  const gaps = useAdminQuery(`nav-gaps-${mode}`, () => admin.gaps(false));
+  const openGaps = gaps.data?.totals.groups ?? 0;
 
   const items = [
     { href: "/admin/sources", label: t.nav.sources, icon: DatabaseIcon },
+    { href: "/admin/gaps", label: t.nav.gaps, icon: MessageCircleQuestionIcon, badge: openGaps || null },
     { href: "/admin/jobs", label: t.nav.jobs, icon: WorkflowIcon, badge: activeJobs || null },
     { href: "/admin/feedback", label: t.nav.feedback, icon: ThumbsUpIcon },
     { href: "/admin/suggestions", label: t.nav.suggestions, icon: MessageSquareQuoteIcon },

@@ -11,6 +11,7 @@ Questions are masked like the public wall (e-mails, phones, long digit runs).
 """
 
 import logging
+import threading
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -202,14 +203,33 @@ def llm_cluster(llm) -> Cluster:
     return cluster
 
 
+class CachedEmbed:
+    """Embeddings of questions kept between list calls: the list groups every unanswered question each time, and
+    without this it re-embedded all of them on every open of the page (and of the menu's counter)."""
+
+    MAX = 20_000
+
+    def __init__(self, embed: Callable[[list[str]], np.ndarray]):
+        self.embed, self.vectors = embed, {}
+
+    def __call__(self, texts: list[str]) -> np.ndarray:
+        missing = [t for t in dict.fromkeys(texts) if t not in self.vectors]
+        if missing:
+            if len(self.vectors) + len(missing) > self.MAX:
+                self.vectors.clear()
+            self.vectors.update(zip(missing, self.embed(missing), strict=True))
+        return np.array([self.vectors[t] for t in texts])
+
+
 class PgGaps:
     def __init__(self, pool: ConnectionPool, embed: Callable[[list[str]], np.ndarray] | None = None,
                  cluster: Cluster | None = None):
         from .suggestions import default_embed
 
         self.pool = pool
-        self.embed = embed or default_embed
+        self.embed = CachedEmbed(embed or default_embed)
         self.cluster = cluster
+        self.listing = threading.Lock()
 
     def _rows(self, sql: str, params: tuple = ()) -> list[dict]:
         with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -225,8 +245,10 @@ class PgGaps:
             "ORDER BY created_at", (statuses, since, lang, lang))
 
     def list(self, statuses: list[str], lang: str | None, days: int, limit: int, hidden: bool) -> dict:
-        return gaps(self.rows(statuses, lang, days), self.embed, hidden=hidden, limit=limit,
-                    cluster=self.sort_and_store if self.cluster else None)
+        # one list at a time: two at once (the page and the menu's counter) would sort the same new questions twice
+        with self.listing:
+            return gaps(self.rows(statuses, lang, days), self.embed, hidden=hidden, limit=limit,
+                        cluster=self.sort_and_store if self.cluster else None)
 
     def sort_and_store(self, new: list[dict], existing: list[dict]) -> dict:
         """The model's sorting of new wording groups, kept so each is sorted once."""

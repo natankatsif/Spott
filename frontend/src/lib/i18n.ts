@@ -33,6 +33,8 @@ export const UI = {
     helpful: "Util",
     notHelpful: "Nu e util",
     thanks: "Mulțumim!",
+    whatWrong: "Ce nu e în regulă?",
+    reasons: { wrong: "Greșit", outdated: "Învechit", incomplete: "Incomplet", wrong_source: "Altă sursă", not_understood: "N-a înțeles întrebarea" },
     history: {
       open: "Istoric",
       title: "Conversațiile tale",
@@ -133,6 +135,8 @@ export const UI = {
     helpful: "Полезно",
     notHelpful: "Не полезно",
     thanks: "Спасибо!",
+    whatWrong: "Что не так?",
+    reasons: { wrong: "Неверно", outdated: "Устарело", incomplete: "Неполно", wrong_source: "Не тот источник", not_understood: "Не понял вопрос" },
     history: {
       open: "История",
       title: "Ваши диалоги",
@@ -233,6 +237,8 @@ export const UI = {
     helpful: "Helpful",
     notHelpful: "Not helpful",
     thanks: "Thank you!",
+    whatWrong: "What was wrong?",
+    reasons: { wrong: "Wrong", outdated: "Outdated", incomplete: "Incomplete", wrong_source: "Wrong source", not_understood: "Misunderstood" },
     history: {
       open: "History",
       title: "Your chats",

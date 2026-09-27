@@ -156,3 +156,19 @@ def test_wording_groups_the_model_put_together_are_one_group():
     rows = [r | {"gap_group": "a1"} for r in ROWS]  # the pool question sorted into the garage group (say)
     [item] = gaps(rows, embed)["items"]
     assert (item["id"], item["count"]) == ("a1", 4)
+
+
+def test_question_embeddings_are_kept_between_lists():
+    from app.gaps import CachedEmbed
+
+    calls = []
+
+    def counting(texts):
+        calls.append(list(texts))
+        return embed(texts)
+
+    cached = CachedEmbed(counting)
+    first = cached(["garaj a", "piscina b"])
+    again = cached(["piscina b", "garaj a", "гараж c"])
+    assert calls == [["garaj a", "piscina b"], ["гараж c"]]  # only the new question is embedded again
+    assert np.allclose(again[1], first[0]) and len(again) == 3

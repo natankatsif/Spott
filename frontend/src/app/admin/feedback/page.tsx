@@ -5,7 +5,7 @@ import { useState } from "react";
 import { EmptyState } from "@/components/admin/empty-state";
 import { PageHeader } from "@/components/admin/page-header";
 import { StatCard } from "@/components/admin/stat-card";
-import { likeShare, likesOf, Vote, VoteBars } from "@/components/admin/votes";
+import { likeShare, likesOf, Vote } from "@/components/admin/votes";
 import { Badge } from "@/components/spell/badge";
 import { Chart } from "@/components/spell/chart";
 import { CopyButton } from "@/components/spell/copy-button";
@@ -50,7 +50,7 @@ export default function FeedbackPage() {
       ) : (
         <>
           {/* the cards and their labels are there at once; only the numbers wait for the data */}
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <StatCard label={t.feedback.count} value={s && number(s.count, lang)} />
             <StatCard
               aside={<ThumbsUpIcon className="text-emerald-600" size={18} />}
@@ -77,24 +77,22 @@ export default function FeedbackPage() {
                   className="-mx-1"
                   color="#1d5fae"
                   data={s.by_day.map((d) => Math.round(likeShare(d.average) * 100))}
-                  formatValue={(v, i) => `${v}% · ${s.by_day[i].count} ${t.feedback.trendCount}`}
+                  formatValue={(v, i) => `${v}% · ${s.by_day[i].count} ${t.feedback.trendCount(s.by_day[i].count)}`}
                   labels={s.by_day.map((d) => shortDay(d.day, lang))}
                   name={t.feedback.likes}
                   tickCount={Math.min(6, s.by_day.length)}
                 />
               ) : (
-                <p className="py-10 text-center text-muted-foreground text-sm">—</p>
+                <p className="py-10 text-center text-muted-foreground text-sm">{t.feedback.trendEmpty}</p>
               )}
             </section>
+            {/* likes and dislikes are the cards above: no second chart of the same two numbers */}
             <div className="flex flex-col gap-3 lg:col-span-2">
-              <section className="rounded-2xl border bg-card p-4">
-                <h2 className="mb-3 font-medium text-sm">{t.feedback.votes}</h2>
-                {s ? <VoteBars perStar={s.per_star} /> : <Skeleton className="h-12 w-full rounded-lg" />}
-              </section>
               <section className="rounded-2xl border bg-card p-4">
                 <h2 className="mb-3 font-medium text-sm">{t.feedback.tags}</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {!s && <Skeleton className="h-6 w-40 rounded-full" />}
+                  {s && s.top_tags.length === 0 && <p className="text-muted-foreground text-sm">{t.feedback.tagsEmpty}</p>}
                   {s?.top_tags.map((tag) => (
                     <Badge className="gap-1.5 rounded-full px-2.5 py-1" key={tag.tag} variant={tag.tag === "helpful" ? "emerald" : "slate"}>
                       {t.tags[tag.tag] ?? tag.tag}

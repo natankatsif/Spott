@@ -16,10 +16,9 @@ import {
   WorkflowIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/admin/empty-state";
-import { GapsSection } from "@/components/admin/gaps-section";
 import { PageHeader } from "@/components/admin/page-header";
 import { SourceStatusBadge } from "@/components/admin/source-status-badge";
 import { StageProgress } from "@/components/admin/stage-progress";
@@ -104,6 +103,13 @@ export default function SourcesPage() {
     return Object.fromEntries(FILTERS.map((f) => [f, all.filter((r) => IN_FILTER[f](r.status)).length])) as Record<Filter, number>;
   }, [query.data]);
 
+  // "Add a source" from an unanswered question lands here with #add: the link field is ready to paste into
+  useEffect(() => {
+    if (window.location.hash !== "#add") return;
+    addRef.current?.focus();
+    addRef.current?.scrollIntoView({ block: "center" });
+  }, []);
+
   const highlight = (id: number) => {
     setFlash(id);
     setTimeout(() => setFlash((f) => (f === id ? null : f)), 2500);
@@ -141,8 +147,6 @@ export default function SourcesPage() {
       </div>
 
       <AddSource inputRef={addRef} lang={lang} onAdded={(id) => { query.reload(); if (id) highlight(id); }} t={t} />
-
-      <GapsSection lang={lang} onAddSource={() => { addRef.current?.focus(); addRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }} t={t} />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap rounded-full bg-muted/80 p-0.5 text-xs" role="radiogroup">
@@ -185,7 +189,7 @@ export default function SourcesPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-4">{t.sources.col.source}</TableHead>
                 <TableHead className="hidden xl:table-cell">{t.sources.col.category}</TableHead>
-                <TableHead className="w-60">{t.sources.col.status}</TableHead>
+                <TableHead className="md:w-60">{t.sources.col.status}</TableHead>
                 <TableHead className="hidden text-right lg:table-cell">{t.sources.col.pages}</TableHead>
                 <TableHead className="hidden text-right lg:table-cell">{t.sources.col.documents}</TableHead>
                 <TableHead className="hidden text-right md:table-cell">{t.sources.col.chunks}</TableHead>
@@ -307,9 +311,9 @@ function SourceTableRow({
 
   return (
     <TableRow className={cn("transition-colors duration-700", flash && "bg-accent", row.status === "disabled" && "opacity-60")}>
-      <TableCell className="max-w-[18rem] pl-4">
+      <TableCell className="max-w-[10rem] pl-3 sm:max-w-[18rem] sm:pl-4">
         <div className="flex items-center gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-brand" title={t.sources.kind[row.kind]}>
+          <span className="hidden size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-brand sm:flex" title={t.sources.kind[row.kind]}>
             <KindIcon className="size-4" />
           </span>
           <div className="min-w-0">
@@ -331,7 +335,7 @@ function SourceTableRow({
             className="rounded-md bg-muted px-1.5 py-0.5 text-xs"
             title={row.category_source ? (t.sources.categorySource[row.category_source] ?? row.category_source) : undefined}
           >
-            {row.category}
+            {t.categories[row.category as keyof AdminText["categories"]] ?? row.category}
           </span>
         ) : (
           <span className="text-muted-foreground">—</span>
@@ -398,7 +402,7 @@ function SourceTableRow({
                 >
                   {CATEGORIES.map((c) => (
                     <DropdownMenuRadioItem key={c} value={c}>
-                      {c}
+                      {t.categories[c]}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
