@@ -84,9 +84,13 @@ export default function SuggestionsPage() {
     <>
       <PageHeader
         actions={
-          <ToggleGroup onValueChange={(v) => v && setLang(v as Lang)} size="sm" type="single" value={lang} variant="outline">
+          <ToggleGroup className="rounded-full bg-muted/80 p-0.5" onValueChange={(v) => v && setLang(v as Lang)} type="single" value={lang}>
             {QUESTION_LANGS.map((l) => (
-              <ToggleGroupItem className="px-3 font-semibold uppercase" key={l} value={l}>
+              <ToggleGroupItem
+                className="h-7 !rounded-full px-3 font-semibold text-foreground/55 text-xs uppercase hover:bg-transparent data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+                key={l}
+                value={l}
+              >
                 {l}
               </ToggleGroupItem>
             ))}
