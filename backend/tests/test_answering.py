@@ -752,3 +752,15 @@ def test_english_questions_are_told_from_romanian_ones():
     assert detect_lang("Cine elaborează PUG?", "en") == "ro"
     assert detect_lang("Unde depun cererea pentru autorizatie", "en") == "ro"
     assert detect_lang("PUG 2021?", "en") == "en"  # too short: the interface language
+
+
+def test_every_model_call_knows_today():
+    """Dates in the documents ("until 1 October", "since 2024") are read against today, in Chișinău time."""
+    from datetime import UTC, datetime
+
+    # 22:30 UTC on 30 September is already 1 October in Chișinău (UTC+3 in summer time)
+    assert answering.today_line(datetime(2026, 9, 30, 22, 30, tzinfo=UTC)) == \
+        "Today is Thursday, 1 October 2026 (2026-10-01), Chișinău time.\n"
+    prompt = answering.render_prompt(answering.AskRequest(question="Cât costă?"), [])
+    assert prompt.startswith("Today is ") and "Question: Cât costă?" in prompt
+    assert "Today's date is at the top of the user message" in answering.SYSTEM_PROMPT
