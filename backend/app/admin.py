@@ -29,7 +29,7 @@ from retrieval.sources import DEFAULTS, EXCLUDED_SITES, categorize
 from selectolax.parser import HTMLParser
 from starlette.concurrency import run_in_threadpool
 
-from .errors import ApiException, RateLimiter
+from .errors import ApiException, RateLimiter, client_address
 from .schemas import (
     AdminLogin,
     AdminMe,
@@ -126,8 +126,7 @@ router = APIRouter(prefix="/api/admin", dependencies=[Depends(require_admin)])
 
 @auth_router.post("/login", response_model=AdminSession)
 def login(req: AdminLogin, request: Request) -> AdminSession:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    login_limiter.check(forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown"))
+    login_limiter.check(client_address(request))
     creds = credentials()
     if creds is None:
         raise ApiException(401, "unauthorized", "Admin is off: ADMIN_LOGIN / ADMIN_PASSWORD not set on the server")

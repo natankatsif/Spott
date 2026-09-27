@@ -45,7 +45,7 @@ from . import admin, errors, preview
 from .admin import PgAdminStore
 from .answering import answer_events, answer_question, replay_events, to_top_left
 from .answers import PgAnswers
-from .errors import ApiException, RateLimiter
+from .errors import ApiException, RateLimiter, client_address
 from .files import DATA_DIR
 from .gaps import PgGaps, llm_cluster
 from .llm import LLM, LLMUnavailable, OpenAILLM
@@ -206,8 +206,7 @@ def get_llm() -> LLM:
 
 
 def client_id(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return client_address(request)
 
 
 def prepare_ask(request: Request) -> tuple[ConnectionPool, LLM]:

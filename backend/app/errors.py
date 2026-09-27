@@ -1,5 +1,6 @@
 """Every non-2xx response has the ApiError body (docs/API.md → Errors), plus the rate limit for questions."""
 
+import ipaddress
 import logging
 import time
 from collections import defaultdict, deque
@@ -52,8 +53,28 @@ def install(app: FastAPI) -> None:
         return error_response(500, "internal", "Internal error")
 
 
+def client_address(request: Request) -> str:
+    """Who is asking, for the rate limits. X-Forwarded-For is written by the client and only appended to by
+    proxies, so it is believed only when the connection itself comes from a proxy on a private network (Caddy or
+    cloudflared in Docker), and then its last address, the one our proxy added. A client reaching the API directly
+    is counted by its own address whatever header it sends."""
+    peer = request.client.host if request.client else "unknown"
+    try:
+        ip = ipaddress.ip_address(peer)
+        via_proxy = ip.is_private or ip.is_loopback
+    except ValueError:
+        via_proxy = False
+    if via_proxy:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+        if hops:
+            return hops[-1]
+    return peer
+
+
 class RateLimiter:
     """At most `limit` questions per `window_s` per client (QR-wall protection)."""
+
+    MAX_CLIENTS = 10_000  # remembered clients before the idle ones are forgotten
 
     def __init__(self, limit: int = 10, window_s: float = 60.0):
         self.limit, self.window_s = limit, window_s
@@ -61,6 +82,9 @@ class RateLimiter:
 
     def check(self, client: str) -> None:
         now = time.monotonic()
+        if len(self.hits) > self.MAX_CLIENTS:  # forget clients with no hit inside the window
+            for key in [k for k, v in self.hits.items() if not v or v[-1] <= now - self.window_s]:
+                del self.hits[key]
         hits = self.hits[client]
         while hits and hits[0] <= now - self.window_s:
             hits.popleft()

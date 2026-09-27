@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import time
+import unicodedata
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Iterator
@@ -273,7 +274,9 @@ ROUTE_STATUS = {"chat": "answered", "clarify": "answered", "off_topic": "refused
 ROUTE_TIMEOUT_S = float(os.getenv("ROUTE_TIMEOUT_S", "6"))
 MAX_ROUTE_OPTIONS = 4
 ROUTER = os.getenv("ROUTER", "true").lower() in ("1", "true", "yes")
-_BACKGROUND = ThreadPoolExecutor(max_workers=16, thread_name_prefix="ask")
+# Each question holds two of these (routing and gathering) while it waits on the network and the database, so the
+# pool is sized for many questions at once (a QR stand), not for the CPU.
+_BACKGROUND = ThreadPoolExecutor(max_workers=int(os.getenv("ASK_THREADS", "64")), thread_name_prefix="ask")
 
 
 # ─────────────── corpus access ───────────────
@@ -437,6 +440,18 @@ def numbers(text: str) -> set[str]:
         found.add(n.lstrip("0") or "0")
         found.update(part.lstrip("0") or "0" for part in n.split("."))
     return found
+
+
+def copied_from(value: str, evidence: list[str]) -> bool:
+    """An address or opening hours copied from the lines: its numbers are there, and so are its words (a value
+    without numbers, "bd. Ștefan cel Mare", is checked by its words alone)."""
+    def words(text: str) -> set[str]:
+        plain = unicodedata.normalize("NFKD", text.casefold())
+        plain = "".join(ch for ch in plain if not unicodedata.combining(ch))
+        return {w for w in re.findall(r"\w+", plain) if len(w) >= 3 and not w.isdigit()}
+
+    have = set().union(*(words(t) for t in evidence)) if evidence else set()
+    return numbers_backed(value, evidence) and words(value) <= have
 
 
 def numbers_backed(claim: str, evidence: list[str]) -> bool:
@@ -685,8 +700,8 @@ class ResponseBuilder:
                      if len(d := "".join(ch for ch in p if ch.isdigit())) >= 5 and any(d in x for x in digits)]
             email = [e.strip() for e in item.get("email") or [] if e.strip() and e.strip().casefold() in joined]
             address, hours = ((v or "").strip() or None for v in (item.get("address"), item.get("hours")))
-            address = address if address and numbers_backed(address, texts) else None
-            hours = hours if hours and numbers_backed(hours, texts) else None
+            address = address if address and copied_from(address, texts) else None
+            hours = hours if hours and copied_from(hours, texts) else None
             if not (phone or email or address):
                 continue
             for r in refs:
