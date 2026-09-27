@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { admin, useAdminQuery } from "@/lib/admin";
 import { errorText } from "@/lib/admin-errors";
 import { ADMIN_UI } from "@/lib/admin-i18n";
@@ -21,15 +20,16 @@ import { useUILang } from "@/lib/lang";
 import { useApiMode } from "@/lib/mode";
 import { cn } from "@/lib/utils";
 
-// answers (and so quick questions) exist in Romanian and Russian only
-const QUESTION_LANGS: Lang[] = ["ro", "ru"];
+// a pinned question is shown in these; answers exist in Romanian and Russian, English shows the Romanian ones
+const TEXT_LANGS = ["ro", "ru", "en"] as const;
+// a question typed here is Romanian or Russian; pinning translates it into the rest
+const typedLang = (text: string): Lang => (/[а-яё]/i.test(text) ? "ru" : "ro");
 
 export default function SuggestionsPage() {
   const uiLang = useUILang();
   const t = ADMIN_UI[uiLang];
   const mode = useApiMode();
-  const [lang, setLang] = useState<Lang>(uiLang === "ru" ? "ru" : "ro");
-  const list = useAdminQuery(`sugg-${mode}-${lang}`, () => admin.suggestions(lang));
+  const list = useAdminQuery(`sugg-${mode}`, () => admin.suggestions());
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [hiding, setHiding] = useState<number | null>(null);
@@ -56,7 +56,7 @@ export default function SuggestionsPage() {
     if (!valid) return;
     setBusy(true);
     try {
-      await admin.pinSuggestion(text.trim(), lang);
+      await admin.pinSuggestion(text.trim(), typedLang(text));
       toast.success(t.suggestions.pinnedBoth);
       setText("");
       list.reload();
@@ -83,19 +83,6 @@ export default function SuggestionsPage() {
   return (
     <>
       <PageHeader
-        actions={
-          <ToggleGroup className="rounded-full bg-muted/80 p-0.5" onValueChange={(v) => v && setLang(v as Lang)} type="single" value={lang}>
-            {QUESTION_LANGS.map((l) => (
-              <ToggleGroupItem
-                className="h-7 !rounded-full px-3 font-semibold text-foreground/55 text-xs uppercase hover:bg-transparent data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
-                key={l}
-                value={l}
-              >
-                {l}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        }
         subtitle={t.suggestions.subtitle}
         title={t.suggestions.title}
       />
@@ -107,7 +94,6 @@ export default function SuggestionsPage() {
         <Textarea
           className="min-h-20 resize-none rounded-xl"
           id="pin-q"
-          lang={lang}
           maxLength={120}
           onChange={(e) => setText(e.target.value)}
           placeholder={t.suggestions.placeholder}
@@ -148,9 +134,7 @@ export default function SuggestionsPage() {
               <Card className={cn("rounded-2xl py-4 shadow-none", s.pinned && "border-brand/30 bg-accent/40")}>
                 <CardContent className="flex items-center gap-3 px-4">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm" lang={s.lang}>
-                      {s.question}
-                    </p>
+                    <p className="font-medium text-sm">{s.texts?.[uiLang] ?? s.question}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
                       {s.pinned ? (
                         <Badge className="gap-1" variant="blue">
@@ -159,7 +143,20 @@ export default function SuggestionsPage() {
                       ) : (
                         <Badge variant="slate">{t.suggestions.proposal}</Badge>
                       )}
-                      {s.check === "pending" && <Badge variant="amber">{t.suggestions.pending}</Badge>}
+                      <span className="flex gap-0.5" title={t.suggestions.languages}>
+                    {TEXT_LANGS.map((l) => (
+                      <span
+                        className={cn(
+                          "rounded px-1 py-px font-semibold text-[10px] uppercase",
+                          (s.texts?.[l] ?? (s.lang === l ? s.question : null)) ? "bg-muted text-foreground/70" : "text-foreground/25",
+                        )}
+                        key={l}
+                      >
+                        {l}
+                      </span>
+                    ))}
+                  </span>
+                  {s.check === "pending" && <Badge variant="amber">{t.suggestions.pending}</Badge>}
                       {s.check === "failed" && <Badge variant="red">{t.suggestions.failed}</Badge>}
                       <span>{t.suggestions.asked(s.asked_count)}</span>
                       {s.rating_avg != null && (

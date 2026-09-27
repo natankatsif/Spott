@@ -377,7 +377,7 @@ def wall(after: str | None = None, limit: int = Query(default=50, ge=1, le=200))
 
 
 @app.get("/api/suggestions", response_model=SuggestionList)
-async def suggestions(lang: str = Query("ro", pattern="^(ro|ru)$"), limit: int = Query(6, ge=1, le=20)) -> SuggestionList:
+async def suggestions(lang: str = Query("ro", pattern="^(ro|ru|en)$"), limit: int = Query(6, ge=1, le=20)) -> SuggestionList:
     """Real questions we know we answer well (answered, verified, re-checked against the current index)."""
     store = getattr(app.state, "suggestions", None)
     if store is None:

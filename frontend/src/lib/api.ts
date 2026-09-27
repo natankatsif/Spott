@@ -243,6 +243,8 @@ export type Suggestion = {
   pinned: boolean;
   /** admin list only: shown to people, waiting for the next re-check, or not answered well */
   check?: "ok" | "pending" | "failed" | null;
+  /** the same question in each language it is shown in; the page picks the UI language's */
+  texts?: Partial<Record<"ro" | "ru" | "en", string>> | null;
 };
 
 export type SuggestionList = { items: Suggestion[] };
@@ -580,7 +582,8 @@ export async function wall(after?: string): Promise<WallResponse> {
   return get<WallResponse>(`/api/wall${after ? `?after=${encodeURIComponent(after)}` : ""}`);
 }
 
-export async function suggestions(lang: Lang, limit = 6): Promise<SuggestionList> {
+/** `en`: the Romanian questions with their English text (answers are RO/RU only). */
+export async function suggestions(lang: Lang | "en", limit = 6): Promise<SuggestionList> {
   if (isMock()) return { items: (suggestionsMock as unknown as SuggestionList).items.filter((s) => s.lang === lang) };
   return get<SuggestionList>(`/api/suggestions?lang=${lang}&limit=${limit}`);
 }
@@ -636,7 +639,7 @@ export const adminFeedbackStats = (token: string) => adminCall<FeedbackStats>(to
 
 export const adminPinSuggestion = (token: string, question: string, lang: Lang, pinned = true) =>
   adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned });
-export const adminSuggestions = (token: string, lang: Lang) => adminCall<SuggestionList>(token, "GET", `/suggestions?lang=${lang}`);
+export const adminSuggestions = (token: string) => adminCall<SuggestionList>(token, "GET", "/suggestions");
 export const adminHideSuggestion = (token: string, id: number) =>
   adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);
 

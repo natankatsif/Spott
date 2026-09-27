@@ -472,10 +472,11 @@ export const admin = {
    * whose answers passed the check, pinned first, at most 20.
    */
   /** Every quick question of the language, also the ones waiting for their check. */
-  suggestions: async (lang: Lang) =>
+  /** Every quick question once (a pinned one with its texts in RO, RU and EN), also the ones waiting for their check. */
+  suggestions: async () =>
     isMock()
-      ? structuredClone(demo.suggestions.filter((s) => s.lang === lang).sort((a, b) => Number(b.pinned) - Number(a.pinned)))
-      : (await withToken((t) => adminSuggestions(t, lang), () => ({ items: [] }))).items,
+      ? structuredClone(demo.suggestions.sort((a, b) => Number(b.pinned) - Number(a.pinned)))
+      : (await withToken((t) => adminSuggestions(t), () => ({ items: [] }))).items,
 
   /** Pins (or unpins) by question text: the backend upserts on (lang, question), so an existing one is updated. */
   pinSuggestion: (question: string, lang: Lang, pinned = true) =>

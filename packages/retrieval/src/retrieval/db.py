@@ -337,6 +337,7 @@ CREATE TABLE IF NOT EXISTS suggestions (
 );
 -- the same pinned question in each language (one pinned in RO is translated and pinned in RU too)
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS pin_group TEXT;
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS texts JSONB;  -- a pinned group's text in RO, RU and EN
 
 -- Unique visitors: one row per browser (its anonymous localStorage id), for the counter in the header.
 CREATE TABLE IF NOT EXISTS visitors (

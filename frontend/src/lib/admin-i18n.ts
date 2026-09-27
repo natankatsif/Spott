@@ -194,7 +194,8 @@ const ro = {
     tooShort: "Între 10 și 120 de caractere.",
     pending: "se verifică",
     failed: "fără răspuns bun",
-    pinnedBoth: "Fixată în română și rusă. Apare după verificarea răspunsului.",
+    pinnedBoth: "Fixată și tradusă în română, rusă și engleză.",
+    languages: "Limbile în care e tradusă",
   },
   status: { queued: "în coadă", running: "rulează", done: "gata", failed: "eșuată", cancelled: "oprită" } satisfies Record<JobStatus, string>,
   tags: {
@@ -400,7 +401,8 @@ const ru: AdminText = {
     tooShort: "От 10 до 120 символов.",
     pending: "проверяется",
     failed: "нет хорошего ответа",
-    pinnedBoth: "Закреплено на румынском и русском. Появится после проверки ответа.",
+    pinnedBoth: "Закреплено и переведено на румынский, русский и английский.",
+    languages: "Языки, на которые переведён",
   },
   status: { queued: "в очереди", running: "идёт", done: "готово", failed: "ошибка", cancelled: "остановлена" },
   tags: {
@@ -604,7 +606,8 @@ const en: AdminText = {
     tooShort: "10 to 120 characters.",
     pending: "being checked",
     failed: "no good answer",
-    pinnedBoth: "Pinned in Romanian and Russian. Shows once its answer is checked.",
+    pinnedBoth: "Pinned and translated into Romanian, Russian and English.",
+    languages: "Languages it is translated into",
   },
   status: { queued: "queued", running: "running", done: "done", failed: "failed", cancelled: "stopped" },
   tags: {

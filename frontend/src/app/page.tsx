@@ -25,7 +25,7 @@ import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { type ErrorCode, health, suggestions as fetchSuggestions, visit } from "@/lib/api";
+import { type ErrorCode, health, type Suggestion as QuickQuestion, suggestions as fetchSuggestions, visit } from "@/lib/api";
 import { loadChat, newChatId, saveChat } from "@/lib/chat-history";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
@@ -40,23 +40,21 @@ const SPEECH: Record<UILang, string> = { ro: "ro-RO", ru: "ru-RU", en: "en-US" }
 let askMode: "fast" | "deep" = "deep";
 
 /**
- * Quick questions on the empty screen: only the ones an admin pinned (GET /api/suggestions, pinned come first).
- * The rest are proposals for the admin to pick from. None pinned (or the English UI: answers are RO/RU only) = none shown.
+ * Quick questions on the empty screen: only the ones an admin pinned (GET /api/suggestions, pinned come first). One
+ * set for every language: each question carries its text in RO, RU and EN, and the UI language only picks the text.
  */
 function useQuickQuestions(lang: UILang, mode: string): readonly string[] {
-  const [loaded, setLoaded] = useState<{ key: string; items: string[] } | null>(null);
-  const key = `${lang}-${mode}`;
+  const [loaded, setLoaded] = useState<{ mode: string; items: QuickQuestion[] } | null>(null);
   useEffect(() => {
-    if (lang === "en") return;
     let alive = true;
-    fetchSuggestions(lang, 20)
-      .then((r) => alive && setLoaded({ key, items: r.items.filter((s) => s.pinned).slice(0, 6).map((s) => s.question) }))
-      .catch(() => alive && setLoaded({ key, items: [] }));
+    fetchSuggestions("ro", 20)
+      .then((r) => alive && setLoaded({ mode, items: r.items.filter((s) => s.pinned).slice(0, 6) }))
+      .catch(() => alive && setLoaded({ mode, items: [] }));
     return () => {
       alive = false;
     };
-  }, [lang, key]);
-  return loaded?.key === key ? loaded.items : [];
+  }, [mode]);
+  return loaded?.mode === mode ? loaded.items.map((s) => s.texts?.[lang] ?? s.question) : [];
 }
 
 type BackendStatus = "ok" | "warming" | "down";

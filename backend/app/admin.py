@@ -626,12 +626,12 @@ async def pin_suggestion(req: SuggestionCreate, request: Request) -> Suggestion:
 
 
 @router.get("/suggestions", response_model=SuggestionList)
-async def admin_suggestions(request: Request, lang: str = Query("ro", pattern="^(ro|ru)$")) -> SuggestionList:
-    """Every quick question of a language, with whether it is shown yet (pending / failed re-check)."""
+async def admin_suggestions(request: Request) -> SuggestionList:
+    """Every quick question once, with its texts in every language and whether it is shown yet."""
     suggestions = getattr(request.app.state, "suggestions", None)
     if suggestions is None:
         raise ApiException(503, "unavailable", "Database not initialized")
-    return SuggestionList(items=await run_in_threadpool(suggestions.admin_list, lang))
+    return SuggestionList(items=await run_in_threadpool(suggestions.admin_list))
 
 
 @router.delete("/suggestions/{suggestion_id}")

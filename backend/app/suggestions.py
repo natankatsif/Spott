@@ -27,12 +27,14 @@ from .wall import mask
 
 log = logging.getLogger("backend.suggestions")
 
-LANGS = ("ro", "ru")
-LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian"}
+LANGS = ("ro", "ru")  # the languages questions are answered in: a row (and a checked answer) per language
+TEXT_LANGS = ("ro", "ru", "en")  # the languages a pinned question is shown in on the home screen
+LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian", "en": "English"}
 TRANSLATE_PROMPT = """\
 Translate a resident's question to the Chișinău City Hall assistant from {src} to {dst}. Keep it a short, natural \
 question a resident would type, with the same meaning; keep names of institutions, acts and places (in Russian the \
-City Hall is "Примэрия Кишинэу", in Romanian "Primăria municipiului Chișinău"). At most 120 characters."""
+City Hall is "Примэрия Кишинэу", in Romanian "Primăria municipiului Chișinău", in English "Chișinău City Hall"). \
+At most 120 characters."""
 TRANSLATE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["text"],
                     "properties": {"text": {"type": "string"}}}
 # (question, from lang, to lang) → the question in the other language, or None
@@ -149,13 +151,18 @@ class PgSuggestions:
         return {"checked": checked, "dropped": dropped}
 
     def list(self, lang: str, limit: int) -> list[Suggestion]:
-        rows = self._rows("SELECT * FROM suggestions WHERE ok AND NOT hidden AND lang = %s "
-                          "ORDER BY pinned DESC, asked_count DESC, id LIMIT %s", (lang, limit))
-        return [self.suggestion(r) for r in rows]
+        """The home screen's quick questions, pinned first, each with its text in every language (`texts`), so the
+        page switches the text with the UI language instead of loading other questions. A pinned question is the
+        admin's choice and always shows (its check only decides whether a checked answer is replayed); a proposal
+        shows only once checked. English has no answers of its own: its questions are the Romanian ones, in English."""
+        base = lang if lang in LANGS else "ro"
+        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden AND lang = %s AND (ok OR pinned) "
+                          "ORDER BY pinned DESC, asked_count DESC, id LIMIT %s", (base, limit))
+        return [self.suggestion(r | {"question": (r.get("texts") or {}).get(lang) or r["question"]}) for r in rows]
 
     def add(self, question: str, lang: str, pinned: bool, translate: Translate | None = None) -> Suggestion:
-        """Pins (or unpins) a question. Pinned, it is also translated and pinned in the other language, so the
-        home screen shows the same questions in RO and RU; unpinning unpins the whole group."""
+        """Pins (or unpins) a question. Pinned, it is translated into the other languages (RO, RU, EN) and pinned as one
+        group, so the home screen shows the same questions in every language; unpinning unpins the whole group."""
         [r] = self._rows("INSERT INTO suggestions (question, lang, pinned) VALUES (%s, %s, %s) "
                          "ON CONFLICT (lang, question) DO UPDATE SET pinned = EXCLUDED.pinned, hidden = FALSE "
                          "RETURNING *", (question.strip(), lang, pinned))
@@ -163,14 +170,18 @@ class PgSuggestions:
         if pinned:
             group = group or uuid.uuid4().hex[:12]
             self._rows("UPDATE suggestions SET pin_group = %s WHERE id = %s", (group, r["id"]))
-            have = {x["lang"] for x in self._rows("SELECT lang FROM suggestions WHERE pin_group = %s", (group,))}
-            for other in (x for x in LANGS if x not in have):
-                text = translate(r["question"], lang, other) if translate else None
-                if text and MIN_CHARS <= len(text.strip()) <= MAX_CHARS:
-                    self._rows("INSERT INTO suggestions (question, lang, pinned, pin_group) VALUES (%s, %s, TRUE, %s) "
-                               "ON CONFLICT (lang, question) DO UPDATE SET pinned = TRUE, hidden = FALSE, "
-                               "pin_group = EXCLUDED.pin_group", (text.strip(), other, group))
-            self._rows("UPDATE suggestions SET pinned = TRUE, hidden = FALSE WHERE pin_group = %s", (group,))
+            rows = self._rows("SELECT lang, question, texts FROM suggestions WHERE pin_group = %s", (group,))
+            texts = {k: v for x in rows for k, v in (x["texts"] or {}).items()} | {x["lang"]: x["question"] for x in rows}
+            for other in (x for x in TEXT_LANGS if x not in texts):
+                text = (translate(r["question"], lang, other) or "").strip() if translate else ""
+                if MIN_CHARS <= len(text) <= MAX_CHARS:
+                    texts[other] = text
+                    if other in LANGS:  # answered in it: a row of its own, checked like any quick question
+                        self._rows("INSERT INTO suggestions (question, lang, pinned, pin_group) VALUES (%s, %s, TRUE, %s) "
+                                   "ON CONFLICT (lang, question) DO UPDATE SET pinned = TRUE, hidden = FALSE, "
+                                   "pin_group = EXCLUDED.pin_group", (text, other, group))
+            self._rows("UPDATE suggestions SET pinned = TRUE, hidden = FALSE, texts = %s WHERE pin_group = %s",
+                       (Jsonb(texts), group))
         elif group:
             self._rows("UPDATE suggestions SET pinned = FALSE WHERE pin_group = %s", (group,))
         return self.suggestion(r | {"pinned": pinned})
@@ -181,17 +192,32 @@ class PgSuggestions:
             "UPDATE suggestions SET hidden = TRUE, pinned = FALSE WHERE id = %s OR pin_group = "
             "(SELECT pin_group FROM suggestions WHERE id = %s) RETURNING id", (suggestion_id, suggestion_id)))
 
-    def admin_list(self, lang: str, limit: int = 100) -> list[Suggestion]:
-        """Everything not hidden, also what isn't checked yet or failed its check (the admin sees why)."""
-        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden AND lang = %s "
-                          "ORDER BY pinned DESC, ok DESC, asked_count DESC, id LIMIT %s", (lang, limit))
-        return [self.suggestion(r, check="ok" if r["ok"] else "pending" if r["checked_at"] is None else "failed")
-                for r in rows]
+    def admin_list(self, limit: int = 200) -> list[Suggestion]:
+        """One entry per question: a pinned group once, with its texts in every language; also what isn't checked
+        yet or failed its check (the admin sees why)."""
+        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden ORDER BY pinned DESC, asked_count DESC, id")
+        groups: dict[str, list[dict]] = {}
+        for r in rows:
+            groups.setdefault(r["pin_group"] or f"id{r['id']}", []).append(r)
+        out = []
+        for members in groups.values():
+            head = next((m for m in members if m["lang"] == "ro"), members[0])
+            texts = {k: v for m in members for k, v in (m.get("texts") or {}).items()} | \
+                    {m["lang"]: m["question"] for m in members}
+            checks = ["ok" if m["ok"] else "pending" if m["checked_at"] is None else "failed" for m in members]
+            check = "failed" if "failed" in checks else "pending" if "pending" in checks else "ok"
+            rated = [m["rating_avg"] for m in members if m["rating_avg"] is not None]
+            out.append(self.suggestion(head | {"asked_count": sum(m["asked_count"] for m in members),
+                                               "rating_avg": rated[0] if rated else None,
+                                               "pinned": any(m["pinned"] for m in members), "texts": texts},
+                                       check=check))
+        return out[:limit]
 
     @staticmethod
     def suggestion(r: dict, check: str | None = None) -> Suggestion:
         return Suggestion(id=r["id"], question=r["question"], lang=r["lang"], answer_id=r["answer_id"],
-                          asked_count=r["asked_count"], rating_avg=r["rating_avg"], pinned=r["pinned"], check=check)
+                          asked_count=r["asked_count"], rating_avg=r["rating_avg"], pinned=r["pinned"], check=check,
+                          texts=r.get("texts") or None)
 
     def cached(self, req: AskRequest) -> AskResponse | None:
         """The checked answer of a quick question, if it was checked against the current index."""

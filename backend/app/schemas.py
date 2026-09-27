@@ -247,6 +247,8 @@ class Suggestion(Strict):
     pinned: bool
     # admin list only: "ok" shown to people, "pending" until the next re-check answers it, "failed" not answered well
     check: Literal["ok", "pending", "failed"] | None = None
+    # the same question in each language it is shown in ({"ro", "ru", "en"}); the page picks the UI language's
+    texts: dict[str, str] | None = None
 
 
 class SuggestionList(Strict):

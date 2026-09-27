@@ -55,7 +55,7 @@ def test_checked_answer_is_replayed_as_a_stream():
 
 class FakeSuggestions:
     def list(self, lang, limit):
-        return [Suggestion(id=1, question="Cine elaborează Planul urbanistic general?", lang=lang, answer_id="a1",
+        return [Suggestion(id=1, question="Cine elaborează Planul urbanistic general?", lang="ru" if lang == "ru" else "ro", answer_id="a1",
                            asked_count=7, rating_avg=None, pinned=False)][:limit]
 
 
@@ -65,6 +65,7 @@ def test_suggestions_endpoint():
         client = TestClient(main.app)
         r = client.get("/api/suggestions", params={"lang": "ro", "limit": 6})
         assert r.json()["items"][0]["asked_count"] == 7
-        assert client.get("/api/suggestions", params={"lang": "en"}).status_code == 422
+        assert client.get("/api/suggestions", params={"lang": "en"}).status_code == 200  # the RO questions, in English
+        assert client.get("/api/suggestions", params={"lang": "de"}).status_code == 422
     finally:
         main.app.state.suggestions = None
