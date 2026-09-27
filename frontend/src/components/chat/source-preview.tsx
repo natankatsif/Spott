@@ -114,8 +114,12 @@ type Found = "exact" | "words" | "start" | "none";
 const toStatus = (found: Found | undefined): LocateStatus =>
   found === "exact" ? "found" : found === "none" ? "missing" : found ? "approx" : "found";
 
-/** No "ready" after this long: the document didn't open (unknown doc, site down…). The frame stays: it may finish. */
-const FAIL_MS = 8000;
+/** No "ready" after this long: the document didn't open (unknown doc, site down…). The frame stays: it may finish.
+ * Generous on purpose: a big PDF or a slow city hall page can take well over 10 s, and saying "didn't open" and
+ * then showing the document a few seconds later is worse than waiting. */
+const FAIL_MS = 30000;
+/** From here the spinner says why it is taking long, instead of giving up. */
+const SLOW_MS = 7000;
 
 // allow-same-origin: pdf.js needs it; allow-popups-to-escape-sandbox: "Deschide originalul ↗" inside the preview
 // opens the city hall site outside our sandbox (some pages break in it). docs/FRONTEND-11.md §1.
@@ -161,12 +165,17 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
     return () => window.removeEventListener("message", onMessage);
   }, [report]);
 
-  // still looking after FAIL_MS → the document didn't open
+  // still looking after SLOW_MS → say it is slow; after FAIL_MS → the document didn't open
+  const [slowFor, setSlowFor] = useState<string | null>(null);
   useEffect(() => {
     if (status !== "searching") return;
     const id = citation.id;
+    const slow = setTimeout(() => setSlowFor(id), SLOW_MS);
     const timer = setTimeout(() => report(id, "failed"), FAIL_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(slow);
+      clearTimeout(timer);
+    };
   }, [status, citation.id, report]);
 
   return (
@@ -210,6 +219,7 @@ function PreviewFrame({ citation, t }: { citation: Citation; t: UIText }) {
             <div className="m-auto flex w-full max-w-sm flex-col items-center gap-3 text-center">
               <Spinner className="size-6 text-brand" />
               <Shimmer className="font-medium text-sm">{t.preview.searching}</Shimmer>
+              {slowFor === citation.id && <p className="text-muted-foreground text-xs animate-in fade-in">{t.preview.slow}</p>}
             </div>
           )}
         </div>
