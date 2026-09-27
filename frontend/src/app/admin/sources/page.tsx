@@ -126,24 +126,18 @@ export default function SourcesPage() {
       <PageHeader subtitle={t.sources.subtitle} title={t.sources.title} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {totals ? (
-          <>
-            <StatCard
-              hint={`/ ${number(totals.sites_total, lang)}`}
-              label={t.sources.totals.sites}
-              value={number(totals.sites_indexed, lang)}
-            />
-            <StatCard label={t.sources.totals.pages} value={number(totals.pages, lang)} />
-            <StatCard
-              hint={`/ ${number(totals.documents_found, lang)}`}
-              label={t.sources.totals.documents}
-              value={number(totals.documents_downloaded, lang)}
-            />
-            <StatCard label={t.sources.totals.chunks} value={number(totals.chunks, lang)} />
-          </>
-        ) : (
-          Array.from({ length: 4 }, (_, i) => <Skeleton className="h-[86px] rounded-2xl" key={i} />)
-        )}
+        <StatCard
+          hint={totals && `/ ${number(totals.sites_total, lang)}`}
+          label={t.sources.totals.sites}
+          value={totals && number(totals.sites_indexed, lang)}
+        />
+        <StatCard label={t.sources.totals.pages} value={totals && number(totals.pages, lang)} />
+        <StatCard
+          hint={totals && `/ ${number(totals.documents_found, lang)}`}
+          label={t.sources.totals.documents}
+          value={totals && number(totals.documents_downloaded, lang)}
+        />
+        <StatCard label={t.sources.totals.chunks} value={totals && number(totals.chunks, lang)} />
       </div>
 
       <AddSource inputRef={addRef} lang={lang} onAdded={(id) => { query.reload(); if (id) highlight(id); }} t={t} />

@@ -45,38 +45,34 @@ export default function FeedbackPage() {
           icon={ThumbsUpIcon}
           title={t.common.loadError}
         />
-      ) : !s ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton className="h-24 rounded-2xl" key={i} />
-          ))}
-          <Skeleton className="h-64 rounded-2xl sm:col-span-3" />
-        </div>
-      ) : s.count === 0 ? (
+      ) : s?.count === 0 ? (
         <EmptyState icon={ThumbsUpIcon} title={t.feedback.noData} />
       ) : (
         <>
+          {/* the cards and their labels are there at once; only the numbers wait for the data */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label={t.feedback.count} value={number(s.count, lang)} />
+            <StatCard label={t.feedback.count} value={s && number(s.count, lang)} />
             <StatCard
               aside={<ThumbsUpIcon className="text-emerald-600" size={18} />}
-              hint={share(likes)}
+              hint={s && share(likes)}
               label={t.feedback.likes}
-              value={number(likes, lang)}
+              value={s && number(likes, lang)}
             />
             <StatCard
               aside={<ThumbsDownIcon className="text-destructive" size={18} />}
               className={dislikes > 0 ? "border-destructive/25" : undefined}
-              hint={share(dislikes)}
+              hint={s && share(dislikes)}
               label={t.feedback.dislikes}
-              value={number(dislikes, lang)}
+              value={s && number(dislikes, lang)}
             />
           </div>
 
           <div className="mt-3 grid gap-3 lg:grid-cols-5">
             <section className="rounded-2xl border bg-card p-4 lg:col-span-3">
               <h2 className="mb-1 font-medium text-sm">{t.feedback.trend}</h2>
-              {s.by_day.length > 1 ? (
+              {!s ? (
+                <Skeleton className="mt-3 h-52 w-full rounded-xl" />
+              ) : s.by_day.length > 1 ? (
                 <Chart
                   className="-mx-1"
                   color="#1d5fae"
@@ -93,12 +89,13 @@ export default function FeedbackPage() {
             <div className="flex flex-col gap-3 lg:col-span-2">
               <section className="rounded-2xl border bg-card p-4">
                 <h2 className="mb-3 font-medium text-sm">{t.feedback.votes}</h2>
-                <VoteBars perStar={s.per_star} />
+                {s ? <VoteBars perStar={s.per_star} /> : <Skeleton className="h-12 w-full rounded-lg" />}
               </section>
               <section className="rounded-2xl border bg-card p-4">
                 <h2 className="mb-3 font-medium text-sm">{t.feedback.tags}</h2>
                 <div className="flex flex-wrap gap-1.5">
-                  {s.top_tags.map((tag) => (
+                  {!s && <Skeleton className="h-6 w-40 rounded-full" />}
+                  {s?.top_tags.map((tag) => (
                     <Badge className="gap-1.5 rounded-full px-2.5 py-1" key={tag.tag} variant={tag.tag === "helpful" ? "emerald" : "slate"}>
                       {t.tags[tag.tag] ?? tag.tag}
                       <span className="tabular-nums opacity-60">{tag.count}</span>

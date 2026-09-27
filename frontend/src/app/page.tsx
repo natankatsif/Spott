@@ -250,7 +250,7 @@ export default function Home() {
             onSelect={openChat}
             t={t}
           />
-          <main className="flex h-full min-w-0 flex-1 overflow-hidden">
+          <main className="relative flex h-full min-w-0 flex-1 overflow-hidden">
             <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
               <div aria-hidden className="top-blur pointer-events-none absolute inset-x-0 top-0 z-10 h-20" />
               <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-end gap-2 p-4">
@@ -331,7 +331,6 @@ export default function Home() {
                   <div />
                   <div />
                 </div>
-                <div className="dock-glow absolute inset-0" />
               </div>
               <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4">
                 {messages.length === 0 && quickQuestions.length > 0 && (
@@ -380,8 +379,10 @@ export default function Home() {
                 </p>
               </footer>
             </div>
+            {/* the glow spans the whole width, under the document panel too, not just the chat column */}
+            <div aria-hidden className="dock-glow pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56" />
             {isDesktop && preview && (
-              <aside className="w-[min(46vw,760px)] shrink-0 py-3 pr-3 duration-300 animate-in fade-in slide-in-from-right-6">
+              <aside className="relative z-20 w-[min(46vw,760px)] shrink-0 py-3 pr-3 duration-300 animate-in fade-in slide-in-from-right-6">
                 <SourcePreviewPanel className="h-full" t={t} />
               </aside>
             )}
