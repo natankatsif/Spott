@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUpRightIcon, DatabaseIcon, LogOutIcon, MessageCircleQuestionIcon, MessageSquareQuoteIcon, ThumbsUpIcon, WorkflowIcon } from "lucide-react";
+import { ArrowUpRightIcon, CoinsIcon, CpuIcon, DatabaseIcon, LogOutIcon, MessageCircleQuestionIcon, MessageSquareQuoteIcon, ThumbsUpIcon, WorkflowIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LangSwitch } from "@/components/admin/lang-switch";
 import { LogoMark } from "@/components/logo-mark";
+import { ThemeSwitch } from "@/components/theme-switch";
 import FallbackAvatar from "@/components/spell/fallback-avatar";
 import {
   Sidebar,
@@ -43,6 +44,8 @@ export function AdminSidebar() {
     { href: "/admin/jobs", label: t.nav.jobs, icon: WorkflowIcon, badge: activeJobs || null },
     { href: "/admin/feedback", label: t.nav.feedback, icon: ThumbsUpIcon },
     { href: "/admin/suggestions", label: t.nav.suggestions, icon: MessageSquareQuoteIcon },
+    { href: "/admin/models", label: t.nav.models, icon: CpuIcon },
+    { href: "/admin/usage", label: t.nav.usage, icon: CoinsIcon },
   ];
 
   return (
@@ -90,6 +93,7 @@ export function AdminSidebar() {
       <SidebarFooter className="gap-3">
         <div className="flex flex-col gap-2 px-1 group-data-[collapsible=icon]:hidden">
           <LangSwitch />
+          <ThemeSwitch />
           {/* Mock/Live switch: mock mode is off (lib/mode.ts always returns "live")
           <div className="flex w-fit rounded-full bg-muted/80 p-0.5 text-xs">
             {(["mock", "live"] as const).map((m) => (

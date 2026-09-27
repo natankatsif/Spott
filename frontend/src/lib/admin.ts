@@ -41,6 +41,18 @@ import {
   type SourceList,
   type SourceRow,
   type Suggestion,
+  adminLLM,
+  adminLLMModels,
+  adminSaveLLM,
+  adminTestLLM,
+  type LLMCheck,
+  type LLMProvider,
+  type LLMSettings,
+  type LLMSettingsUpdate,
+  adminSavePricing,
+  adminUsage,
+  type Pricing,
+  type UsageReport,
 } from "./api";
 import feedbackMock from "./mocks/admin/feedback.json";
 import addBlocked from "./mocks/admin/add-source-blocked.json";
@@ -160,6 +172,21 @@ const demo = {
   suggestions: structuredClone(suggestionsMock.items) as Suggestion[],
   feedback: structuredClone(feedbackMock.items) as FeedbackItem[],
   nextId: 1000,
+  pricing: {
+    currency: "USD",
+    rates: { USD: 1, EUR: 0.86, MDL: 17 },
+    prices: { "gpt-4o": { input: 2.5, output: 10 }, "gpt-6-luna": { input: 0.1, output: 0.4 } },
+    budget_usd: 50,
+  } as Pricing,
+  llm: {
+    keys: { openai: "sk-demo-4f2a" } as Partial<Record<LLMProvider, string>>,
+    urls: {} as Partial<Record<LLMProvider, string>>,
+    roles: {
+      answer: { provider: "openai", model: "gpt-4o", source: "env" },
+      fast: { provider: "openai", model: "gpt-6-luna", source: "env" },
+      deep: null,
+    } as LLMSettings["roles"],
+  },
 };
 
 const DEMO_STAGES: [NonNullable<Job["stage"]>, number, number, number][] = [
@@ -352,6 +379,133 @@ function demoAddSource(url: string): SourceAdded {
 
 // ─────────────── calls ───────────────
 
+const DEMO_PROVIDERS: { id: LLMProvider; label: string; api: "openai" | "anthropic"; url: string | null }[] = [
+  { id: "openai", label: "OpenAI", api: "openai", url: null },
+  { id: "anthropic", label: "Anthropic (Claude)", api: "anthropic", url: null },
+  { id: "gemini", label: "Google (Gemini)", api: "openai", url: "https://generativelanguage.googleapis.com/v1beta/openai/" },
+  { id: "custom", label: "Own server (OpenAI-compatible)", api: "openai", url: null },
+];
+const DEMO_MODELS: Record<LLMProvider, string[]> = {
+  openai: ["gpt-4o", "gpt-4o-mini", "gpt-5.5", "gpt-6-luna", "gpt-6-sol"],
+  anthropic: ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
+  gemini: ["gemini-3-pro", "gemini-3-flash", "gemini-3-flash-lite"],
+  custom: ["qwen3:8b", "llama4:scout"],
+};
+
+function demoLLM(): LLMSettings {
+  const { keys, urls, roles } = demo.llm;
+  return {
+    providers: DEMO_PROVIDERS.map((p) => ({
+      id: p.id, label: p.label, api: p.api, needs_key: p.id !== "custom", needs_url: p.id === "custom",
+      has_key: !!keys[p.id], key_hint: keys[p.id] ? `…${keys[p.id]!.slice(-4)}` : null,
+      key_source: keys[p.id] ? (p.id === "openai" && keys[p.id] === "sk-demo-4f2a" ? "env" : "admin") : null,
+      base_url: urls[p.id] ?? null, default_url: p.url,
+    })),
+    roles,
+  };
+}
+
+function demoSaveLLM(u: LLMSettingsUpdate): LLMSettings {
+  for (const [id, v] of Object.entries(u.providers ?? {}) as [LLMProvider, { api_key?: string; base_url?: string }][]) {
+    if (v.api_key !== undefined) {
+      if (v.api_key) demo.llm.keys[id] = v.api_key;
+      else delete demo.llm.keys[id];
+    }
+    if (v.base_url !== undefined) {
+      if (v.base_url) demo.llm.urls[id] = v.base_url;
+      else delete demo.llm.urls[id];
+    }
+  }
+  for (const [role, r] of Object.entries(u.roles ?? {}) as [keyof LLMSettings["roles"], LLMSettings["roles"]["answer"]][]) {
+    if (r && r.provider !== "custom" && !demo.llm.keys[r.provider]) {
+      throw new ApiRequestError(422, { error: "validation_error", message: `${role}: no API key for ${r.provider}`, retry_after_s: null });
+    }
+    demo.llm.roles[role] = r ? { provider: r.provider, model: r.model, source: "admin" } : role === "answer" ? { provider: "openai", model: "gpt-4o", source: "env" } : role === "fast" ? { provider: "openai", model: "gpt-6-luna", source: "env" } : null;
+  }
+  return demoLLM();
+}
+
+// admin → Spending in mock mode: a month of made-up calls, priced with the demo prices
+function demoUsage(days: number): UsageReport {
+  const pricing = demo.pricing;
+  const models = [
+    { provider: "openai", model: "gpt-4o", kinds: ["answer"], calls: 38, inTok: 5200, outTok: 420 },
+    { provider: "openai", model: "gpt-6-luna", kinds: ["rewrite", "route", "translate_quotes"], calls: 95, inTok: 700, outTok: 90 },
+    { provider: "anthropic", model: "claude-sonnet-5", kinds: ["gap_groups"], calls: 3, inTok: 3100, outTok: 600 },
+  ];
+  const price = (m: string) => pricing.prices[m] ?? null;
+  const costOf = (m: string, i: number, o: number) => {
+    const p = price(m);
+    return p ? (i * p.input + o * p.output) / 1e6 : null;
+  };
+  const today = new Date();
+  const zero = () => ({ calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, unpriced_calls: 0 });
+  const totals = { today: zero(), month: zero(), range: zero(), all_time: zero() };
+  const daily: UsageReport["daily"] = [];
+  const byModel = new Map<string, UsageReport["models"][number]>();
+  const byKind = new Map<string, UsageReport["kinds"][number]>();
+  for (let back = 89; back >= 0; back--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - back);
+    const wave = 0.55 + 0.45 * Math.sin(back / 3) + (back % 7 === 0 ? 0.6 : 0);
+    const day = { day: d.toISOString().slice(0, 10), calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+    for (const m of models) {
+      const calls = Math.max(0, Math.round(m.calls * wave * (back > 60 ? 0.4 : 1)));
+      const i = calls * m.inTok;
+      const o = calls * m.outTok;
+      const c = costOf(m.model, i, o);
+      const add = (t: UsageReport["today"]) => {
+        t.calls += calls;
+        t.input_tokens += i;
+        t.output_tokens += o;
+        if (c === null) t.unpriced_calls += calls;
+        else t.cost_usd += c;
+      };
+      add(totals.all_time);
+      if (d.getMonth() === today.getMonth()) add(totals.month);
+      if (back === 0) add(totals.today);
+      if (back >= days) continue;
+      add(totals.range);
+      day.calls += calls;
+      day.input_tokens += i;
+      day.output_tokens += o;
+      day.cost_usd += c ?? 0;
+      const row = byModel.get(m.model) ?? { provider: m.provider, model: m.model, calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: c === null ? null : 0, price: price(m.model) };
+      row.calls += calls;
+      row.input_tokens += i;
+      row.output_tokens += o;
+      if (c !== null) row.cost_usd = (row.cost_usd ?? 0) + c;
+      byModel.set(m.model, row);
+      m.kinds.forEach((k, n) => {
+        const share = m.kinds.length === 1 ? 1 : [0.5, 0.3, 0.2][n];
+        const r = byKind.get(k) ?? { kind: k, calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+        r.calls += Math.round(calls * share);
+        r.input_tokens += Math.round(i * share);
+        r.output_tokens += Math.round(o * share);
+        r.cost_usd += (c ?? 0) * share;
+        byKind.set(k, r);
+      });
+    }
+    if (back < days) daily.push(day);
+  }
+  const questions = Math.round(totals.range.calls / 3.6);
+  const dim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  return {
+    days,
+    pricing,
+    ...totals,
+    month_forecast_usd: (totals.month.cost_usd / today.getDate()) * dim,
+    questions,
+    cost_per_question_usd: questions ? totals.range.cost_usd / questions : null,
+    daily,
+    models: [...byModel.values()].sort((a, b) => (b.cost_usd ?? 0) - (a.cost_usd ?? 0)),
+    kinds: [...byKind.values()].sort((a, b) => b.cost_usd - a.cost_usd),
+    known_models: ["claude-sonnet-5", "gpt-4o", "gpt-6-luna"],
+  };
+}
+
+const demoHasAccess = (c: LLMCheck) => !!(c.api_key || demo.llm.keys[c.provider] || (c.provider === "custom" && (c.base_url || demo.llm.urls.custom)));
+
 export const admin = {
   me: () => withToken((t) => adminMe(t), () => ({ login: readSession()?.login ?? "admin" })),
 
@@ -496,6 +650,31 @@ export const admin = {
       () => demo.feedback.filter((f) => f.rating <= maxRating).sort((a, b) => a.rating - b.rating),
     ),
 
+  usage: (days: number) => withToken((t) => adminUsage(t, days), () => demoUsage(days)),
+  savePricing: (pricing: Pricing) =>
+    withToken(
+      (t) => adminSavePricing(t, pricing),
+      () => (demo.pricing = { ...pricing, rates: { ...pricing.rates, USD: 1 } }),
+    ),
+
+  llm: () => withToken((t) => adminLLM(t), demoLLM),
+  saveLLM: (update: LLMSettingsUpdate) => withToken((t) => adminSaveLLM(t, update), () => demoSaveLLM(update)),
+  llmModels: (check: LLMCheck) =>
+    withToken(
+      async (t) => (await adminLLMModels(t, check)).models,
+      () => {
+        if (!demoHasAccess(check)) throw new ApiRequestError(502, { error: "unavailable", message: "no API key", retry_after_s: null });
+        return DEMO_MODELS[check.provider];
+      },
+    ),
+  testLLM: (check: LLMCheck & { model: string }) =>
+    withToken(
+      (t) => adminTestLLM(t, check),
+      () =>
+        demoHasAccess(check)
+          ? { ok: true, model: check.model, latency_ms: 840, error: null }
+          : { ok: false, model: null, latency_ms: 12, error: "no API key" },
+    ),
   feedbackStats: () => withToken((t) => adminFeedbackStats(t), () => feedbackStatsMock as FeedbackStats),
 
   /**

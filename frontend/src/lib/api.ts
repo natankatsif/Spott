@@ -678,3 +678,83 @@ export const adminGaps = (token: string, q: GapQuery = {}) => {
 export const adminRecheckGap = (token: string, id: string) => adminCall<GapRecheck>(token, "POST", `/gaps/${encodeURIComponent(id)}/recheck`);
 export const adminHideGap = (token: string, id: string, hide = true) =>
   adminCall<{ ok: boolean }>(token, "POST", `/gaps/${encodeURIComponent(id)}/${hide ? "hide" : "unhide"}`);
+
+// ─────────────── /api/admin/llm: API keys and the model of each role ───────────────
+
+export type LLMProvider = "openai" | "anthropic" | "gemini" | "custom";
+export type LLMRole = "answer" | "fast" | "deep";
+export type LLMProviderView = {
+  id: LLMProvider;
+  label: string;
+  api: "openai" | "anthropic";
+  needs_key: boolean;
+  needs_url: boolean;
+  has_key: boolean;
+  key_hint: string | null; // "…abcd": the key itself never leaves the server
+  key_source: "admin" | "env" | null;
+  base_url: string | null;
+  default_url: string | null;
+};
+export type LLMRoleModel = { provider: LLMProvider; model: string };
+export type LLMSettings = {
+  providers: LLMProviderView[];
+  roles: Record<LLMRole, (LLMRoleModel & { source: "admin" | "env" }) | null>;
+};
+/** api_key / base_url: omitted = keep, "" = remove the saved one. A role null = back to the server's .env (deep: off). */
+export type LLMSettingsUpdate = {
+  providers?: Partial<Record<LLMProvider, { api_key?: string; base_url?: string }>>;
+  roles?: Partial<Record<LLMRole, LLMRoleModel | null>>;
+};
+export type LLMCheck = { provider: LLMProvider; api_key?: string; base_url?: string };
+export type LLMModelTest = { ok: boolean; model: string | null; latency_ms: number; error: string | null };
+
+export const adminLLM = (token: string) => adminCall<LLMSettings>(token, "GET", "/llm");
+export const adminSaveLLM = (token: string, update: LLMSettingsUpdate) => adminCall<LLMSettings>(token, "PUT", "/llm", update);
+/** The provider's chat models; also checks the key (typed or saved). */
+export const adminLLMModels = (token: string, check: LLMCheck) =>
+  adminCall<{ models: string[] }>(token, "POST", "/llm/models", check);
+/** One tiny structured call to the model: key, name and JSON output. */
+export const adminTestLLM = (token: string, check: LLMCheck & { model: string }) =>
+  adminCall<LLMModelTest>(token, "POST", "/llm/test", check);
+
+// ─────────────── /api/admin/usage: tokens and money spent on models ───────────────
+
+export type Currency = "USD" | "EUR" | "MDL";
+/** USD per 1M tokens (the unit providers publish). */
+export type ModelPrice = { input: number; output: number };
+export type Pricing = {
+  currency: Currency; // shown in
+  rates: Record<Currency, number>; // units per 1 USD
+  prices: Record<string, ModelPrice>; // model → price
+  budget_usd: number | null; // per calendar month
+};
+export type UsageTotals = { calls: number; input_tokens: number; output_tokens: number; cost_usd: number; unpriced_calls: number };
+export type UsageDay = { day: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number };
+export type UsageModel = {
+  provider: string;
+  model: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null; // null: no price set
+  price: ModelPrice | null;
+};
+export type UsageKind = { kind: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number };
+export type UsageReport = {
+  days: number;
+  pricing: Pricing;
+  today: UsageTotals;
+  month: UsageTotals;
+  month_forecast_usd: number;
+  range: UsageTotals;
+  all_time: UsageTotals;
+  questions: number;
+  cost_per_question_usd: number | null;
+  daily: UsageDay[];
+  models: UsageModel[];
+  kinds: UsageKind[];
+  known_models: string[];
+};
+
+export const adminUsage = (token: string, days: number) => adminCall<UsageReport>(token, "GET", `/usage?days=${days}`);
+export const adminSavePricing = (token: string, pricing: Pricing) => adminCall<Pricing>(token, "PUT", "/usage/pricing", pricing);

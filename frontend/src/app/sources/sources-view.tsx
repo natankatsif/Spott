@@ -176,7 +176,7 @@ const SourceCard = ({ name, url, body, logo, lang, ready }: Source & { lang: UIL
             // eslint-disable-next-line @next/next/no-img-element -- pre-sized WebP, already preloaded by useLogosReady
             <img
               alt={name}
-              className="h-14 w-auto max-w-full self-start object-contain object-left sm:h-10 animate-in fade-in duration-300"
+              className="h-14 w-auto max-w-full self-start object-contain object-left sm:h-10 animate-in fade-in duration-300 dark:rounded-md dark:bg-white dark:p-1"
               height={logo.height}
               src={logo.src}
               width={logo.width}

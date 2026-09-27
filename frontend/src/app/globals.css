@@ -31,6 +31,9 @@
   --warning: #b7791f;
   --warning-bg: #fff7e6;
   --success: #1f8a4c;
+  /* chart series (admin → Spending), validated for colour-blind separation on both surfaces */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   /* admin sidebar, in the page's palette */
   --sidebar: #ffffff;
   --sidebar-foreground: #3b4250;
@@ -65,6 +68,8 @@
   --color-warning: var(--warning);
   --color-warning-bg: var(--warning-bg);
   --color-success: var(--success);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -154,15 +159,51 @@
   mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
 
+/* Dark theme (from the design): graphite surfaces, warm off-white text, the logo's light blue as the brand. */
 .dark {
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  color-scheme: dark;
+  --background: #1d1f20;
+  --foreground: #e3e0da;
+  --card: #181a1b;
+  --card-foreground: #e3e0da;
+  --popover: #222426;
+  --popover-foreground: #e3e0da;
+  --primary: #35393b;
+  --primary-foreground: #e3e0da;
+  --secondary: #26292b;
+  --secondary-foreground: #e3e0da;
+  --muted: #2a2d2f;
+  --muted-foreground: #8f8b85;
+  --accent: #26292b;
+  --accent-foreground: #e3e0da;
+  --destructive: #e5605b;
+  --border: #33373a;
+  --input: #373b3d;
+  --ring: #7bb6e2;
+
+  --brand: #7bb6e2;
+  --warning: #e0a84a;
+  --warning-bg: #3a2f1c;
+  --success: #4fbf7e;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+
+  --sidebar: #181a1b;
+  --sidebar-foreground: #c9c4b8;
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #181a1b;
+  --sidebar-accent: #25282a;
+  --sidebar-accent-foreground: #e3e0da;
+  --sidebar-border: #26292b;
+  --sidebar-ring: var(--ring);
+}
+
+/* the glow under the input: a dim blue on the right fading into graphite, as in the design */
+.dark .dock-glow {
+  background:
+    radial-gradient(60% 120% at 12% 100%, rgb(52 56 62 / 0.55), transparent 70%),
+    radial-gradient(70% 140% at 88% 100%, rgb(33 70 96 / 0.7), transparent 70%),
+    linear-gradient(to top, rgb(30 50 64 / 0.45), rgb(29 31 32 / 0));
 }
 
 /* Touch screens: iOS Safari zooms into any field whose text is under 16px when it gets focus.

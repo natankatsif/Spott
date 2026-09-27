@@ -375,7 +375,7 @@ function SourceTableRow({
           </span>
         )}
         {row.stale_signals > 0 && (
-          <span className="mt-0.5 block text-[11px] text-amber-600" title={t.sources.signals(row.stale_signals)}>
+          <span className="mt-0.5 block text-[11px] text-warning" title={t.sources.signals(row.stale_signals)}>
             ⚑ {t.sources.signals(row.stale_signals)}
           </span>
         )}

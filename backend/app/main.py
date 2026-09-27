@@ -41,14 +41,15 @@ from retrieval.tools import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from . import admin, errors, freshness, preview
+from . import admin, errors, freshness, llm_settings, preview, usage
 from .admin import PgAdminStore
 from .answering import answer_events, answer_question, replay_events, to_top_left
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter, client_address
 from .files import DATA_DIR
 from .gaps import PgGaps, llm_cluster
-from .llm import LLM, LLMUnavailable, OpenAILLM
+from .llm import LLM, LLMUnavailable
+from .llm_settings import LLMHolder, PgSettings
 from .pdf_source import PdfSource, make_clients
 from .schemas import (
     AskRequest,
@@ -112,6 +113,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         log.warning("App tables not created: %s", e)
     app.state.admin = PgAdminStore(pool)
+    app.state.usage = usage.PgUsage(pool)
+    app.state.llm_holder = LLMHolder(PgSettings(pool), on_usage=record_usage)
     app.state.answers = PgAnswers(pool)
     app.state.suggestions = PgSuggestions(pool)
     app.state.translate = llm_translate(get_llm)  # a pinned question into the other language
@@ -182,12 +185,23 @@ mimetypes.add_type("text/javascript", ".mjs")  # pdf.js is ES modules: a module 
 app.mount(preview.STATIC_PREFIX, StaticFiles(directory=preview.STATIC), name="preview-static")
 app.include_router(admin.auth_router)
 app.include_router(admin.router)
+app.include_router(llm_settings.router)
+app.include_router(usage.router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,  # CORS_ORIGINS=* for the widget embedded on other sites
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def record_usage(provider: str, model: str, role: str, kind: str, result, ms: int) -> None:
+    """Every routed model call's tokens, for admin → Spending."""
+    log_ = getattr(app.state, "usage", None)
+    if log_ is not None:
+        log_.record(usage.Call(provider=provider, model=model, role=role, kind=kind,
+                               input_tokens=result.prompt_tokens or 0, output_tokens=result.completion_tokens or 0,
+                               ms=ms))
 
 
 def require_pool() -> ConnectionPool:
@@ -198,13 +212,17 @@ def require_pool() -> ConnectionPool:
 
 
 def get_llm() -> LLM:
-    # Created on the first question, so the server starts (and /api/search works) without an API key.
-    if getattr(app.state, "llm", None) is None:
-        try:
-            app.state.llm = OpenAILLM()
-        except LLMUnavailable as e:
-            raise ApiException(503, "unavailable", f"LLM not configured: {e}") from e
-    return app.state.llm
+    # Created on the first question, so the server starts (and /api/search works) without an API key; the keys and
+    # models come from the environment and the admin's settings (admin → Models), re-read after a change.
+    if (fixed := getattr(app.state, "llm", None)) is not None:
+        return fixed
+    holder = getattr(app.state, "llm_holder", None)
+    if holder is None:
+        holder = app.state.llm_holder = LLMHolder(None)
+    try:
+        return holder.get()
+    except LLMUnavailable as e:
+        raise ApiException(503, "unavailable", f"LLM not configured: {e}") from e
 
 
 def client_id(request: Request) -> str:

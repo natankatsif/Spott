@@ -181,7 +181,22 @@ GET    /api/admin/feedback?max_rating=2&limit=50  → { items: FeedbackItem[] } 
 GET    /api/admin/feedback/stats             → { count, average, per_star{"1".."5"}, top_tags[{tag,count}], by_day[{day,count,average}] }
 POST   /api/admin/suggestions                { question, lang, pinned: true } → 201 Suggestion
 DELETE /api/admin/suggestions/{id}           hide it → { ok: true }
+GET    /api/admin/llm                        → LLMSettings
+PUT    /api/admin/llm                        { providers?: {id: {api_key?, base_url?}}, roles?: {role: {provider, model}|null} } → LLMSettings
+POST   /api/admin/llm/models                 { provider, api_key?, base_url? } → { models: string[] }  (checks the key)
+POST   /api/admin/llm/test                   { provider, model, api_key?, base_url? } → { ok, model, latency_ms, error }
+GET    /api/admin/usage?days=30              → UsageReport  (days 1–366)
+PUT    /api/admin/usage/pricing              Pricing → Pricing
 ```
+**Models (admin → Models).** Which provider and model plays each role, and the keys. Applies from the next question.
+- Providers: `openai`, `anthropic` (Claude, Messages API with structured outputs), `gemini` (its OpenAI-compatible endpoint), `custom` (any OpenAI-compatible server: Ollama, vLLM, LM Studio, llama.cpp, OpenRouter; a URL, the key optional). A server without JSON-schema support is asked for JSON mode, then for JSON in the prompt.
+- Roles: `answer` (the answer with quotes), `fast` (routing, query rewrite, translations, gap groups), `deep` (mode=deep; `null` = the answer model). A role without its provider's key falls back to the answer model.
+- `LLMSettings` = `{providers: [{id, label, api, needs_key, needs_url, has_key, key_hint: "…abcd"|null, key_source: admin|env|null, base_url, default_url}], roles: {answer|fast|deep: {provider, model, source: admin|env}|null}}`. Keys are stored in the `settings` table and never returned whole.
+- `PUT`: `api_key`/`base_url` omitted = keep, `""` = remove the saved one; a role `null` = back to the server's `.env` (`deep`: off). `422` when a role's provider has no key (or `custom` no URL): a save can't take the chat down.
+- What the admin hasn't set comes from the environment: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_REWRITE_MODEL`, `OPENAI_MODEL_DEEP`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `LLM_CUSTOM_BASE_URL`, `LLM_CUSTOM_API_KEY`.
+**Spending (admin → Spending).** Every routed model call leaves a row in `llm_usage` (provider, model, role, kind = the call's schema name: `answer`, `route`, `rewrite`, `translate_quotes`, `translate`, `gap_groups`; input/output tokens, ms), written in the background.
+- `Pricing` = `{currency: USD|EUR|MDL, rates: {USD: 1, EUR, MDL} (units per 1 USD, set by hand), prices: {model: {input, output}} (USD per 1M tokens), budget_usd: number|null (per calendar month)}`, in the `settings` table under `pricing`. A dated model name uses its base name's price (`gpt-4o-2024-08-06` → `gpt-4o`).
+- `UsageReport` = `{days, pricing, today, month, month_forecast_usd, range, all_time: Totals, questions, cost_per_question_usd|null, daily: [{day, calls, input_tokens, output_tokens, cost_usd}] (every day of the range), models: [{provider, model, calls, input_tokens, output_tokens, cost_usd|null, price|null}], kinds: [{kind, calls, input_tokens, output_tokens, cost_usd}], known_models: string[]}`; `Totals` = `{calls, input_tokens, output_tokens, cost_usd, unpriced_calls}`. Money is USD, computed on read (a price change re-prices the past); a model without a price counts tokens, not money (`unpriced_calls`). Days are in `USAGE_TZ` (default Europe/Chisinau).
 **Sources (one admin page, no sub-pages).**
 - `SourceRow` = `{id, kind: site|document, url, site_id, title, category, category_source, start_urls[], max_depth, max_pages, enabled, robots: allowed|blocked, status, pages, documents_found, documents_downloaded, chunks, lines, last_crawled, progress, last_error, created_at, last_job: Job|null}`.
   - `status`: `disabled` > `blocked` > `running` > `queued` > `failed` (the last job failed) > `indexed` (has chunks) > `pending` (never indexed, no job): the first that applies.

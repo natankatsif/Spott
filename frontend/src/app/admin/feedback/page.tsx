@@ -53,7 +53,7 @@ export default function FeedbackPage() {
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <StatCard label={t.feedback.count} value={s && number(s.count, lang)} />
             <StatCard
-              aside={<ThumbsUpIcon className="text-emerald-600" size={18} />}
+              aside={<ThumbsUpIcon className="text-success" size={18} />}
               hint={s && share(likes)}
               label={t.feedback.likes}
               value={s && number(likes, lang)}
@@ -170,7 +170,7 @@ function FeedbackRow({ item, t, lang }: { item: FeedbackItem; t: AdminText; lang
         <CollapsibleContent>
           <div className="flex flex-col gap-4 border-t px-4 py-4 text-sm">
             {item.comment && (
-              <div className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
+              <div className="rounded-xl bg-warning-bg px-3 py-2 text-warning">
                 <p className="font-medium text-xs">{t.feedback.comment}</p>
                 <p className="mt-0.5">“{item.comment}”</p>
               </div>

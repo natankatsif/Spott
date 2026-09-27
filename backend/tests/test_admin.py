@@ -7,7 +7,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import admin, main
+from app import admin, llm_settings, main
 from app.admin import Duplicate
 
 LOGIN = {"login": "admin", "password": "correct horse battery"}
@@ -148,7 +148,7 @@ def client(monkeypatch):
     admin.login_limiter.hits.clear()
     main.app.state.admin = MemoryAdmin()
     FETCHED.clear()
-    monkeypatch.setattr(main, "OpenAILLM", no_llm)
+    monkeypatch.setattr(llm_settings, "RoutedLLM", no_llm)
     main.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(fake_site))
     c = TestClient(main.app)
     TOKEN["Authorization"] = "Bearer " + c.post("/api/admin/login", json=LOGIN).json()["token"]

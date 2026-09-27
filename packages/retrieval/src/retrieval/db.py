@@ -351,6 +351,27 @@ CREATE TABLE IF NOT EXISTS suggestions (
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS pin_group TEXT;
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS texts JSONB;  -- a pinned group's text in RO, RU and EN
 
+-- Admin settings (backend/app/llm_settings.py: API keys and the model of each role), one JSON value per key.
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Admin → Spending (backend/app/usage.py): one row per model call, its tokens; money comes from the admin's prices.
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    role TEXT NOT NULL,          -- answer | fast | deep
+    kind TEXT NOT NULL,          -- answer, route, rewrite, translate_quotes, translate, gap_groups...
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage(created_at);
+
 -- Unique visitors: one row per browser (its anonymous localStorage id), for the counter in the header.
 CREATE TABLE IF NOT EXISTS visitors (
     visitor_id TEXT PRIMARY KEY,

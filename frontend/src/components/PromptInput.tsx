@@ -303,6 +303,9 @@ export interface PromptInputProps {
   forceActive?: boolean;
 }
 
+/** project: taps inside [data-no-activate] (the language switch) don't count as starting to type. */
+const isNoActivate = (target: EventTarget | null) => target instanceof Element && !!target.closest("[data-no-activate]");
+
 export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
   (
     {
@@ -743,8 +746,9 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           }}
           onBlur={handleBlur}
           // a real click or key press, not the autofocus on mount
-          onKeyDownCapture={() => !activated && setActivated(true)}
-          onPointerDownCapture={() => !activated && setActivated(true)}
+          // (not a tap on the language switch: switching the language mustn't widen the input)
+          onKeyDownCapture={(e) => !activated && !isNoActivate(e.target) && setActivated(true)}
+          onPointerDownCapture={(e) => !activated && !isNoActivate(e.target) && setActivated(true)}
           className={cn("relative flex flex-col w-full", className)}
           style={{
             maxWidth: wide ? activeWidth : expanded ? 480 : 320,
@@ -805,7 +809,8 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           <div
             onMouseDown={(e) => {
               const isTextarea = e.target === textareaRef.current;
-              if (expanded && !isTextarea && !isRecording) {
+              // the language switch doesn't pull focus into the text (on phones that would open the keyboard)
+              if (expanded && !isTextarea && !isRecording && !isNoActivate(e.target)) {
                 e.preventDefault();
                 textareaRef.current?.focus();
               }
@@ -896,7 +901,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             >
               {/* project: languages as an inline segmented switch instead of a dropdown; the pill slides to the pick */}
               {models.length > 1 && (
-              <div className="relative mr-1 flex items-center rounded-full bg-muted/70 p-0.5" role="radiogroup">
+              <div className="relative mr-1 flex items-center rounded-full bg-muted/70 p-0.5" data-no-activate role="radiogroup">
                 <span
                   aria-hidden
                   className="absolute top-0.5 bottom-0.5 left-0.5 w-8 rounded-full bg-card shadow-sm transition-transform duration-400 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] motion-reduce:transition-none"
@@ -906,7 +911,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                   <button
                     aria-checked={model === selectedModel}
                     className={cn(
-                      "relative z-[1] w-8 rounded-full py-0.5 text-center text-xs font-semibold outline-none transition-colors duration-300 cursor-default select-none active:scale-95",
+                      "relative z-[1] w-8 rounded-full py-0.5 text-center text-xs font-semibold outline-none transition-colors duration-300 cursor-pointer select-none active:scale-95",
                       model === selectedModel ? "text-foreground" : "text-foreground/50 hover:text-foreground/80",
                     )}
                     key={model}

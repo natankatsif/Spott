@@ -21,7 +21,6 @@ import {
   SourcePreviewSheet,
   useIsDesktop,
 } from "@/components/chat/source-preview";
-import { LangSwitch } from "@/components/admin/lang-switch";
 import { LogoMark } from "@/components/logo-mark";
 import { PromptInput } from "@/components/PromptInput";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,7 @@ import { type ErrorCode, health, type Suggestion as QuickQuestion, suggestions a
 import { loadChat, newChatId, saveChat } from "@/lib/chat-history";
 import { type ChatMessage, MunicipalChatTransport, viewOf } from "@/lib/chat-transport";
 import { UI, type UILang } from "@/lib/i18n";
-import { getUILang, useUILang } from "@/lib/lang";
+import { getUILang, setUILang, UI_LANGS, useUILang } from "@/lib/lang";
 import { type ApiMode, /* setApiMode, */ useApiMode } from "@/lib/mode";
 import { sessionId } from "@/lib/session";
 // import { cn } from "@/lib/utils"; // only the commented Mock/Live switch used it
@@ -341,7 +340,6 @@ export default function Home() {
                     </Suggestions>
                   </div>
                 )}
-                <LangSwitch className="bg-card shadow-sm" />
                 <PromptInput
                   className="w-full"
                   activeWidth={736 /* the message column: max-w-3xl minus its px-4 */}
@@ -349,7 +347,9 @@ export default function Home() {
                   forceActive={messages.length > 0}
                   efforts={[...t.efforts]}
                   maxAttachments={0}
-                  models={[] /* the language switch sits above the input: tapping it must not open the input */}
+                  model={lang.toUpperCase()}
+                  models={UI_LANGS.map((l) => l.toUpperCase())}
+                  onModelChange={(code) => setUILang(code.toLowerCase() as UILang)}
                   onSpeechError={(code) => setSpeechError(code)}
                   onSubmit={(value, { effort }) => {
                     askMode = t.efforts.indexOf(effort as never) === 0 ? "fast" : "deep";

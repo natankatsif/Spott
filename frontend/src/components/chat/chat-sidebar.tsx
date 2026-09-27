@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/sidebar";
 import { type ChatMeta, clearChats, deleteChat, useChatHistory } from "@/lib/chat-history";
 import { cn } from "@/lib/utils";
+import { ThemeSwitch } from "@/components/theme-switch";
 import type { UIText } from "@/lib/i18n";
 
 // ─────────────── open / collapsed: closed on every visit, open only while the user keeps it open ───────────────
@@ -229,6 +230,7 @@ export function ChatSidebar({
         </SidebarContent>
 
         <SidebarFooter className="gap-1 border-t p-3 group-data-[collapsible=icon]:hidden">
+          <ThemeSwitch className="mb-1.5" />
           <p className={cn("flex items-center gap-1.5 px-1 text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
             <LockIcon className="size-3 shrink-0" /> {h.local}
           </p>

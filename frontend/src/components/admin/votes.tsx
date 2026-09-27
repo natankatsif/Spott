@@ -15,7 +15,7 @@ export function likesOf(perStar: Record<string, number>) {
 
 /** A like, a dislike, or (an old middle rating) neither. */
 export function Vote({ rating, className, size = 16 }: { rating: number; className?: string; size?: number }) {
-  if (isLike(rating)) return <ThumbsUpIcon className={cn("text-emerald-600", className)} size={size} />;
+  if (isLike(rating)) return <ThumbsUpIcon className={cn("text-success", className)} size={size} />;
   if (isDislike(rating)) return <ThumbsDownIcon className={cn("text-destructive", className)} size={size} />;
   return <MinusIcon className={cn("text-muted-foreground", className)} size={size} />;
 }

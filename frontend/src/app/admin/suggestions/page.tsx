@@ -153,7 +153,7 @@ export default function SuggestionsPage() {
         <EmptyState hint={t.suggestions.noneOnHome} icon={MessageSquareQuoteIcon} title={t.suggestions.empty} />
       ) : (
         <>
-        {pinnedCount === 0 && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-amber-900 text-sm">{t.suggestions.noneOnHome}</p>}
+        {pinnedCount === 0 && <p className="mb-3 rounded-xl bg-warning-bg px-3 py-2 text-warning text-sm">{t.suggestions.noneOnHome}</p>}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
           <span>{t.suggestions.minAsked}</span>
           <div className="flex items-center rounded-full bg-muted/80 p-0.5">
@@ -200,7 +200,7 @@ export default function SuggestionsPage() {
                           <span>{t.suggestions.asked(s.asked_count)}</span>
                       {s.rating_avg != null && (
                         <span className="flex items-center gap-1">
-                          <ThumbsUpIcon className="size-3 text-emerald-600" /> {Math.round(likeShare(s.rating_avg) * 100)}%
+                          <ThumbsUpIcon className="size-3 text-success" /> {Math.round(likeShare(s.rating_avg) * 100)}%
                         </span>
                       )}
                     </div>
