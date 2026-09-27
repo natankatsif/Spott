@@ -75,8 +75,13 @@ export function GapsSection({ t, lang, onAddSource }: { t: AdminText; lang: UILa
     () => inTopic.filter((gap) => status === "all" || gap.status === status).sort(SORTS[sort]),
     [inTopic, status, sort],
   );
+  // each filter's counts follow the other: the status tabs count within the chosen topic, the topic chips within
+  // the chosen status
   const counts = { all: inTopic.length, not_found: 0, partial: 0 };
   for (const gap of inTopic) counts[gap.status]++;
+  const inStatus = (all ?? []).filter((gap) => status === "all" || gap.status === status);
+  const perTopic = new Map<GapTopic, number>();
+  for (const gap of inStatus) perTopic.set(gap.topic, (perTopic.get(gap.topic) ?? 0) + 1);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const shown = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
@@ -149,7 +154,13 @@ export function GapsSection({ t, lang, onAddSource }: { t: AdminText; lang: UILa
               type="single"
               value={topic}
             >
-              {[{ topic: "all" as const, groups: all.length }, ...query.data.topics].map((tp) => (
+              {[
+                { topic: "all" as const, groups: inStatus.length },
+                ...query.data.topics
+                  .map((tp) => ({ topic: tp.topic, groups: perTopic.get(tp.topic) ?? 0 }))
+                  .filter((tp) => tp.groups > 0 || tp.topic === topic)
+                  .sort((a, b) => b.groups - a.groups),
+              ].map((tp) => (
                 <ToggleGroupItem
                   className="h-7 shrink-0 gap-1.5 !rounded-full border px-3 text-xs data-[state=on]:border-foreground data-[state=on]:bg-foreground data-[state=on]:text-background"
                   key={tp.topic}

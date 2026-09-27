@@ -632,6 +632,12 @@ export const adminJobs = (token: string, status?: JobStatus) =>
 /** Poll every 1–2 s while status is queued or running. */
 export const adminJob = (token: string, id: number) => adminCall<Job>(token, "GET", `/jobs/${id}`);
 export const adminCancelJob = (token: string, id: number) => adminCall<Job>(token, "POST", `/jobs/${id}/cancel`);
+/** The same work again as a new job (only a finished one). */
+export const adminRetryJob = (token: string, id: number) => adminCall<Job>(token, "POST", `/jobs/${id}/retry`);
+/** Removes a finished job from the history. */
+export const adminDeleteJob = (token: string, id: number) => adminCall<{ ok: boolean }>(token, "DELETE", `/jobs/${id}`);
+/** Removes every finished job; queued and running ones stay. */
+export const adminClearJobs = (token: string) => adminCall<{ deleted: number }>(token, "DELETE", "/jobs");
 
 export const adminFeedback = (token: string, maxRating = 2, limit = 50) =>
   adminCall<{ items: FeedbackItem[] }>(token, "GET", `/feedback?max_rating=${maxRating}&limit=${limit}`);

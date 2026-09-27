@@ -48,7 +48,8 @@ DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
 
 def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> list[Step]:
     """The stages of a job. A site source is crawled; a document source is registered and fetched as a document;
-    `refresh` re-checks what was crawled before (tools.pipeline update). A job with a `url` (a link added into an
+    `refresh` crawls the site again from its start pages (new pages and documents are found, changed pages
+    re-read) and re-checks the known files with ETag / Last-Modified, so only what changed is parsed and indexed again. A job with a `url` (a link added into an
     existing source) does only that link: a document is registered and fetched, a deeper path is crawled
     under its prefix, 2 levels deep."""
     refresh = job["kind"] == "refresh"
@@ -62,7 +63,8 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
         prefix = urlsplit(url).path.rstrip("/") or "/"
         crawl = ["-m", "crawler", "--sites", *sites, "--start-urls", url, "--path-prefix", prefix, "--max-depth", "2"]
     else:
-        crawl = ["-m", "crawler", "--sites", *sites] + (["--resume"] if refresh else [])
+        # never --resume: that continues an unfinished crawl, and after a finished one it visits nothing
+        crawl = ["-m", "crawler", "--sites", *sites]
         if source is not None and source.get("max_depth") is not None:
             crawl += ["--max-depth", str(source["max_depth"])]
         if source is not None and source.get("max_pages") is not None:

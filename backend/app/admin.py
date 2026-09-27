@@ -261,6 +261,9 @@ class AdminStore(Protocol):
     def list_jobs(self, status: str | None) -> list[dict]: ...
     def get_job(self, job_id: int) -> dict | None: ...
     def cancel_job(self, job_id: int) -> dict | None: ...
+    def retry_job(self, job_id: int) -> dict | None: ...
+    def delete_job(self, job_id: int) -> bool | None: ...
+    def clear_jobs(self) -> int: ...
     def feedback(self, max_rating: int, limit: int) -> list[dict]: ...
     def feedback_stats(self) -> dict: ...
 
@@ -376,6 +379,28 @@ class PgAdminStore:
                    (job_id,))
         self._rows("UPDATE jobs SET cancel_requested = TRUE WHERE id = %s AND status = 'running'", (job_id,))
         return self.get_job(job_id)
+
+    def retry_job(self, job_id: int) -> dict | None:
+        """The same work again (source, kind, link) as a new queued job; None if there is no such job."""
+        rows = self._rows("SELECT source_id, kind, url FROM jobs WHERE id = %s", (job_id,))
+        return self.create_job(rows[0]["source_id"], rows[0]["kind"], rows[0]["url"]) if rows else None
+
+    def delete_job(self, job_id: int) -> bool | None:
+        """Removes a finished job from the history; None if it doesn't exist, False while it is queued or running."""
+        rows = self._rows("SELECT status FROM jobs WHERE id = %s", (job_id,))
+        if not rows:
+            return None
+        if rows[0]["status"] in ("queued", "running"):
+            return False
+        self._rows("UPDATE sources SET last_job_id = NULL WHERE last_job_id = %s", (job_id,))
+        self._rows("DELETE FROM jobs WHERE id = %s", (job_id,))
+        return True
+
+    def clear_jobs(self) -> int:
+        """Removes every finished job (done, failed, cancelled); returns how many."""
+        self._rows("UPDATE sources SET last_job_id = NULL WHERE last_job_id IN "
+                   "(SELECT id FROM jobs WHERE status NOT IN ('queued', 'running'))")
+        return len(self._rows("DELETE FROM jobs WHERE status NOT IN ('queued', 'running') RETURNING id"))
 
     def feedback(self, max_rating: int, limit: int) -> list[dict]:
         return self._rows("SELECT * FROM feedback WHERE rating <= %s ORDER BY rating, updated_at DESC LIMIT %s",
@@ -595,6 +620,37 @@ async def cancel_job(job_id: int, request: Request) -> Job:
     if job is None:
         raise ApiException(404, "not_found", f"No job {job_id}")
     return job_model(job)
+
+
+@router.post("/jobs/{job_id}/retry", response_model=Job, status_code=201)
+async def retry_job(job_id: int, request: Request) -> Job:
+    """Runs a finished job's work again as a new job."""
+    admin = store(request)
+    old = await run_in_threadpool(admin.get_job, job_id)
+    if old is None:
+        raise ApiException(404, "not_found", f"No job {job_id}")
+    if old["status"] in ("queued", "running"):
+        raise ApiException(409, "conflict", f"Job {job_id} is still {old['status']}")
+    source = await run_in_threadpool(admin.get_source, old["source_id"]) if old["source_id"] is not None else None
+    if source and source.get("last_job") and source["last_job"]["status"] in ("queued", "running"):
+        raise ApiException(409, "conflict", f"Job {source['last_job']['id']} of this source is still running")
+    return job_model(await run_in_threadpool(admin.retry_job, job_id))
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: int, request: Request) -> dict:
+    deleted = await run_in_threadpool(store(request).delete_job, job_id)
+    if deleted is None:
+        raise ApiException(404, "not_found", f"No job {job_id}")
+    if not deleted:
+        raise ApiException(409, "conflict", f"Job {job_id} is queued or running: stop it first")
+    return {"ok": True}
+
+
+@router.delete("/jobs")
+async def clear_jobs(request: Request) -> dict:
+    """Removes the finished jobs from the history (queued and running ones stay)."""
+    return {"deleted": await run_in_threadpool(store(request).clear_jobs)}
 
 
 # ─────────────── ratings ───────────────

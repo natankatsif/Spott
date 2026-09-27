@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlertIcon, SquareIcon, TerminalIcon, WorkflowIcon } from "lucide-react";
+import { CircleAlertIcon, EllipsisIcon, RotateCcwIcon, SquareIcon, TerminalIcon, Trash2Icon, WorkflowIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
@@ -11,7 +11,19 @@ import { StageProgress } from "@/components/admin/stage-progress";
 import { StatCard } from "@/components/admin/stat-card";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { Spinner } from "@/components/spell/spinner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,6 +37,57 @@ import { useUILang } from "@/lib/lang";
 import { useApiMode } from "@/lib/mode";
 
 const FILTERS: (JobStatus | "all")[] = ["all", "running", "queued", "done", "failed", "cancelled"];
+
+/** Stop, run again, remove: the same actions from a row's menu and from the job's card. */
+function useJobActions(t: AdminText, lang: UILang, done: () => void) {
+  const [busy, setBusy] = useState<number | null>(null);
+  const act = (fn: () => Promise<unknown>, ok: string) => async (id: number) => {
+    setBusy(id);
+    try {
+      await fn();
+      toast.success(ok);
+      done();
+    } catch (e) {
+      toast.error(errorText(e, lang));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return {
+    busy,
+    stop: (id: number) => act(() => admin.cancelJob(id), t.jobs.cancelled)(id),
+    retry: (id: number) => act(() => admin.retryJob(id), t.jobs.retried)(id),
+    remove: (id: number) => act(() => admin.deleteJob(id), t.jobs.removed)(id),
+  };
+}
+
+function JobMenu({ job, t, actions }: { job: Job; t: AdminText; actions: ReturnType<typeof useJobActions> }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={t.jobs.actions} className="size-8 rounded-full" disabled={actions.busy === job.id} size="icon" variant="ghost">
+          {actions.busy === job.id ? <Spinner className="size-4" /> : <EllipsisIcon />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {isActive(job) ? (
+          <DropdownMenuItem onSelect={() => actions.stop(job.id)}>
+            <SquareIcon className="fill-current" /> {t.jobs.cancel}
+          </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onSelect={() => actions.retry(job.id)}>
+              <RotateCcwIcon /> {t.jobs.retry}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.remove(job.id)} variant="destructive">
+              <Trash2Icon /> {t.jobs.remove}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export default function JobsPage() {
   // useSearchParams needs a Suspense boundary in the app router
@@ -52,10 +115,46 @@ function Jobs() {
     job.source_id == null ? t.jobs.allSources : (sources.data?.sources.find((s) => s.id === job.source_id)?.site_id ?? `#${job.source_id}`);
 
   const open = (id: number | null) => router.replace(id == null ? "/admin/jobs" : `/admin/jobs?id=${id}`, { scroll: false });
+  const actions = useJobActions(t, lang, jobs.reload);
+  const finished = jobs.data?.filter((j) => !isActive(j)).length ?? 0;
+
+  const clear = async () => {
+    try {
+      const r = await admin.clearJobs();
+      toast.success(t.jobs.cleared(r.deleted));
+      jobs.reload();
+    } catch (e) {
+      toast.error(errorText(e, lang));
+    }
+  };
 
   return (
     <>
-      <PageHeader subtitle={t.jobs.subtitle} title={t.jobs.title} />
+      <PageHeader
+        actions={
+          finished > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button className="rounded-xl" size="sm" variant="outline">
+                  <Trash2Icon /> {t.jobs.clear}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t.jobs.clearTitle}</AlertDialogTitle>
+                  <AlertDialogDescription>{t.jobs.clearHint}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+                  <AlertDialogAction onClick={clear}>{t.jobs.clear}</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )
+        }
+        subtitle={t.jobs.subtitle}
+        title={t.jobs.title}
+      />
 
       <Tabs className="mb-4" onValueChange={(v) => setFilter(v as JobStatus | "all")} value={filter}>
         <TabsList className="h-auto flex-wrap rounded-xl">
@@ -85,9 +184,9 @@ function Jobs() {
       ) : (
         <ul className="flex flex-col gap-2">
           {jobs.data?.map((job) => (
-            <li key={job.id}>
+            <li className="relative" key={job.id}>
               <button
-                className="w-full rounded-2xl border bg-card p-4 text-left transition-colors hover:border-ring/40"
+                className="w-full rounded-2xl border bg-card p-4 pr-14 text-left transition-colors hover:border-ring/40"
                 onClick={() => open(job.id)}
                 type="button"
               >
@@ -107,6 +206,9 @@ function Jobs() {
                 </div>
                 <StageProgress className="mt-3" job={job} />
               </button>
+              <div className="absolute top-3 right-3">
+                <JobMenu actions={actions} job={job} t={t} />
+              </div>
             </li>
           ))}
         </ul>
@@ -124,6 +226,7 @@ function JobSheet({ id, t, lang, sources, onClose }: { id: number | null; t: Adm
   );
   const job = query.data;
   const [stopping, setStopping] = useState(false);
+  const actions = useJobActions(t, lang, () => query.reload());
   const site = job ? (job.source_id == null ? t.jobs.allSources : (sources?.find((s) => s.id === job.source_id)?.site_id ?? `#${job.source_id}`)) : "";
 
   const cancel = async () => {
@@ -232,11 +335,25 @@ function JobSheet({ id, t, lang, sources, onClose }: { id: number | null; t: Adm
               <LogView lines={job.log_tail} title={`job #${job.id}`} />
             </section>
 
-            {isActive(job) && (
+            {isActive(job) ? (
               <Button className="self-start rounded-xl" disabled={stopping} onClick={cancel} variant="outline">
                 {stopping ? <Spinner className="size-4" /> : <SquareIcon className="fill-current" />}
                 {t.jobs.cancel}
               </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button className="rounded-xl" disabled={actions.busy === job.id} onClick={() => actions.retry(job.id)} variant="outline">
+                  <RotateCcwIcon /> {t.jobs.retry}
+                </Button>
+                <Button
+                  className="rounded-xl text-destructive hover:text-destructive"
+                  disabled={actions.busy === job.id}
+                  onClick={() => actions.remove(job.id).then(onClose)}
+                  variant="ghost"
+                >
+                  <Trash2Icon /> {t.jobs.remove}
+                </Button>
+              </div>
             )}
           </div>
         )}

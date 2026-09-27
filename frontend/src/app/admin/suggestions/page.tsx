@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOffIcon, MessageSquareQuoteIcon, PinIcon, PinOffIcon, ThumbsUpIcon } from "lucide-react";
+import { EyeOffIcon, MessageSquareQuoteIcon, MinusIcon, PinIcon, PinOffIcon, PlusIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/admin/empty-state";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { admin, useAdminQuery } from "@/lib/admin";
+import { admin, useAdminQuery, useHydrated } from "@/lib/admin";
 import { errorText } from "@/lib/admin-errors";
 import { ADMIN_UI } from "@/lib/admin-i18n";
 import type { Lang, Suggestion } from "@/lib/api";
@@ -24,6 +24,17 @@ import { cn } from "@/lib/utils";
 const TEXT_LANGS = ["ro", "ru", "en"] as const;
 // a question typed here is Romanian or Russian; pinning translates it into the rest
 const typedLang = (text: string): Lang => (/[а-яё]/i.test(text) ? "ru" : "ro");
+// proposals asked fewer times than this are left out (the admin sets it; remembered in this browser)
+const MIN_ASKED_KEY = "admin.minAsked";
+const DEFAULT_MIN_ASKED = 2;
+const readMinAsked = () => {
+  try {
+    const v = Number(window.localStorage.getItem(MIN_ASKED_KEY));
+    return Number.isInteger(v) && v > 0 ? v : DEFAULT_MIN_ASKED;
+  } catch {
+    return DEFAULT_MIN_ASKED;
+  }
+};
 
 export default function SuggestionsPage() {
   const uiLang = useUILang();
@@ -35,6 +46,21 @@ export default function SuggestionsPage() {
   const [hiding, setHiding] = useState<number | null>(null);
   const [pinning, setPinning] = useState<number | null>(null);
   const pinnedCount = list.data?.filter((s) => s.pinned).length ?? 0;
+  const hydrated = useHydrated(); // the server doesn't know this browser's saved value
+  const [chosen, setChosen] = useState<number | null>(null);
+  const minAsked = chosen ?? (hydrated ? readMinAsked() : DEFAULT_MIN_ASKED);
+  const setMinAsked = (n: number) => {
+    const v = Math.max(1, Math.min(99, n));
+    setChosen(v);
+    try {
+      window.localStorage.setItem(MIN_ASKED_KEY, String(v));
+    } catch {
+      /* storage blocked: kept for this visit */
+    }
+  };
+  // pinned ones always; proposals from the threshold up (the list comes most asked first)
+  const shown = list.data?.filter((s) => s.pinned || s.asked_count >= minAsked);
+  const belowMin = (list.data?.length ?? 0) - (shown?.length ?? 0);
 
   const togglePin = async (s: Suggestion) => {
     setPinning(s.id);
@@ -128,8 +154,22 @@ export default function SuggestionsPage() {
       ) : (
         <>
         {pinnedCount === 0 && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-amber-900 text-sm">{t.suggestions.noneOnHome}</p>}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
+          <span>{t.suggestions.minAsked}</span>
+          <div className="flex items-center rounded-full bg-muted/80 p-0.5">
+            <Button aria-label="−" className="size-7 rounded-full" disabled={minAsked <= 1} onClick={() => setMinAsked(minAsked - 1)} size="icon" variant="ghost">
+              <MinusIcon />
+            </Button>
+            <span className="w-7 text-center font-semibold text-foreground tabular-nums">{minAsked}</span>
+            <Button aria-label="+" className="size-7 rounded-full" onClick={() => setMinAsked(minAsked + 1)} size="icon" variant="ghost">
+              <PlusIcon />
+            </Button>
+          </div>
+          <span>{t.suggestions.times}</span>
+          {belowMin > 0 && <span className="ml-auto text-xs">{t.suggestions.belowMin(belowMin)}</span>}
+        </div>
         <ul className="flex flex-col gap-2">
-          {list.data?.map((s) => (
+          {shown?.map((s) => (
             <li key={s.id}>
               <Card className={cn("rounded-2xl py-4 shadow-none", s.pinned && "border-brand/30 bg-accent/40")}>
                 <CardContent className="flex items-center gap-3 px-4">
@@ -157,8 +197,7 @@ export default function SuggestionsPage() {
                     ))}
                   </span>
                   {s.check === "pending" && <Badge variant="amber">{t.suggestions.pending}</Badge>}
-                      {s.check === "failed" && <Badge variant="red">{t.suggestions.failed}</Badge>}
-                      <span>{t.suggestions.asked(s.asked_count)}</span>
+                          <span>{t.suggestions.asked(s.asked_count)}</span>
                       {s.rating_avg != null && (
                         <span className="flex items-center gap-1">
                           <ThumbsUpIcon className="size-3 text-emerald-600" /> {Math.round(likeShare(s.rating_avg) * 100)}%

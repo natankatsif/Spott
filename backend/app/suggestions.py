@@ -152,11 +152,11 @@ class PgSuggestions:
 
     def list(self, lang: str, limit: int) -> list[Suggestion]:
         """The home screen's quick questions, pinned first, each with its text in every language (`texts`), so the
-        page switches the text with the UI language instead of loading other questions. A pinned question is the
-        admin's choice and always shows (its check only decides whether a checked answer is replayed); a proposal
-        shows only once checked. English has no answers of its own: its questions are the Romanian ones, in English."""
+        page switches the text with the UI language instead of loading other questions. Only questions with a good
+        answer show; a pinned one also while its first check is pending, so it appears as soon as it is pinned.
+        English has no answers of its own: its questions are the Romanian ones, in English."""
         base = lang if lang in LANGS else "ro"
-        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden AND lang = %s AND (ok OR pinned) "
+        rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden AND lang = %s AND (ok OR (pinned AND checked_at IS NULL)) "
                           "ORDER BY pinned DESC, asked_count DESC, id LIMIT %s", (base, limit))
         return [self.suggestion(r | {"question": (r.get("texts") or {}).get(lang) or r["question"]}) for r in rows]
 
@@ -193,8 +193,8 @@ class PgSuggestions:
             "(SELECT pin_group FROM suggestions WHERE id = %s) RETURNING id", (suggestion_id, suggestion_id)))
 
     def admin_list(self, limit: int = 200) -> list[Suggestion]:
-        """One entry per question: a pinned group once, with its texts in every language; also what isn't checked
-        yet or failed its check (the admin sees why)."""
+        """One entry per question with a good answer (a pinned group once, with its texts in every language; a just
+        pinned one while its check is pending), most asked first after the pinned ones. No good answer: not listed."""
         rows = self._rows("SELECT * FROM suggestions WHERE NOT hidden ORDER BY pinned DESC, asked_count DESC, id")
         groups: dict[str, list[dict]] = {}
         for r in rows:
@@ -205,13 +205,15 @@ class PgSuggestions:
             texts = {k: v for m in members for k, v in (m.get("texts") or {}).items()} | \
                     {m["lang"]: m["question"] for m in members}
             checks = ["ok" if m["ok"] else "pending" if m["checked_at"] is None else "failed" for m in members]
-            check = "failed" if "failed" in checks else "pending" if "pending" in checks else "ok"
+            # a group has a good answer if any of its languages has one
+            check = "ok" if "ok" in checks else "pending" if "pending" in checks else "failed"
             rated = [m["rating_avg"] for m in members if m["rating_avg"] is not None]
             out.append(self.suggestion(head | {"asked_count": sum(m["asked_count"] for m in members),
                                                "rating_avg": rated[0] if rated else None,
                                                "pinned": any(m["pinned"] for m in members), "texts": texts},
                                        check=check))
-        return out[:limit]
+        out = [x for x in out if x.check == "ok" or (x.pinned and x.check == "pending")]
+        return sorted(out, key=lambda x: (not x.pinned, -x.asked_count))[:limit]
 
     @staticmethod
     def suggestion(r: dict, check: str | None = None) -> Suggestion:

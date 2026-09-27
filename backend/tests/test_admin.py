@@ -109,6 +109,25 @@ class MemoryAdmin:
             job["status"] = "cancelled"
         return job
 
+    def retry_job(self, job_id):
+        job = self.jobs.get(job_id)
+        return self.create_job(job["source_id"], job["kind"], job["url"]) if job else None
+
+    def delete_job(self, job_id):
+        job = self.jobs.get(job_id)
+        if job is None:
+            return None
+        if job["status"] in ("queued", "running"):
+            return False
+        del self.jobs[job_id]
+        return True
+
+    def clear_jobs(self):
+        done = [i for i, j in self.jobs.items() if j["status"] not in ("queued", "running")]
+        for i in done:
+            del self.jobs[i]
+        return len(done)
+
     def feedback(self, max_rating, limit):
         return [r for r in self.ratings if r["rating"] <= max_rating][:limit]
 
@@ -272,3 +291,18 @@ def test_patch_and_delete(client):
     assert client.post(f"/api/admin/sources/{source['id']}/jobs", headers=TOKEN, json={"kind": "crawl"}).status_code == 409
     assert client.delete(f"/api/admin/sources/{source['id']}", headers=TOKEN, params={"purge": True}).json() == {"ok": True}
     assert client.delete(f"/api/admin/sources/{source['id']}", headers=TOKEN).status_code == 404
+
+
+def test_jobs_can_be_retried_deleted_and_cleared(client):
+    body = add(client, "https://acc.md/").json()
+    jid = body["last_job"]["id"]
+    assert client.post(f"/api/admin/jobs/{jid}/retry", headers=TOKEN).status_code == 409  # still queued
+    assert client.delete(f"/api/admin/jobs/{jid}", headers=TOKEN).status_code == 409  # stop it first
+    main.app.state.admin.jobs[jid]["status"] = "failed"
+    r = client.post(f"/api/admin/jobs/{jid}/retry", headers=TOKEN)
+    assert r.status_code == 201 and r.json()["id"] != jid and r.json()["kind"] == "crawl"
+    main.app.state.admin.jobs[r.json()["id"]]["status"] = "done"
+    assert client.delete(f"/api/admin/jobs/{jid}", headers=TOKEN).json() == {"ok": True}
+    assert client.delete(f"/api/admin/jobs/{jid}", headers=TOKEN).status_code == 404
+    assert client.delete("/api/admin/jobs", headers=TOKEN).json() == {"deleted": 1}
+    assert client.get("/api/admin/jobs", headers=TOKEN).json()["jobs"] == []

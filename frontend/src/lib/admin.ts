@@ -7,6 +7,9 @@ import {
   type AdminSession,
   adminAddSource,
   adminCancelJob,
+  adminClearJobs,
+  adminDeleteJob,
+  adminRetryJob,
   adminDeleteSource,
   adminFeedback,
   adminFeedbackStats,
@@ -456,6 +459,34 @@ export const admin = {
         const job = demo.jobs.find((j) => j.id === id) ?? demoError(404, "not_found", "unknown job");
         Object.assign(job, { status: "cancelled", eta_s: null, finished_at: new Date().toISOString() } satisfies Partial<Job>);
         return job;
+      },
+    ),
+
+  retryJob: (id: number) =>
+    withToken(
+      (t) => adminRetryJob(t, id),
+      () => {
+        const job = demo.jobs.find((j) => j.id === id) ?? demoError(404, "not_found", "unknown job");
+        return job.source_id == null ? demoError(409, "conflict", "demo: no source") : demoStartJob(job.source_id, job.kind);
+      },
+    ),
+
+  deleteJob: (id: number) =>
+    withToken(
+      (t) => adminDeleteJob(t, id),
+      () => {
+        demo.jobs = demo.jobs.filter((j) => j.id !== id || isActive(j));
+        return { ok: true };
+      },
+    ),
+
+  clearJobs: () =>
+    withToken(
+      (t) => adminClearJobs(t),
+      () => {
+        const before = demo.jobs.length;
+        demo.jobs = demo.jobs.filter(isActive);
+        return { deleted: before - demo.jobs.length };
       },
     ),
 
