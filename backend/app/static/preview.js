@@ -19,6 +19,7 @@
   const DROP = /[­​‌‍⁠﻿]/; // soft hyphen, zero-width
   function normChar(ch) {
     if (DROP.test(ch)) return "";
+    if (ch === "|") return " "; // our table rows join cells with "|"; on the page the cells are separate blocks
     const n = ch.normalize("NFKC");
     let out = "";
     for (const c of n) out += CHAR_MAP[c] || c;

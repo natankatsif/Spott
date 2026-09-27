@@ -64,6 +64,23 @@ const TOOL_ICONS: Record<TraceStep["tool"], typeof SearchIcon> = {
   verify: ShieldCheckIcon,
 };
 
+/** Sentence index → the citations its badge shows. A run of sentences citing the same documents gets one badge,
+ * after its last sentence, with the quotes of the whole run. */
+function badges(sentences: AnswerView["sentences"], byId: Map<string, Citation>): Map<number, Citation[]> {
+  const docsOf = (cites: string[]) => [...new Set(cites.flatMap((id) => byId.get(id)?.doc_id ?? []))].sort().join("|");
+  const out = new Map<number, Citation[]>();
+  let run: Citation[] = [];
+  sentences.forEach((s, i) => {
+    run = [...run, ...s.cites.flatMap((id) => byId.get(id) ?? []).filter((c) => !run.includes(c))];
+    const next = sentences[i + 1];
+    if (!next || !s.cites.length || docsOf(next.cites) !== docsOf(s.cites)) {
+      if (run.length) out.set(i, run);
+      run = [];
+    }
+  });
+  return out;
+}
+
 export function citationLabel(c: Citation, t: UIText): string {
   return [c.document_title, c.location, c.page ? `${t.page} ${c.page}` : null].filter(Boolean).join(", ");
 }
@@ -87,7 +104,8 @@ function CitationCard({ citations, all, t }: { citations: Citation[]; all: Citat
           sources={citations.map((c) => c.url)}
         />
         <InlineCitationCardBody>
-          <InlineCitationCarousel>
+          {/* phones swipe between sources; a mouse only uses the arrows, so dragging selects the quote's text */}
+          <InlineCitationCarousel opts={{ watchDrag: (_, evt) => !(evt instanceof MouseEvent) }}>
             {citations.length > 1 && (
               <InlineCitationCarouselHeader>
                 <InlineCitationCarouselPrev />
@@ -217,6 +235,7 @@ export function AssistantAnswer({
   const byId = new Map(view.citations.map((c) => [c.id, c]));
   const a = view.answer;
   const text = view.sentences.map((s) => s.text).join(" ");
+  const badgeAt = badges(view.sentences, byId);
   // how it searched: under the finished answer, and only when the documents were involved (sources cited, or
   // searched and not found); a greeting or an off-topic question shows none
   const showSearch =
@@ -238,12 +257,13 @@ export function AssistantAnswer({
 
         {view.sentences.length > 0 && (
           <p className="text-[15px] leading-7">
-            {view.sentences.map((s) => (
+            {view.sentences.map((s, i) => (
               <Fragment key={s.index}>
                 <span className={cn(s.done && !s.verified && s.cites.length > 0 && "decoration-warning/60 decoration-dotted underline")}>
                   {s.text}
                 </span>
-                <CitationCard all={view.citations} citations={s.cites.flatMap((id) => byId.get(id) ?? [])} t={t} />{" "}
+                {/* sentences in a row from the same documents: one badge after the last of them, with all their quotes */}
+                {badgeAt.has(i) && <CitationCard all={view.citations} citations={badgeAt.get(i) ?? []} t={t} />}{" "}
               </Fragment>
             ))}
           </p>
