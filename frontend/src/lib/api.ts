@@ -261,7 +261,8 @@ export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export type Job = {
   id: number;
   source_id: number | null; // null = all sources
-  kind: "crawl" | "refresh" | "check"; // check: the automatic nightly look for changes
+  // check: the automatic nightly look for changes; backlog: the autopilot finishing a source batch by batch
+  kind: "crawl" | "refresh" | "check" | "backlog";
   status: JobStatus;
   stage: "crawl" | "download" | "parse" | "index" | null;
   stage_done: number;
@@ -283,6 +284,7 @@ export type SourceProgress = {
   stage: "crawl" | "download" | "parse" | "index" | null;
   percent: number;
   eta_s: number | null;
+  current: string | null; // the file or address the stage is on right now ("parsed tarife.pdf")
 };
 
 /** One row of the admin's single sources table: everything it shows, from one call. */
@@ -317,6 +319,11 @@ export type SourceRow = {
   last_checked_at: string | null;
   next_check_at: string | null;
   stale_signals: number; // people's signals since the last check
+  // what the autopilot still has to do here; all zero = this source is finished
+  crawl_left: number; // pages the last crawl did not reach
+  documents_pending: number; // found but never downloaded
+  files_pending: number; // downloaded, not parsed yet
+  pages_pending: number; // crawled, not parsed yet
 };
 
 export type SourceList = { sources: SourceRow[]; totals: CorpusTotals };

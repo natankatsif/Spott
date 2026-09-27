@@ -67,6 +67,10 @@ const ro = {
     autoOff: "Actualizare automată: oprită",
     autoOffShort: "fără actualizare automată",
     signals: (n: number) => `${n} ${n === 1 ? "semnal" : "semnale"} de conținut învechit`,
+    // the autopilot's leftovers: shown while a source is not finished yet
+    left: (n: number) => `${n} de procesat`,
+    leftDetails: (crawl: number, download: number, files: number, pages: number) =>
+      `De parcurs: ${crawl} pagini · de descărcat: ${download} · de prelucrat: ${files} fișiere, ${pages} pagini`,
     method: { wordpress: "WordPress", sitemap: "sitemap", "sitemap-new": "sitemap", fingerprint: "pagini-cheie" } as Record<string, string>,
     enable: "Activează",
     disable: "Dezactivează",
@@ -134,7 +138,7 @@ const ro = {
     empty: "Nicio procesare.",
     workerHint: "Procesările rulează în worker: cd offline_indexation && uv run python -m worker",
     allSources: "toate sursele",
-    kind: { crawl: "parcurgere", refresh: "actualizare", check: "verificare automată" },
+    kind: { crawl: "parcurgere", refresh: "actualizare", check: "verificare automată", backlog: "pilot automat" },
     stage: { crawl: "Parcurgere", download: "Descărcare", parse: "Analiză", index: "Indexare" },
     stepOf: (done: number, total: number) => `${done} din ${total}`,
     eta: "rămas",
@@ -389,6 +393,10 @@ const ru: AdminText = {
     autoOff: "Автообновление: выключено",
     autoOffShort: "без автообновления",
     signals: (n: number) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? "сигнал" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "сигнала" : "сигналов"} об устаревании`,
+    // остаток для автопилота: показывается, пока источник не доведён до конца
+    left: (n: number) => `${n} в обработку`,
+    leftDetails: (crawl: number, download: number, files: number, pages: number) =>
+      `Обойти: ${crawl} страниц · скачать: ${download} · разобрать: ${files} файлов, ${pages} страниц`,
     method: { wordpress: "WordPress", sitemap: "sitemap", "sitemap-new": "sitemap", fingerprint: "ключевые страницы" } as Record<string, string>,
     enable: "Включить",
     disable: "Выключить",
@@ -455,7 +463,7 @@ const ru: AdminText = {
     empty: "Обработок нет.",
     workerHint: "Обработку выполняет worker: cd offline_indexation && uv run python -m worker",
     allSources: "все источники",
-    kind: { crawl: "обход", refresh: "обновление", check: "автопроверка" },
+    kind: { crawl: "обход", refresh: "обновление", check: "автопроверка", backlog: "автопилот" },
     stage: { crawl: "Обход", download: "Скачивание", parse: "Разбор", index: "Индексация" },
     stepOf: (done: number, total: number) => `${done} из ${total}`,
     eta: "осталось",
@@ -708,6 +716,10 @@ const en: AdminText = {
     autoOff: "Automatic updates: off",
     autoOffShort: "no automatic updates",
     signals: (n: number) => `${n} outdated-content ${n === 1 ? "signal" : "signals"}`,
+    // the autopilot's leftovers: shown while a source is not finished yet
+    left: (n: number) => `${n} to process`,
+    leftDetails: (crawl: number, download: number, files: number, pages: number) =>
+      `To crawl: ${crawl} pages · to download: ${download} · to process: ${files} files, ${pages} pages`,
     method: { wordpress: "WordPress", sitemap: "sitemap", "sitemap-new": "sitemap", fingerprint: "key pages" } as Record<string, string>,
     enable: "Enable",
     disable: "Disable",
@@ -774,7 +786,7 @@ const en: AdminText = {
     empty: "No jobs.",
     workerHint: "Jobs run in the worker: cd offline_indexation && uv run python -m worker",
     allSources: "all sources",
-    kind: { crawl: "crawl", refresh: "refresh", check: "auto check" },
+    kind: { crawl: "crawl", refresh: "refresh", check: "auto check", backlog: "autopilot" },
     stage: { crawl: "Crawl", download: "Download", parse: "Parse", index: "Index" },
     stepOf: (done: number, total: number) => `${done} of ${total}`,
     eta: "left",

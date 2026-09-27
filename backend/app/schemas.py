@@ -389,6 +389,7 @@ class SourceProgress(Strict):
     stage: Literal["crawl", "download", "parse", "index"] | None
     percent: float
     eta_s: float | None
+    current: str | None = None  # the file or address the stage is on right now, from the job's log
 
 
 class SourceRow(Strict):
@@ -424,6 +425,11 @@ class SourceRow(Strict):
     last_checked_at: str | None = None
     next_check_at: str | None = None
     stale_signals: int = 0  # people's signals since the last check
+    # what the autopilot still has to do for this source (worker/schedule.py: next_backlog)
+    crawl_left: int = 0         # pages the last crawl of it did not reach
+    documents_pending: int = 0  # documents found but never downloaded
+    files_pending: int = 0      # downloaded files not parsed yet
+    pages_pending: int = 0      # crawled pages not parsed yet
 
 
 class SourceList(Strict):

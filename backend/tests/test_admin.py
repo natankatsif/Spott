@@ -262,11 +262,14 @@ def test_unreachable_or_bad_links_are_422(client):
 def test_one_list_call_has_status_progress_and_totals(client):
     body = add(client, "https://acc.md/").json()
     job = main.app.state.admin.jobs[body["last_job"]["id"]]
-    job |= {"status": "running", "stage": "parse", "percent": 63.0, "eta_s": 120.0}
+    job |= {"status": "running", "stage": "parse", "percent": 63.0, "eta_s": 120.0,
+            "log_tail": ["[7/12] parsed raw/ab/regulament.pdf 1.2s", "[8/12] parsed (ocr) raw/cd/tarife.pdf 9.0s"]}
     listed = client.get("/api/admin/sources", headers=TOKEN).json()
     row = listed["sources"][0]
+    # `current`: the file the stage is on right now, so the row says more than "parse 63%"
     assert row["status"] == "running" and row["progress"] == {"job_id": job["id"], "stage": "parse",
-                                                              "percent": 63.0, "eta_s": 120.0}
+                                                              "percent": 63.0, "eta_s": 120.0,
+                                                              "current": "parsed tarife.pdf"}
     assert listed["totals"]["sites_total"] == 1
     job |= {"status": "failed", "error": "downloader exited with code 1"}
     row = client.get("/api/admin/sources", headers=TOKEN).json()["sources"][0]

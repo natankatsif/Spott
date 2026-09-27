@@ -4,6 +4,7 @@ Sources: the admin panel's `sources` table (all sites, robots status; sites.toml
 registry.sqlite (pages and documents per site, if present on this machine), Postgres (chunks per site, lines).
 """
 
+import json
 import sqlite3
 import tomllib
 from datetime import UTC, datetime
@@ -55,9 +56,31 @@ def registry_counts(path: Path = REGISTRY) -> dict[str, dict]:
             per_site.setdefault(site, {}).update(
                 documents_found=found, documents_downloaded=downloaded or 0,
                 documents_replaced=repl or 0, documents_removed=removed or 0)
+        add_work_left(conn, per_site, path.parent / "crawl")
     finally:
         conn.close()
     return per_site
+
+
+def add_work_left(conn: sqlite3.Connection, per_site: dict[str, dict], crawl_dir: Path) -> None:
+    """What the autopilot still has to do per site (worker/schedule.py: next_backlog): documents found but never
+    fetched, downloaded files and crawled pages not parsed yet, and pages the last crawl did not reach."""
+    for site, undownloaded, files in conn.execute(
+        "SELECT d.site, COALESCE(SUM(d.status = 'discovered'), 0), "
+        "       COUNT(DISTINCT CASE WHEN f.parse_status = 'pending' THEN f.sha256 END) "
+        "FROM documents d LEFT JOIN files f ON f.sha256 = d.sha256 "
+        "WHERE d.status IN ('discovered', 'downloaded') GROUP BY d.site"
+    ):
+        per_site.setdefault(site, {}).update(documents_pending=undownloaded, files_pending=files)
+    for site, pages in conn.execute("SELECT site, COUNT(*) FROM pages WHERE parse_status = 'pending' "
+                                    "AND status < 400 AND html_file IS NOT NULL GROUP BY site"):
+        per_site.setdefault(site, {})["pages_pending"] = pages
+    for site in list(per_site):
+        try:
+            state = json.loads((crawl_dir / site / "state.json").read_text(encoding="utf-8"))
+            per_site[site]["crawl_left"] = len(state.get("queue") or [])
+        except (OSError, ValueError):
+            pass
 
 
 def index_counts(pool: ConnectionPool) -> tuple[dict[str, dict], int, str | None]:
