@@ -5,6 +5,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "docling>=2.130.0",
+    # .odt / .ods / .odp: Docling reads them with odfdo, which plain `docling` does not install
+    "docling-slim[format-opendocument]>=2.130.0",
     "httpx>=0.28.1",
     "ocrmac>=1.0.1; sys_platform == 'darwin'",
     "pgvector>=0.5.0",

@@ -177,7 +177,7 @@ Cross-platform maintenance commands (run in `offline_indexation/`; `scripts/*.sh
 
 ### Running stages by hand
 
-**Prerequisites:** [uv](https://docs.astral.sh/uv/), Node.js 20+. Parsing uses Apple Vision OCR on macOS. On Linux it falls back to Tesseract, which needs the `ron` and `rus` language packs installed.
+**Prerequisites:** [uv](https://docs.astral.sh/uv/), Node.js 20+. Parsing uses Apple Vision OCR on macOS. On Linux it falls back to Tesseract, which needs the `ron` and `rus` language packs installed. Old binary Office files (`.doc`, `.rtf`, `.xls`, `.ppt`) also need [LibreOffice](https://www.libreoffice.org/) (`soffice` on `PATH`); without it they are marked failed and the rest of the corpus parses as usual.
 
 ### Offline indexation
 
@@ -262,7 +262,7 @@ The cost will be split into indexing (one-off plus incremental) and answering (p
 | Admin panel | ✅ sources added by URL, processing jobs with progress, unanswered questions grouped by topic, ratings, quick questions, models and spending |
 | Automatic updates | ✅ nightly check of what changed, weekly full refresh, earlier on users' signals |
 | Feedback, live wall, corpus stats endpoints | ✅ |
-| Legacy `.doc` files | ⏳ need LibreOffice for conversion |
+| Legacy and OpenDocument files (`.doc`, `.rtf`, `.xls`, `.ppt`, `.odt`, `.ods`, `.odp`) | ✅ the binary formats through LibreOffice (in the Docker image) |
 | Monthly maintenance budget | ⏳ to be written |
 
 ## Team
