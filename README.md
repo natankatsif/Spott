@@ -34,7 +34,7 @@ Mapped one-to-one to the challenge brief.
 | **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing; `partial` says which part is missing. | ✅ |
 | **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. `outdated` (a newer act replaces the older) is told apart from a real `contradiction`. | ✅ in answers<br>⏳ corpus-wide scan |
 | **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. An embeddable widget puts the assistant on any City Hall site. | ✅ links in answers, site widget<br>⏳ highlighting the element on the page |
-| **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ⏳ |
+| **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ✅ |
 
 ### Bonus
 
@@ -239,12 +239,40 @@ Shortened; the full contract, including the streaming events of `/api/ask/stream
 
 ## Budget
 
-*To be written.* This section will compare:
-- an external LLM API against a self-hosted open model;
-- where each would be deployed;
-- the estimated monthly cost.
+Measured on this code unless marked as an estimate. Admin → Spending tracks the real spend: tokens of every model call, cost per model and per day, a monthly budget and the month's forecast.
 
-The cost will be split into indexing (one-off plus incremental) and answering (per question).
+**What runs where**
+
+| Part | Where | What it costs |
+|---|---|---|
+| Answer model, query rewrite for Russian questions | external API: OpenAI by default; Claude, Gemini or an OpenAI-compatible server of your own can be switched in Admin → Models | tokens per question |
+| Crawling, OCR (Tesseract), embeddings (bge-m3), hybrid search, Postgres + pgvector, the background worker | one server, CPU only (`./start.sh`) | the server |
+| Chat UI | Vercel, or `next start` on the same server | nothing extra on the same server |
+
+**Indexing** makes no paid API calls. OCR, structure recovery and embeddings run on the server's CPU, so the initial corpus costs only CPU hours, and the background worker works through it batch by batch. Nightly updates re-process only what changed.
+
+**Answering, per question.** The prompt is ~3,650 tokens (p50). A second model call happens for ~25% of questions, those about later amendments to an act. Measured with `backend/scripts/eval_speed.py` over all model calls of a question (REPORT.md, "Задача 10"):
+
+| Model | $ per 100 questions | Quality on our eval set |
+|---|---|---|
+| `gpt-6-luna` | 0.067 | within the noise of gpt-4o; 100% verified sentences, 0% false contradictions |
+| `gpt-4o` (the team's default) | 1.22–1.45 | reference |
+
+**Monthly estimate by traffic**, model calls only:
+
+| Questions per month | `gpt-6-luna` | `gpt-4o` |
+|---|---|---|
+| 3,000 (~100 a day) | ~$2 | $36–44 |
+| 30,000 (~1,000 a day) | ~$20 | $365–435 |
+| 300,000 (~10,000 a day) | ~$200 | $3,650–4,350 |
+
+The daily re-check of quick questions adds at most 20 calls a day: under $0.50 a month on `gpt-6-luna`, under $9 on `gpt-4o`. Rate limits matter as much as price: our OpenAI organisation has 30,000 tokens per minute on `gpt-4o`, about 7 questions a minute for everyone, against 200,000 on `gpt-6-luna`.
+
+**Server.** 8 GB of RAM is the floor: Postgres with the index, the API with bge-m3 in memory, and parsing of long scanned PDFs, which once reached ~6 GB before pages were rendered one at a time. Example: Hetzner Cloud CX33 (4 vCPU, 8 GB, 80 GB SSD), €6.49 a month after its April 2026 price change ([price check](https://costgoat.com/pricing/hetzner), verify before ordering).
+
+**A self-hosted model instead of the API.** Any OpenAI-compatible server (Ollama, vLLM) plugs in through Admin → Models. A GPU server that can run a mid-size open model starts at about €184–234 a month (Hetzner GEX44, RTX 4000 Ada 20 GB; [prices vary by source](https://bex.co/blog/2026/07/13/hetzner-gex44-gpu-pricing-break-even)). That equals the API cost of roughly 300,000+ questions a month on `gpt-6-luna`, or 15,000–20,000 on `gpt-4o`. We have not measured an open model's quality on our eval set (Romanian and Russian, strict JSON with line references). So self-hosting pays off only when questions must not leave the city's infrastructure, or at gpt-4o-class quality and high volume.
+
+**Recommendation:** `gpt-6-luna` through the API plus one 8 GB server. That is about €7 a month for the server and $2–20 a month for the model at 3,000–30,000 questions, under €30 a month in total.
 
 ## Status
 
@@ -263,7 +291,7 @@ The cost will be split into indexing (one-off plus incremental) and answering (p
 | Automatic updates | ✅ nightly check of what changed, weekly full refresh, earlier on users' signals |
 | Feedback, live wall, corpus stats endpoints | ✅ |
 | Legacy and OpenDocument files (`.doc`, `.rtf`, `.xls`, `.ppt`, `.odt`, `.ods`, `.odp`) | ✅ the binary formats through LibreOffice (in the Docker image) |
-| Monthly maintenance budget | ⏳ to be written |
+| Monthly maintenance budget | ✅ [Budget](#budget) |
 
 ## Team
 
