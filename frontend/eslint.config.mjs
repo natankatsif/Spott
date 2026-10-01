@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated mock previews with a vendored pdf.js build (backend/scripts/export_previews.py)
+    "public/mocks/**",
   ]),
 ]);
 

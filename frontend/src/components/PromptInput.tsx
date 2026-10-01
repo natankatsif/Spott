@@ -22,6 +22,24 @@ interface Attachment {
   height?: number;
 }
 
+// Web Speech API: TypeScript's DOM types have the result lists but not the recogniser itself
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { resultIndex: number; results: SpeechRecognitionResultList }) => void) | null;
+  onerror: ((event: { error: string; message?: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitAudioContext?: typeof AudioContext;
+};
+
 // ----------------------------------------------------------------------
 // Sub-components
 // ----------------------------------------------------------------------
@@ -203,6 +221,8 @@ function AttachmentGalleryModal({
     const width = naturalW * scale;
     const height = naturalH * scale;
 
+    // the target size comes from the window, which is only known once the lightbox is mounted
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTargetRect({
       top: (window.innerHeight - height) / 2,
       left: (window.innerWidth - width) / 2,
@@ -353,11 +373,10 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     const streamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const rafRef = useRef<number | null>(null);
-    const recognitionRef = useRef<any>(null);
+    const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
     const demoIntervalRef = useRef<number | null>(null);
     const demoTextIntervalRef = useRef<number | null>(null);
 
-    const [containerHeight, setContainerHeight] = useState(116);
     const [textareaHeight, setTextareaHeight] = useState(68);
     const [isScrolling, setIsScrolling] = useState(false);
 
@@ -438,7 +457,8 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
       // project: without a recogniser or a microphone, say so (onSpeechError) instead of typing demo text,
       // unless a demoVoiceText is passed explicitly.
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const speechWindow = window as SpeechWindow;
+      const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
       if (!SpeechRecognition && !demoVoiceText) {
         onSpeechError?.("not-supported");
         return;
@@ -480,7 +500,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
         streamRef.current = stream;
         
         // Setup Web Audio API for visualizer
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = window.AudioContext || (window as SpeechWindow).webkitAudioContext;
         const audioCtx = new AudioCtx();
         audioContextRef.current = audioCtx;
 
@@ -526,7 +546,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
           let baseline = valueRef.current;
 
-          recognition.onresult = (event: any) => {
+          recognition.onresult = (event) => {
             let interimTranscript = "";
             let finalTranscript = "";
 
@@ -545,7 +565,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             handleValueChange((baseline + (interimTranscript ? " " + interimTranscript : "")).trim());
           };
 
-          recognition.onerror = (e: any) => {
+          recognition.onerror = (e) => {
             // project: the event serialises as {}; the reason is in e.error. no-speech/aborted are normal ends.
             if (e.error === "no-speech" || e.error === "aborted") return;
             console.warn("Speech recognition error:", e.error, e.message || "");
@@ -588,13 +608,11 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     }, [stopRecording, attachments]);
 
 
-    useEffect(() => {
-      if ((value.trim() !== "" || hasAttachments) && !expanded) {
-        setIsSmoothResize(false);
-        setExpanded(true);
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value, expanded, hasAttachments]);
+    // text or an attachment keeps the input open; set while rendering, so there is no extra collapsed frame
+    if ((value.trim() !== "" || hasAttachments) && !expanded) {
+      setIsSmoothResize(false);
+      setExpanded(true);
+    }
 
     useEffect(() => {
       if (expanded && !isRecording) {
@@ -632,8 +650,9 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, expanded]); 
 
+    const containerHeight = Math.max(116, textareaHeight + 48);
+
     useEffect(() => {
-      setContainerHeight(Math.max(116, textareaHeight + 48));
       setTimeout(updateFades, 0);
     }, [textareaHeight]);
 
@@ -741,7 +760,6 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           ref={(node) => {
             if (typeof ref === "function") ref(node);
             else if (ref) ref.current = node;
-            // @ts-ignore
             internalContainerRef.current = node;
           }}
           onBlur={handleBlur}
