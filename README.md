@@ -1,8 +1,16 @@
-# Chișinău Municipal Assistant
+# Spott: Chișinău Municipal Assistant
 
 An AI assistant for the Chișinău City Hall (Primăria Municipiului Chișinău) that answers questions from citizens and municipal employees in **Romanian and Russian**, using **only** the City Hall's public documents, and shows the exact document and passage behind every answer.
 
-Built for the Primăria Chișinău challenge at DeepTech GigaHack 2026.
+Built for the Primăria Chișinău challenge at DeepTech GigaHack 2026. **Live demo: [spott-sepia.vercel.app](https://spott-sepia.vercel.app)**
+
+![An answer with its sources: the scanned council decision opens next to the chat, the quoted point highlighted](docs/images/chat.png)
+
+| A Russian question answered from Romanian documents | Admin: sources, processing, unanswered questions, spending |
+|---|---|
+| <img src="docs/images/chat-mobile-ru.png" width="280" alt="Mobile chat in Russian with a cited Romanian source"> | <img src="docs/images/admin-sources.png" alt="Admin panel, sources page"> |
+
+<sub>Screenshots use the demo answers in `frontend/src/lib/mocks/`, which come from the real index.</sub>
 
 ---
 
@@ -25,23 +33,23 @@ Mapped one-to-one to the challenge brief.
 | **Cite the exact document and passage** | Every answer cites the act (type, number, date), the passage quoted verbatim, the page and point (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*), and links to the original on the City Hall website. Quotes come from the index, with PDF page boxes for highlighting. | ✅ |
 | **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing; `partial` says which part is missing. | ✅ |
 | **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. `outdated` (a newer act replaces the older) is told apart from a real `contradiction`. | ✅ in answers<br>⏳ corpus-wide scan |
-| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. | ✅ links in answers<br>⏳ widget routing |
+| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. An embeddable widget puts the assistant on any City Hall site. | ✅ links in answers, site widget<br>⏳ highlighting the element on the page |
 | **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ⏳ |
 
 ### Bonus
 
 | Requirement | How | Status |
 |---|---|---|
-| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ✅ API (`/api/feedback`) |
+| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ✅ in the chat, reviewed in the admin panel |
 | **Innovative solution** | See [What's innovative](#whats-innovative). | partly ✅ |
 
 ## What's innovative
 
 - **Scanned acts become searchable and citable.** Most official acts on the sites, such as council decisions and mayor's dispositions, are published as scans with no text at all. The pipeline OCRs them and recovers their structure (points, tables), so they can be cited down to the point. A plain text extractor would find nothing in them. ✅
 - **Every quote is traceable.** Each passage carries its full provenance: the file, the page of the PDF, the point of the act, the website page where the document was published, and the link text used there. ✅
-- **Document lineage.** The registry keeps every version of a document, and act numbers and dates are extracted. Next, we parse "se modifică / se abrogă" references between acts. Then the assistant can warn that a point was changed by a later decision instead of quoting an outdated rule. ⏳
+- **Document lineage.** The registry keeps every version of a document, and act numbers and dates are extracted. "Se modifică / se abrogă" references between acts are parsed into act relations, so when a later decision amends or repeals the act being cited, the answer quotes that line too instead of presenting an outdated rule as current. ✅
 - **Publication quality report for the City Hall.** Cross-checking the site against the documents reveals inconsistencies. We already found a link labelled "Dispoziția nr. 23/1" whose document is actually a *Decizie*. Collected into a report, these checks help the City Hall fix its own publications. ⏳
-- **Anti-hallucination guard.** Quotes in an answer are checked to appear verbatim in the cited passage. An answer whose quote can't be verified is not shown as sourced. ⏳
+- **Anti-hallucination guard.** The model never writes quotes. It only points at numbered lines of the retrieved passages; the quotes are taken from the index, a sentence without a backing line is dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. ✅
 
 ## How it works
 
@@ -216,15 +224,18 @@ npm run dev                  # http://localhost:3000
 
 ```json
 {
-  "status": "answered | not_found | conflict",
+  "status": "answered | partial | not_found | conflict | refused",
   "lang": "ro",
   "answer": "...",
-  "citations": [{ "document_title": "...", "url": "...", "passage": "...", "location": "pct. 3.2", "page": 4, "published": "2020-07-28" }],
-  "nav_links": [{ "title": "...", "url": "..." }]
+  "sentences": [{ "text": "...", "cites": ["c1"] }],
+  "citations": [{ "id": "c1", "document_title": "Decizia nr. 79 din 27.07.2021 ...", "location": "pct. 2", "page": 1,
+                  "quote": "...", "translation": null, "url": "https://dgaurf.md/storage/...pdf", "preview_url": "..." }],
+  "nav_links": [{ "title": "...", "url": "...", "kind": "page" }],
+  "followups": ["..."]
 }
 ```
 
-The contract is defined in [`backend/app/schemas.py`](backend/app/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+Shortened; the full contract, including the streaming events of `/api/ask/stream`, is in [docs/API.md](docs/API.md). It is defined in [`backend/app/schemas.py`](backend/app/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
 
 ## Budget
 
@@ -240,13 +251,23 @@ The cost will be split into indexing (one-off plus incremental) and answering (p
 | Part | State |
 |---|---|
 | Crawler, downloader, parsing (incl. OCR) | ✅ working, tested on a subset of the sites |
-| Chunking, line index, hybrid search (Postgres + pgvector) | ✅ 5 of 40 sites indexed so far, ~0.1–0.2 s per query |
+| Chunking, line index, hybrid search (Postgres + pgvector) | ✅ ~0.1–0.2 s per query; the background worker indexes the remaining sites batch by batch |
 | Document updates (replace, not duplicate; removal of vanished documents) | ✅ |
 | Agent tools `search / grep / toc / open`, console `qsearch` for testers | ✅ |
 | Cited answers `/api/ask` + `/api/ask/stream` (docs/API.md): answered / partial / not_found / conflict / refused, checklists, translations of quotes | ✅ fast path; agent path (`mode=deep`) ⏳ |
-| Mac / Windows setup, CI on Linux + Windows | ✅ |
-| Contradiction detection, navigation routing | ⏳ planned (the registry already tracks document versions and source pages) |
-| Chat UI | ✅ skeleton connected to the API |
+| Mac / Windows setup, CI on Linux + Windows (backend) and frontend lint + build | ✅ |
+| Act lineage (amends / repeals) in answers | ✅ |
+| Corpus-wide contradiction scan, highlighting the element on the page from the widget | ⏳ planned |
+| Chat UI | ✅ streaming answers with inline citations, the source opened next to the answer with the quote highlighted (PDF and web pages), RO / RU / EN, light / dark, mobile; embeddable site widget |
+| Admin panel | ✅ sources added by URL, processing jobs with progress, unanswered questions grouped by topic, ratings, quick questions, models and spending |
+| Automatic updates | ✅ nightly check of what changed, weekly full refresh, earlier on users' signals |
 | Feedback, live wall, corpus stats endpoints | ✅ |
 | Legacy `.doc` files | ⏳ need LibreOffice for conversion |
 | Monthly maintenance budget | ⏳ to be written |
+
+## Team
+
+Built at DeepTech GigaHack 2026 by [Natan Katsif](https://github.com/natankatsif), [Karnavski S.](https://github.com/rlwq), [TheMorkovkaBest](https://github.com/TheMorkovkaBest) and [Pooromens](https://github.com/Pooromens).
+
+- **Natan Katsif**: chunking and the line index, hybrid search, the chat and admin UI, source preview.
+- **Karnavski S.**: crawler, downloader, parsing and OCR; the answering API with verified citations, streaming, act lineage; admin backend and the background worker; Docker deploy.
