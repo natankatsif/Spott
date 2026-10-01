@@ -642,10 +642,13 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       
       const newHeight = Math.max(68, Math.min(scrollHeight, 160));
       el.style.height = `${newHeight}px`;
-      
-      setTextareaHeight(newHeight);
-      setIsScrolling(scrollHeight > 160);
-      
+
+      // only on a real change: right after a keystroke React can't skip a same-value setState, so each call
+      // queued one more render, and fast typing piled those up until React threw #185 (maximum update depth)
+      if (newHeight !== textareaHeight) setTextareaHeight(newHeight);
+      const scrolling = scrollHeight > 160;
+      if (scrolling !== isScrolling) setIsScrolling(scrolling);
+
       setTimeout(updateFades, 0);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, expanded]); 
