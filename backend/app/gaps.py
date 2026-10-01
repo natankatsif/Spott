@@ -10,6 +10,8 @@ sorted once and groups stay put. A group's id is the answer_id of its first ques
 Questions are masked like the public wall (e-mails, phones, long digit runs).
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 from collections import Counter
