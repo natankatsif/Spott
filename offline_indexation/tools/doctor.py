@@ -21,10 +21,14 @@ Result = tuple[str, str, str]  # status, message, hint
 
 
 def check_python() -> Result:
+    # requires-python is >=3.12 so that Intel Macs can stay on torch 2.2; the server and CI run 3.14
     v = sys.version_info
     if v >= (3, 14):
         return OK, f"Python {v.major}.{v.minor}.{v.micro}", ""
-    return FAIL, f"Python {v.major}.{v.minor} (нужен ≥ 3.14)", "uv сам поставит нужный Python при `uv sync`"
+    if v >= (3, 12):
+        return WARN, f"Python {v.major}.{v.minor} (работает; сервер и CI на 3.14)", (
+            "как на сервере: `uv sync --python 3.14 --all-packages` (Intel Mac — только 3.12)")
+    return FAIL, f"Python {v.major}.{v.minor} (нужен ≥ 3.12)", "`uv sync --python 3.14 --all-packages` поставит его сам"
 
 
 def check_uv() -> Result:

@@ -1,5 +1,7 @@
 # Lint + unit tests on Linux and Windows. Windows runs without PYTHONUTF8 on purpose:
 # the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
+# Python 3.14 as in the Docker image (requires-python allows 3.12 for Intel Macs, see packages/retrieval/pyproject.toml).
+# The frontend job lints, type-checks and builds the Next.js app.
 #
 # A push to main with green tests updates the server: it pulls and restarts what changed (docker/deploy.sh).
 # The frontend is deployed by Vercel itself (project Root Directory = frontend).
@@ -27,6 +29,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          python-version: "3.14"
       - name: Install (lockfile must be up to date)
         run: uv sync --all-packages --all-groups --frozen
       - name: Ruff
@@ -43,6 +46,25 @@ jobs:
           cd offline_indexation
           uv run python -m tools.pipeline update --dry-run
           uv run python -m tools.index_io --help
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install (lockfile must be up to date)
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Type check + production build
+        run: npm run build
 
   deploy:
     needs: test

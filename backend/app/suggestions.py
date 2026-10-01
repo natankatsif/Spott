@@ -9,6 +9,8 @@ version and replayed when the quick question is clicked (meta.path = "cache").
 With no candidates yet, the seed list (data/suggestions_seed.json) goes through the same check.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re

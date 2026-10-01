@@ -2,9 +2,11 @@
 # Build context: the repo root (backend depends on packages/retrieval through the uv workspace).
 FROM python:3.14-slim
 
-# pg_restore for the index dump; Tesseract for OCR (Docling on Linux); GL/GLib for OpenCV.
+# pg_restore for the index dump; Tesseract for OCR (Docling on Linux); GL/GLib for OpenCV; headless LibreOffice,
+# which Docling runs to open .doc / .rtf / .xls / .ppt (without it those files fail to parse).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         postgresql-client tesseract-ocr tesseract-ocr-ron tesseract-ocr-rus libgl1 libglib2.0-0 curl \
+        libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 

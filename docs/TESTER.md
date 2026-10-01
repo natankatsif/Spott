@@ -64,7 +64,7 @@ git clone https://github.com/rlwq/DocumentParsing.git qwerty
 cd qwerty
 cp .env.example .env                # ключ OpenAI для тестирования не нужен
 
-# 3. Зависимости (uv сам поставит Python 3.14; первый раз 5–10 минут)
+# 3. Зависимости (нужен Python ≥ 3.12, нет подходящего — uv скачает сам; первый раз 5–10 минут)
 uv sync --all-packages
 
 # 4. Индекс (путь к присланному файлу)
