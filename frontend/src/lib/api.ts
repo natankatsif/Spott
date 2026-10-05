@@ -1,5 +1,5 @@
-// API contract with the backend. Mirrors backend/app/schemas.py field-for-field
-// (backend/tests/test_contract.py fails if they drift). Human-readable spec: docs/API.md.
+// The frontend's side of the API. The contract is backend/openapi.json (generated from the backend's models): these
+// types are checked against it in ./api-contract.ts, so the build fails if they drift. Human-readable spec: docs/API.md.
 
 import { isMock } from "./mode";
 import answeredRo from "./mocks/ask/answered-ro.json";

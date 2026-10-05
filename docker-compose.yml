@@ -4,7 +4,7 @@
 #   server  the API (port 8000) and the admin worker
 #   public  a Cloudflare quick tunnel: a public https://….trycloudflare.com address for the API, no server needed
 #   https   Caddy with a Let's Encrypt certificate for DOMAIN (a server with its own domain)
-# The index dump goes into data/export/ (tools.index_io export on the machine with the index); the api container
+# The index dump goes into data/export/ (spott.ingest.tools.index_io export on the machine with the index); the api container
 # restores it into an empty database by itself.
 x-app: &app
   build:
@@ -17,7 +17,7 @@ x-app: &app
     db:
       condition: service_healthy
   volumes:
-    - oidata:/app/offline_indexation/data  # registry, downloaded and parsed files: shared by api and worker
+    - oidata:/app/data  # registry, downloaded and parsed files, logs: shared by api and worker (SPOTT_DATA_DIR)
 
 services:
   db:
@@ -48,7 +48,7 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
     volumes:
-      - oidata:/app/offline_indexation/data
+      - oidata:/app/data
       - ./data/export:/dumps:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:8000/health | grep -q '\"models_loaded\":true'"]
@@ -60,8 +60,7 @@ services:
   worker:
     <<: *app
     profiles: [server]
-    command: ["python", "-m", "worker"]
-    working_dir: /app/offline_indexation
+    command: ["python", "-m", "spott.ingest.worker"]
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"

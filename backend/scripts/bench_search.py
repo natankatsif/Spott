@@ -18,6 +18,8 @@ import httpx
 import numpy as np
 import yaml
 
+from spott.core.paths import EVAL_DIR
+
 GREP_PATTERNS = [
     "Chișinău",
     "autorizație",
@@ -42,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--config",
         type=Path,
-        default=Path(__file__).parent.parent.parent / "offline_indexation" / "eval" / "search_smoke.yaml",
+        default=EVAL_DIR / "search_smoke.yaml",
         help="Path to search_smoke.yaml",
     )
     p.add_argument(
