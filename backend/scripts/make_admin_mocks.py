@@ -1,28 +1,27 @@
-"""Demo data for the admin page in mock mode (docs/tasks/11 B4, D): frontend/src/lib/mocks/admin/
+"""Demo data for the admin page in mock mode (docs/history/tasks/11 B4, D): <frontend>/src/lib/mocks/admin/
 sources.json, add-source-*.json, gaps.json, gap-recheck.json, gap-hide.json.
 
 Built offline, no database: the 40 sources from sites.toml (same seed and category rules as the backend), their
 counters from the corpus-stats mock (a snapshot of the real index), lines spread by chunks. Then a few rows edited
 for the demo: one running (63 %, parse), one failed, one document added by URL. Gaps are hand-written realistic
-questions, shaped like app/gaps.py builds them (a group re-checked as answered is not listed). To refresh sources.json from a real DB instead, save `GET /api/admin/sources` over it and re-apply the
+questions, shaped like spott/api/gaps.py builds them (a group re-checked as answered is not listed). To refresh sources.json from a real DB instead, save `GET /api/admin/sources` over it and re-apply the
 three edits (see edit_for_demo). Deterministic: same input → same files.
 
-    uv run python backend/scripts/make_admin_mocks.py          (from the repo root)
+    cd backend && uv run python scripts/make_admin_mocks.py ../frontend
+
+The frontend directory is an argument: the backend doesn't know where (or whether) a frontend lives.
 """
 
+import argparse
 import json
-import sys
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "packages" / "retrieval" / "src")]
+from spott.core.paths import SITES_TOML as TOML
+from spott.core.sources import DEFAULTS, EXCLUDED_SITES
 
-from retrieval.sources import DEFAULTS, EXCLUDED_SITES  # noqa: E402
-
-MOCKS = ROOT / "frontend" / "src" / "lib" / "mocks"
-OUT = MOCKS / "admin"
-TOML = ROOT / "offline_indexation" / "data" / "sources" / "sites.toml"
+MOCKS = Path()  # <frontend>/src/lib/mocks, set by main()
+OUT = Path()  # <frontend>/src/lib/mocks/admin
 T0 = "2026-09-26T{}+03:00"
 
 
@@ -161,7 +160,7 @@ def add_source_mocks(sources: list[dict]) -> dict[str, dict]:
 
 def group(gid: str, asked: list[tuple[str, str, str, str]], missing: list[str], hints: list[tuple[str, int]],
           rechecked: dict | None = None) -> dict:
-    """A group as the backend builds it (app/gaps.py gap_item): questions oldest first, the first one is the
+    """A group as the backend builds it (spott/api/gaps.py gap_item): questions oldest first, the first one is the
     example and the id, status = the worst, count = how many questions."""
     questions = [{"answer_id": f"{gid}_{i}" if i else gid, "question": text, "lang": lang, "status": status,
                   "ts": ts(hm)} for i, (text, lang, status, hm) in enumerate(asked)]
@@ -211,10 +210,15 @@ def gaps() -> dict:
 
 def write(name: str, data: dict) -> None:
     (OUT / name).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("wrote", (OUT / name).relative_to(ROOT))
+    print("wrote", OUT / name)
 
 
 def main() -> None:
+    global MOCKS, OUT
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("frontend", type=Path, help="the frontend directory (its mocks are rewritten)")
+    MOCKS = ap.parse_args().frontend / "src" / "lib" / "mocks"
+    OUT = MOCKS / "admin"
     sources, totals = rows()
     edit_for_demo(sources)
     doc = sources[-1]  # the document added by URL is a new domain in the index

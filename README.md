@@ -94,54 +94,31 @@ Each stage is a separate command. The stages share one SQLite registry (`data/re
 - **Backend** (FastAPI, contract in [docs/API.md](docs/API.md)). Retrieves the most relevant passages and gives the LLM their lines, numbered. The model answers only from them and marks which lines back each sentence; the quotes are then taken from the index (never written by the model), sentences without a backing line are dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. Answers stream over SSE (`/api/ask/stream`).
 - **Frontend** (Next.js). Chat interface with a Romanian / Russian switch. It shows each answer with its sources and navigation links.
 
-## Parsed document format
-
-Each document becomes `data/parsed/<sha256>.json`, shortened here:
-
-```json
-{
-  "metadata": {
-    "title": "Cu privire la aprobarea Planului de acțiuni pentru elaborarea ...",
-    "doc_type": "decizie", "number": "12/14", "date": "2020-07-28", "lang": "ro"
-  },
-  "sources": [{
-    "url": "https://dgaurf.md/storage/decizie-1214-din-28.07.2020-(1).pdf",
-    "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
-    "found_on_title": "Documentații de urbanism",
-    "anchor_text": "Decizia CMC privind elaborarea PUG"
-  }],
-  "pages":  [{ "n": 1, "text_layer": false }, "..."],
-  "blocks": [
-    { "id": 7, "type": "list_item", "marker": "1.", "page": 1, "section": ["DECIZIE"], "lang": "ro",
-      "text": "1. Se aprobă Planul de acțiuni pentru elaborarea Planului de amenajare a teritoriului ..." },
-    { "id": 12, "type": "table", "page": 1, "header": ["Nr. crt.", "Nume și prenume", "Funcția", "Rol în grup"],
-      "rows": [["1", "...", "...", "Președinte"]] }
-  ]
-}
-```
-
-The same content is also written as Markdown (`<sha256>.md`) for reading and debugging. The raw Docling output (`<sha256>.docling.json`) is cached so the corpus can be rebuilt without running OCR again.
-
 ## Data sources
 
-The corpus is built from the websites listed in the challenge's Annex 1: 42 domains across transparency, urban mobility, architecture and utilities, education, healthcare, district administrations, and public services. The list, with per-site crawl settings, is in [`offline_indexation/data/sources/sites.toml`](offline_indexation/data/sources/sites.toml).
+The corpus is built from the websites listed in the challenge's Annex 1: 42 domains across transparency, urban mobility, architecture and utilities, education, healthcare, district administrations, and public services. The list, with per-site crawl settings, is in [`data/sources/sites.toml`](data/sources/sites.toml).
 
 > `chisinau.md` disallows all crawling in its `robots.txt`, so it is skipped by default. It can be enabled per site with `ignore_robots = true` once crawling has been agreed with the City Hall.
 
 ## Repository layout
 
-The repository is a uv workspace (`offline_indexation`, `backend`, `packages/retrieval`) plus the separate Next.js frontend:
+Two independent projects that talk only over HTTP: the Python backend and the Next.js frontend. The contract between them is [`backend/openapi.json`](backend/openapi.json), generated from the API's models; the frontend's types are generated from it.
 
 | Directory | Stack | Purpose |
 |---|---|---|
-| [`offline_indexation/`](offline_indexation) | Python 3.14, uv, Docling | Corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, `eval`, `tools` (doctor, pipeline, index export/import) |
-| [`packages/retrieval/`](packages/retrieval) | Python 3.14, pgvector, bge-m3 | Shared search engine: hybrid retrieval, agent tools, `qsearch` console |
-| [`backend/`](backend) | Python 3.14, uv, FastAPI | Question answering API |
-| [`frontend/`](frontend) | Node, Next.js 16 | Chat UI |
+| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`), in three layers: |
+| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the database schema, embeddings, hybrid search, agent tools, the `qsearch` console |
+| [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Docling | corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, the admin `worker`, `tools` (doctor, pipeline, index export/import) |
+| [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the question answering and admin API |
+| [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | | eval sets, benchmarks and one-off scripts |
+| [`frontend/`](frontend) | Node, Next.js 16 | Chat UI, admin panel, site widget |
+| [`data/`](data) | | everything generated (crawl, files, registry, dumps, logs; `SPOTT_DATA_DIR`), only `data/sources/sites.toml` is versioned |
+
+`api` and `ingest` both build on `core` and never import each other; CI checks it (`uv run lint-imports`, rules in `backend/pyproject.toml`). The API needs only the `api` extra, the pipeline the `ingest` extra (Docling, OCR); `uv sync --all-extras` installs both.
 
 ## Run the backend in Docker (one command)
 
-Needs only Docker. Put the index dump (`index-YYYY-MM-DD.dump`, made with `tools.index_io export` on the machine that has the index) into `data/export/`, then:
+Needs only Docker. Put the index dump (`index-YYYY-MM-DD.dump`, made with `python -m spott.ingest.tools.index_io export` on the machine that has the index) into `data/export/`, then:
 
 ```bash
 ./start.sh            # database + API + admin worker → http://localhost:8000
@@ -154,65 +131,7 @@ The first run asks for the OpenAI key and writes `.env` (random database and adm
 
 ## Getting started
 
-**New here or testing on Mac / Windows: follow [docs/TESTER.md](docs/TESTER.md)** (in Russian): install, load the ready-made index dump, check the setup, test search in the console. Technical notes on every pipeline stage, eval and benchmarks: [docs/README.ru.md](docs/README.ru.md).
-
-Quick start with a ready index dump (Docker Desktop running):
-
-```bash
-cp .env.example .env                  # Windows: copy .env.example .env
-uv sync --all-packages
-cd offline_indexation
-uv run python -m tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # starts the DB container, loads the index
-uv run python -m tools.doctor                                           # environment check
-cd .. && uv run qsearch                                                 # console search (RO / RU)
-```
-
-Cross-platform maintenance commands (run in `offline_indexation/`; `scripts/*.sh` are thin wrappers for Mac/Linux):
-
-| Command | What it does |
-|---|---|
-| `uv run python -m tools.pipeline update` | refresh already crawled sites, replace changed documents, drop removed ones, re-index |
-| `uv run python -m tools.pipeline full [--only crawler downloader]` | full crawl of all allowed sites (never `chisinau.md`) |
-| `uv run python -m tools.index_io export` | dump the index to `data/export/` (not committed) |
-
-### Running stages by hand
-
-**Prerequisites:** [uv](https://docs.astral.sh/uv/), Node.js 20+. Parsing uses Apple Vision OCR on macOS. On Linux it falls back to Tesseract, which needs the `ron` and `rus` language packs installed. Old binary Office files (`.doc`, `.rtf`, `.xls`, `.ppt`) also need [LibreOffice](https://www.libreoffice.org/) (`soffice` on `PATH`); without it they are marked failed and the rest of the corpus parses as usual.
-
-### Offline indexation
-
-```bash
-cd offline_indexation
-uv sync
-
-uv run python -m crawler --list                          # configured sites
-uv run python -m crawler --max-depth 2 --max-pages 200   # 1. crawl (quick pass); --resume continues an interrupted crawl
-uv run python -m downloader                              # 2. download new documents; --refresh re-checks known ones
-uv run python -m parsing                                 # 3. parse into data/parsed/; --rebuild re-derives output without OCR
-uv run python -m pages_parsing                           # 4. text of crawled HTML pages
-docker compose up -d                                     #    (from the repo root) Postgres + pgvector
-uv run python -m indexing                                # 5. chunk, embed and index (incremental)
-```
-
-Every command accepts `--help`. All generated data stays in `offline_indexation/data/` and is git-ignored.
-
-The first parsing run downloads Docling's layout and table models, which takes a few minutes. After that, parsing takes about 1–3 s per page, including OCR, on an Apple M4.
-
-### Backend
-
-```bash
-cd backend
-uv run uvicorn app.main:app --reload --port 8000   # API docs at http://localhost:8000/docs
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
-npm run dev                  # http://localhost:3000
-```
+**New here or testing on Mac / Windows: follow [docs/TESTER.md](docs/TESTER.md)** (in Russian). Running every part locally, stage by stage, and the format of parsed documents: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Technical notes on every pipeline stage, eval and benchmarks: [docs/README.ru.md](docs/README.ru.md).
 
 ## API
 
@@ -235,7 +154,7 @@ npm run dev                  # http://localhost:3000
 }
 ```
 
-Shortened; the full contract, including the streaming events of `/api/ask/stream`, is in [docs/API.md](docs/API.md). It is defined in [`backend/app/schemas.py`](backend/app/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+Shortened; the full contract, including the streaming events of `/api/ask/stream`, is in [docs/API.md](docs/API.md). It is defined in [`backend/src/spott/api/schemas.py`](backend/src/spott/api/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
 
 ## Budget
 

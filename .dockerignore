@@ -4,8 +4,7 @@
 **/__pycache__
 **/*.pyc
 .env
-data
+data/*
+!data/sources
 frontend
-offline_indexation/data/*
-!offline_indexation/data/sources
 .agents

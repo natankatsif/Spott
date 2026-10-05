@@ -136,7 +136,7 @@ const ro = {
     title: "Procesări",
     subtitle: "Parcurgere, descărcare, analiză și indexare. Se actualizează singur.",
     empty: "Nicio procesare.",
-    workerHint: "Procesările rulează în worker: cd offline_indexation && uv run python -m worker",
+    workerHint: "Procesările rulează în worker: cd backend && uv run python -m spott.ingest.worker",
     allSources: "toate sursele",
     kind: { crawl: "parcurgere", refresh: "actualizare", check: "verificare automată", backlog: "pilot automat" },
     stage: { crawl: "Parcurgere", download: "Descărcare", parse: "Analiză", index: "Indexare" },
@@ -461,7 +461,7 @@ const ru: AdminText = {
     title: "Обработка",
     subtitle: "Обход, скачивание, разбор и индексация. Обновляется само.",
     empty: "Обработок нет.",
-    workerHint: "Обработку выполняет worker: cd offline_indexation && uv run python -m worker",
+    workerHint: "Обработку выполняет worker: cd backend && uv run python -m spott.ingest.worker",
     allSources: "все источники",
     kind: { crawl: "обход", refresh: "обновление", check: "автопроверка", backlog: "автопилот" },
     stage: { crawl: "Обход", download: "Скачивание", parse: "Разбор", index: "Индексация" },
@@ -784,7 +784,7 @@ const en: AdminText = {
     title: "Jobs",
     subtitle: "Crawl, download, parse and index. Updates by itself.",
     empty: "No jobs.",
-    workerHint: "Jobs run in the worker: cd offline_indexation && uv run python -m worker",
+    workerHint: "Jobs run in the worker: cd backend && uv run python -m spott.ingest.worker",
     allSources: "all sources",
     kind: { crawl: "crawl", refresh: "refresh", check: "auto check", backlog: "autopilot" },
     stage: { crawl: "Crawl", download: "Download", parse: "Parse", index: "Index" },
@@ -978,7 +978,7 @@ const en: AdminText = {
 export const ADMIN_UI: Record<UILang, AdminText> = { ro, ru, en };
 export type { AdminText };
 
-/** Categories used in offline_indexation/data/sources/sites.toml. */
+/** Categories used in data/sources/sites.toml. */
 export const CATEGORIES = [
   "city_hall",
   "agency",
