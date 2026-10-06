@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from tests.api.fakes import LOGIN
 
 from spott.api import admin, llm_settings, main
 from spott.api.admin import Duplicate
 
-LOGIN = {"login": "admin", "password": "correct horse battery"}
 TOKEN: dict[str, str] = {}
 ROBOTS = {
     "acc.md": "User-agent: *\nAllow: /\n",
@@ -145,15 +145,13 @@ def client(monkeypatch):
     monkeypatch.setenv("ADMIN_LOGIN", LOGIN["login"])
     monkeypatch.setenv("ADMIN_PASSWORD", LOGIN["password"])
     monkeypatch.delenv("ADMIN_SECRET", raising=False)
-    admin.login_limiter.hits.clear()
     main.app.state.admin = MemoryAdmin()
     FETCHED.clear()
     monkeypatch.setattr(llm_settings, "RoutedLLM", no_llm)
     main.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(fake_site))
     c = TestClient(main.app)
     TOKEN["Authorization"] = "Bearer " + c.post("/api/admin/login", json=LOGIN).json()["token"]
-    yield c
-    main.app.state.admin = None
+    return c
 
 
 def test_login_gives_a_session_token(client):

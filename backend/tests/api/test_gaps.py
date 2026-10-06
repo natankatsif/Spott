@@ -5,8 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
-from tests.api.test_admin import LOGIN
-from tests.api.test_answering import DECISION, FakeLLM, FakeStore, model
+from tests.api.fakes import DECISION, LOGIN, FakeLLM, FakeStore, model
 
 from spott.api import answering, main
 from spott.api.gaps import gaps, group
@@ -104,8 +103,6 @@ class FakeGaps:
 def test_gap_endpoints(monkeypatch):
     monkeypatch.setenv("ADMIN_LOGIN", LOGIN["login"])
     monkeypatch.setenv("ADMIN_PASSWORD", LOGIN["password"])
-    from spott.api import admin
-    admin.login_limiter.hits.clear()
     client = TestClient(main.app)
     main.app.state.gaps = FakeGaps()
     asked = []
@@ -116,19 +113,16 @@ def test_gap_endpoints(monkeypatch):
             (Path(__file__).resolve().parent / "fixtures" / "answered-ro.json").read_text(encoding="utf-8"))
 
     main.app.state.ask_once = ask_once
-    try:
-        assert client.get("/api/admin/gaps").status_code == 401
-        token = {"Authorization": "Bearer " + client.post("/api/admin/login", json=LOGIN).json()["token"]}
-        body = client.get("/api/admin/gaps", headers=token).json()
-        assert body["totals"]["groups"] == 2 and body["items"][0]["count"] == 3
-        r = client.post("/api/admin/gaps/a1/recheck", headers=token)
-        assert r.json()["status"] == "answered" and asked == [ROWS[0]["question"]]  # one question, once
-        assert client.post("/api/admin/gaps/nope/recheck", headers=token).status_code == 404
-        assert client.post("/api/admin/gaps/a1/hide", headers=token).json() == {"ok": True}
-        assert client.post("/api/admin/gaps/a1/unhide", headers=token).json() == {"ok": True}
-        assert client.get("/api/admin/gaps", headers=token, params={"status": "answered"}).status_code == 422
-    finally:
-        main.app.state.gaps = None
+    assert client.get("/api/admin/gaps").status_code == 401
+    token = {"Authorization": "Bearer " + client.post("/api/admin/login", json=LOGIN).json()["token"]}
+    body = client.get("/api/admin/gaps", headers=token).json()
+    assert body["totals"]["groups"] == 2 and body["items"][0]["count"] == 3
+    r = client.post("/api/admin/gaps/a1/recheck", headers=token)
+    assert r.json()["status"] == "answered" and asked == [ROWS[0]["question"]]  # one question, once
+    assert client.post("/api/admin/gaps/nope/recheck", headers=token).status_code == 404
+    assert client.post("/api/admin/gaps/a1/hide", headers=token).json() == {"ok": True}
+    assert client.post("/api/admin/gaps/a1/unhide", headers=token).json() == {"ok": True}
+    assert client.get("/api/admin/gaps", headers=token, params={"status": "answered"}).status_code == 422
 
 
 def test_the_model_joins_groups_one_document_would_answer_once():

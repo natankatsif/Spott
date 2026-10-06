@@ -100,17 +100,14 @@ class Ratings:
 
 def test_star_rating_with_tags_is_stored(client):
     main.app.state.answers = ratings = Ratings()
-    try:
-        r = client.post("/api/feedback", json={"answer_id": "a1", "rating": 2, "tags": ["outdated", "wrong_source"],
-                                               "comment": "sursa e veche", "session_id": "s1"})
-        assert r.json() == {"ok": True}
-        client.post("/api/feedback", json={"answer_id": "a1", "vote": "up"})  # older clients: up = 5 stars
-        assert ratings.saved == [("a1", 2, ["outdated", "wrong_source"], "s1"), ("a1", 5, [], None)]
-        assert client.post("/api/feedback", json={"answer_id": "nope", "rating": 5}).status_code == 404
-        for bad in ({"answer_id": "a1"}, {"answer_id": "a1", "rating": 6}, {"answer_id": "a1", "rating": 3, "tags": ["meh"]}):
-            assert client.post("/api/feedback", json=bad).status_code == 422
-    finally:
-        main.app.state.answers = None
+    r = client.post("/api/feedback", json={"answer_id": "a1", "rating": 2, "tags": ["outdated", "wrong_source"],
+                                           "comment": "sursa e veche", "session_id": "s1"})
+    assert r.json() == {"ok": True}
+    client.post("/api/feedback", json={"answer_id": "a1", "vote": "up"})  # older clients: up = 5 stars
+    assert ratings.saved == [("a1", 2, ["outdated", "wrong_source"], "s1"), ("a1", 5, [], None)]
+    assert client.post("/api/feedback", json={"answer_id": "nope", "rating": 5}).status_code == 404
+    for bad in ({"answer_id": "a1"}, {"answer_id": "a1", "rating": 6}, {"answer_id": "a1", "rating": 3, "tags": ["meh"]}):
+        assert client.post("/api/feedback", json=bad).status_code == 422
 
 
 class Visitors:
@@ -124,12 +121,10 @@ class Visitors:
 
 def test_visits_count_each_browser_once(client):
     main.app.state.visitors = Visitors()
-    try:
-        assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
-        assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
-        assert client.post("/api/visits", json={"visitor_id": "anon-2"}).json() == {"visitors": 2}
-        assert client.post("/api/visits", json={"visitor_id": ""}).status_code == 422
-    finally:
-        main.app.state.visitors = None
+    assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
+    assert client.post("/api/visits", json={"visitor_id": "anon-1"}).json() == {"visitors": 1}
+    assert client.post("/api/visits", json={"visitor_id": "anon-2"}).json() == {"visitors": 2}
+    assert client.post("/api/visits", json={"visitor_id": ""}).status_code == 422
+    main.app.state.visitors = None
     r = client.post("/api/visits", json={"visitor_id": "anon-3"})
     assert (r.status_code, r.json()["error"]) == (503, "unavailable")

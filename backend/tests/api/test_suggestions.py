@@ -61,11 +61,8 @@ class FakeSuggestions:
 
 def test_suggestions_endpoint():
     main.app.state.suggestions = FakeSuggestions()
-    try:
-        client = TestClient(main.app)
-        r = client.get("/api/suggestions", params={"lang": "ro", "limit": 6})
-        assert r.json()["items"][0]["asked_count"] == 7
-        assert client.get("/api/suggestions", params={"lang": "en"}).status_code == 200  # the RO questions, in English
-        assert client.get("/api/suggestions", params={"lang": "de"}).status_code == 422
-    finally:
-        main.app.state.suggestions = None
+    client = TestClient(main.app)
+    r = client.get("/api/suggestions", params={"lang": "ro", "limit": 6})
+    assert r.json()["items"][0]["asked_count"] == 7
+    assert client.get("/api/suggestions", params={"lang": "en"}).status_code == 200  # the RO questions, in English
+    assert client.get("/api/suggestions", params={"lang": "de"}).status_code == 422

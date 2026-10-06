@@ -5,42 +5,10 @@ import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from tests.api.fakes import SCHEMA, CompatServer
 
-from spott.api import admin, llm, llm_settings, main
+from spott.api import llm, llm_settings, main
 from spott.api.llm import AnthropicLLM, LLMConfig, LLMUnavailable, OpenAILLM, RoutedLLM
-
-SCHEMA = {"type": "object", "properties": {"reply": {"type": "string"}}, "required": ["reply"],
-          "additionalProperties": False}
-
-
-def completion(content: str, model: str = "m") -> dict:
-    return {"id": "x", "object": "chat.completion", "created": 0, "model": model,
-            "choices": [{"index": 0, "finish_reason": "stop",
-                         "message": {"role": "assistant", "content": content}}],
-            "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}}
-
-
-class CompatServer:
-    """An OpenAI-compatible server that rejects the options listed in `rejects` (by name in the 400 message)."""
-
-    def __init__(self, rejects=(), reply='{"reply": "ok"}'):
-        self.rejects, self.reply, self.bodies = set(rejects), reply, []
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content)
-        self.bodies.append(body)
-        fmt = (body.get("response_format") or {}).get("type")
-        for name in self.rejects:
-            if name in body or (name == fmt):
-                return httpx.Response(400, json={"error": {"message": f"Unsupported parameter: {name}",
-                                                           "type": "invalid_request_error"}})
-        if body.get("stream"):
-            chunks = [{"id": "x", "object": "chat.completion.chunk", "created": 0, "model": "m",
-                       "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]}
-                      for piece in (self.reply[:5], self.reply[5:])]
-            text = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
-            return httpx.Response(200, text=text, headers={"content-type": "text/event-stream"})
-        return httpx.Response(200, json=completion(self.reply))
 
 
 def compat(server, **kw) -> OpenAILLM:
@@ -232,14 +200,12 @@ def api(clean_env):
     clean_env.setenv("ADMIN_PASSWORD", "secret-pass")
     clean_env.delenv("ADMIN_SECRET", raising=False)
     clean_env.setenv("OPENAI_API_KEY", "sk-env-123456789")
-    admin.login_limiter.hits.clear()
     store = llm_settings.MemorySettings()
     main.app.state.llm_holder = llm_settings.LLMHolder(store)
     c = TestClient(main.app)
     AUTH["Authorization"] = "Bearer " + c.post("/api/admin/login", json={"login": "admin",
                                                                          "password": "secret-pass"}).json()["token"]
-    yield c, store
-    main.app.state.llm_holder = None
+    return c, store
 
 
 def test_settings_hide_keys_and_show_where_they_come_from(api):
