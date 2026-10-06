@@ -73,7 +73,7 @@ class PgJobStore:
             "WHERE status = 'running' RETURNING id").fetchall()
         return [r[0] for r in rows]
 
-    def schedule(self, now: datetime) -> list[tuple[int, str]]:
+    def queue_due(self, now: datetime) -> list[tuple[int, str]]:
         """Automatic updates: sets the night slot of new sites, queues the jobs that are due; returns them."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
@@ -198,7 +198,7 @@ def main() -> None:
         if schedule.ENABLED and time.monotonic() - scheduled_at >= SCHEDULE_EVERY_S:
             scheduled_at = time.monotonic()
             try:
-                if queued := store.schedule(datetime.now(UTC)):
+                if queued := store.queue_due(datetime.now(UTC)):
                     log.info("automatic updates queued: %s", queued)
             except Exception:  # scheduling must never stop the worker
                 log.exception("scheduling failed")
