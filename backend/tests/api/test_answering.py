@@ -1,22 +1,12 @@
 """/api/ask logic against docs/API.md with a fake store, fake retrieval and a fake LLM: no database, no network."""
 
 import pytest
-from tests.api.fakes import BOX, DECISION, DOC, LINES, NEWER, FakeLLM, FakeStore, model
+from tests.api.fakes import BOX, CONTACTS, DECISION, DGMU, DOC, LINES, NEWER, FakeLLM, FakeStore, model, s
 
 from spott.api import answering
 from spott.api.answering import answer_events, answer_question, detect_lang, numbers_backed, to_top_left
 from spott.api.schemas import AskRequest, AskResponse
 from spott.core.pipeline import RetrievalResult
-
-CONTACTS = {
-    "chunk_id": "c3", "doc_id": "page:dgaurf.md/contacte", "kind": "page", "lang": "ro", "site": "dgaurf.md",
-    "text": "Tel: 022 000 000", "title": "Contacte DGAURF", "url": "https://dgaurf.md/contacte",
-    "found_on": "https://dgaurf.md/contacte", "has_contacts": True,
-}
-
-
-def s(text, *refs):
-    return {"refs": list(refs), "text": text}
 
 
 def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, rewrite=False,
@@ -523,11 +513,6 @@ def test_common_keywords_are_ignored():
 
 # ─────────────── task 09: contacts when there's no answer ───────────────
 
-DGMU = {"contact_id": "k1", "name": "Direcția Generală Mobilitate Urbană", "area": "infrastructura urbană",
-        "phone": ["022-20-46-90"], "email": ["dirtrans@pmc.md"], "address": None, "hours": None,
-        "url": "https://mobilitatechisinau.md/", "site": "mobilitatechisinau.md", "line_ids": ["m1"],
-        "is_general": False, "similarity": 0.53,
-        "line_texts": ["ANTICAMERA TEL: 022-20-46-90 FAX: 022 -20-46-58 EMAIL: dirtrans@pmc.md"]}
 CITY_HALL = DGMU | {"contact_id": "k0", "name": "Primăria municipiului Chișinău", "phone": ["022 20 17 07"], "email": [],
                     "url": "https://example.md/contacte", "site": "example.md", "line_ids": ["g1"], "is_general": True,
                     "similarity": 0.0, "line_texts": ["Primăria municipiului Chișinău, tel. 022 20 17 07"]}

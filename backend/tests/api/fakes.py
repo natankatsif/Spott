@@ -1,5 +1,5 @@
-"""Fakes the API tests share, no database and no network: two acts with their lines, a store and an answer model
-over them, an OpenAI-compatible server and the admin login."""
+"""Fakes the API tests share, no database and no network: two acts with their lines, a contacts page, a contact card,
+a store and an answer model over them, an OpenAI-compatible server and the admin login."""
 
 import json
 
@@ -24,6 +24,17 @@ NEWER = DECISION | {
     "text": "Taxa este de 350 lei.", "citation_label": "Decizie nr. 3/1 din 2024-01-10", "legal_path": [],
     "url": "https://dgaurf.md/storage/n.pdf",
 }
+CONTACTS = {
+    "chunk_id": "c3", "doc_id": "page:dgaurf.md/contacte", "kind": "page", "lang": "ro", "site": "dgaurf.md",
+    "text": "Tel: 022 000 000", "title": "Contacte DGAURF", "url": "https://dgaurf.md/contacte",
+    "found_on": "https://dgaurf.md/contacte", "has_contacts": True,
+}
+# A contact card as FakeStore.contacts_near returns it.
+DGMU = {"contact_id": "k1", "name": "Direcția Generală Mobilitate Urbană", "area": "infrastructura urbană",
+        "phone": ["022-20-46-90"], "email": ["dirtrans@pmc.md"], "address": None, "hours": None,
+        "url": "https://mobilitatechisinau.md/", "site": "mobilitatechisinau.md", "line_ids": ["m1"],
+        "is_general": False, "similarity": 0.53,
+        "line_texts": ["ANTICAMERA TEL: 022-20-46-90 FAX: 022 -20-46-58 EMAIL: dirtrans@pmc.md"]}
 BOX = {"page": 2, "l": 70.0, "t": 700.0, "r": 500.0, "b": 680.0, "origin": "BOTTOMLEFT"}
 # FakeStore's lines by chunk. A test adds its own with monkeypatch.setitem: the dict is shared by every test module.
 LINES = {
@@ -72,6 +83,11 @@ class FakeStore:
     def dated_lines(self, doc_ids):
         return {d: [line["text"] for lines in LINES.values() for line in lines if d in line.get("doc", "")]
                 for d in doc_ids}
+
+
+def s(text, *refs):
+    """A sentence of the answer model, backed by the given line ids."""
+    return {"refs": list(refs), "text": text}
 
 
 def model(verdict="answered", sentences=(), missing=(), conflict=None, checklist=None, translations=(),

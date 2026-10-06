@@ -1,0 +1,483 @@
+[
+  {
+    "type": "start",
+    "id": "<answer id>",
+    "lang": "ro"
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "search",
+      "input": "cine elaborează Planul urbanistic general",
+      "summary": "5 rezultate, cel mai bun: Decizia nr. 79 din 27.07.2021",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "open",
+      "input": "file:dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+      "summary": "pct. 2 conține răspunsul",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "verify",
+      "input": "2 citate",
+      "summary": "citatele coincid cu documentele",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "citation",
+    "citation": {
+      "id": "c2",
+      "doc_id": "file:dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf",
+      "chunk_id": "229dac473692c63262f251db88f733f19209cba7",
+      "line_ids": [
+        "6e69f54f8178eb728430e97d8eda947b657cb559"
+      ],
+      "kind": "file",
+      "document_title": "Decizia nr. 23/1 din 23.12.2020 cu privire la elaborarea documentației urbanistice",
+      "doc_type": "decizie",
+      "act_number": "23/1",
+      "published": "2020-12-23",
+      "location": "pct. 1",
+      "page": 1,
+      "quote": "1. Se acceptă inițierea elaborării documentației urbanistice pentru modificarea Planului urbanistic general al orașului Chișinău din contul mijloacelor bugetare ale municipiului Chișinău.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf",
+      "deep_link": "https://dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf#page=1",
+      "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+      "site": "dgaurf.md",
+      "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 91.6,
+          "t": 527.4,
+          "r": 561.9,
+          "b": 579.1,
+          "page_width": 595.8,
+          "page_height": 842.4
+        }
+      ],
+      "preview_url": "/mocks/preview/answered-ro-c2.html",
+      "preview_kind": "pdf"
+    }
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Elaborarea "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "documentației "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "pentru "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "modificarea "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Planului "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "urbanistic "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "general "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "a "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "fost "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "inițiată "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "în "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "decembrie "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "2020 "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "și "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "se "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "finanțează "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "din "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "bugetul "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "municipal. "
+  },
+  {
+    "type": "sentence",
+    "index": 0,
+    "sentence": {
+      "text": "Elaborarea documentației pentru modificarea Planului urbanistic general a fost inițiată în decembrie 2020 și se finanțează din bugetul municipal.",
+      "cites": [
+        "c2"
+      ]
+    },
+    "verified": true
+  },
+  {
+    "type": "citation",
+    "citation": {
+      "id": "c1",
+      "doc_id": "file:dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+      "chunk_id": "d770e7f3c41f5a87d202bcf8c5ee67fe49de0be4",
+      "line_ids": [
+        "4b4465084b69fd92fbbe7a46d127106733c56fdd"
+      ],
+      "kind": "file",
+      "document_title": "Decizia nr. 79 din 27.07.2021 cu privire la caietul de sarcini",
+      "doc_type": "decizie",
+      "act_number": "79",
+      "published": "2021-07-27",
+      "location": "pct. 2",
+      "page": 1,
+      "quote": "2. Direcția generală arhitectură, urbanism și relații funciare va selecta compania sau consorțiul de companii care va elabora Planul urbanistic general prin intermediul procedurii de achiziții publice.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+      "deep_link": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf#page=1",
+      "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+      "site": "dgaurf.md",
+      "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf/file",
+      "bboxes": [
+        {
+          "page": 1,
+          "l": 100.8,
+          "t": 578.3,
+          "r": 569.5,
+          "b": 620.9,
+          "page_width": 595.8,
+          "page_height": 842.4
+        }
+      ],
+      "preview_url": "/mocks/preview/answered-ro-c1.html",
+      "preview_kind": "pdf"
+    }
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "Compania "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "sau "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "consorțiul "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "care "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "elaborează "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "Planul "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "urbanistic "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "general "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "este "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "selectat "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "de "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "Direcția "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "generală "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "arhitectură, "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "urbanism "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "și "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "relații "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "funciare "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "prin "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "procedura "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "de "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "achiziții "
+  },
+  {
+    "type": "delta",
+    "index": 1,
+    "text": "publice. "
+  },
+  {
+    "type": "sentence",
+    "index": 1,
+    "sentence": {
+      "text": "Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice.",
+      "cites": [
+        "c1"
+      ]
+    },
+    "verified": true
+  },
+  {
+    "type": "done",
+    "response": {
+      "id": "<answer id>",
+      "status": "answered",
+      "lang": "ro",
+      "answer": "Elaborarea documentației pentru modificarea Planului urbanistic general a fost inițiată în decembrie 2020 și se finanțează din bugetul municipal. Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice.",
+      "sentences": [
+        {
+          "text": "Elaborarea documentației pentru modificarea Planului urbanistic general a fost inițiată în decembrie 2020 și se finanțează din bugetul municipal.",
+          "cites": [
+            "c2"
+          ]
+        },
+        {
+          "text": "Compania sau consorțiul care elaborează Planul urbanistic general este selectat de Direcția generală arhitectură, urbanism și relații funciare prin procedura de achiziții publice.",
+          "cites": [
+            "c1"
+          ]
+        }
+      ],
+      "citations": [
+        {
+          "id": "c1",
+          "doc_id": "file:dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+          "chunk_id": "d770e7f3c41f5a87d202bcf8c5ee67fe49de0be4",
+          "line_ids": [
+            "4b4465084b69fd92fbbe7a46d127106733c56fdd"
+          ],
+          "kind": "file",
+          "document_title": "Decizia nr. 79 din 27.07.2021 cu privire la caietul de sarcini",
+          "doc_type": "decizie",
+          "act_number": "79",
+          "published": "2021-07-27",
+          "location": "pct. 2",
+          "page": 1,
+          "quote": "2. Direcția generală arhitectură, urbanism și relații funciare va selecta compania sau consorțiul de companii care va elabora Planul urbanistic general prin intermediul procedurii de achiziții publice.",
+          "quote_lang": "ro",
+          "translation": null,
+          "url": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+          "deep_link": "https://dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf#page=1",
+          "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+          "site": "dgaurf.md",
+          "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf/file",
+          "bboxes": [
+            {
+              "page": 1,
+              "l": 100.8,
+              "t": 578.3,
+              "r": 569.5,
+              "b": 620.9,
+              "page_width": 595.8,
+              "page_height": 842.4
+            }
+          ],
+          "preview_url": "/mocks/preview/answered-ro-c1.html",
+          "preview_kind": "pdf"
+        },
+        {
+          "id": "c2",
+          "doc_id": "file:dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf",
+          "chunk_id": "229dac473692c63262f251db88f733f19209cba7",
+          "line_ids": [
+            "6e69f54f8178eb728430e97d8eda947b657cb559"
+          ],
+          "kind": "file",
+          "document_title": "Decizia nr. 23/1 din 23.12.2020 cu privire la elaborarea documentației urbanistice",
+          "doc_type": "decizie",
+          "act_number": "23/1",
+          "published": "2020-12-23",
+          "location": "pct. 1",
+          "page": 1,
+          "quote": "1. Se acceptă inițierea elaborării documentației urbanistice pentru modificarea Planului urbanistic general al orașului Chișinău din contul mijloacelor bugetare ale municipiului Chișinău.",
+          "quote_lang": "ro",
+          "translation": null,
+          "url": "https://dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf",
+          "deep_link": "https://dgaurf.md/storage/decizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf#page=1",
+          "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
+          "site": "dgaurf.md",
+          "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fdecizia_nr_231_din_23_decembrie_2020_-cu_privire_la_elaborarea_documentatiei.pdf/file",
+          "bboxes": [
+            {
+              "page": 1,
+              "l": 91.6,
+              "t": 527.4,
+              "r": 561.9,
+              "b": 579.1,
+              "page_width": 595.8,
+              "page_height": 842.4
+            }
+          ],
+          "preview_url": "/mocks/preview/answered-ro-c2.html",
+          "preview_kind": "pdf"
+        }
+      ],
+      "conflict": null,
+      "checklist": null,
+      "nav_links": [
+        {
+          "title": "Documentații de urbanism — DGAURF",
+          "url": "https://dgaurf.md/ro/documentatii-de-urbanism",
+          "kind": "page",
+          "selector": null
+        }
+      ],
+      "followups": [
+        "Când trebuie aprobat noul Plan urbanistic general?",
+        "Cine supraveghează elaborarea Planului urbanistic general?"
+      ],
+      "trace": [
+        {
+          "tool": "search",
+          "input": "cine elaborează Planul urbanistic general",
+          "summary": "5 rezultate, cel mai bun: Decizia nr. 79 din 27.07.2021",
+          "ms": "<ms>"
+        },
+        {
+          "tool": "open",
+          "input": "file:dgaurf.md/storage/decizia_nr_79_din_27_iulie_2021_-cu_privire_la_caietul_de_sarcini.pdf",
+          "summary": "pct. 2 conține răspunsul",
+          "ms": "<ms>"
+        },
+        {
+          "tool": "verify",
+          "input": "2 citate",
+          "summary": "citatele coincid cu documentele",
+          "ms": "<ms>"
+        }
+      ],
+      "meta": {
+        "model": "gpt-mock",
+        "path": "cache",
+        "latency_ms": "<ms>",
+        "verified": true
+      },
+      "focus_citation_id": null,
+      "contacts": []
+    }
+  }
+]
