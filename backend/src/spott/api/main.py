@@ -229,12 +229,14 @@ def client_id(request: Request) -> str:
     return client_address(request)
 
 
-def prepare_ask(request: Request) -> tuple[ConnectionPool, LLM]:
-    """Checks done before answering, so /api/ask/stream fails with an HTTP status, not mid-stream."""
+async def prepare_ask(request: Request) -> tuple[ConnectionPool, LLM]:
+    """Checks done before answering, so /api/ask/stream fails with an HTTP status, not mid-stream. get_llm() runs in
+    a worker thread: every 15 s it re-reads the admin's model settings from Postgres under a lock, and on the event
+    loop that would hold up every request, /health included."""
     pool = require_pool()
     if not getattr(app.state, "models_loaded", False):
         raise ApiException(503, "unavailable", "Service is warming up, try again in a few seconds", 5)
-    llm = get_llm()
+    llm = await run_in_threadpool(get_llm)
     app.state.rate_limiter.check(client_id(request))
     return pool, llm
 
@@ -281,13 +283,21 @@ def cached_answer(req: AskRequest) -> AskResponse | None:
         return None
 
 
-@app.post("/api/ask", response_model=AskResponse)
-async def ask(req: AskRequest, request: Request) -> AskResponse:
-    pool, llm = prepare_ask(request)
-    if cached := await run_in_threadpool(cached_answer, req):
+def replayed_answer(req: AskRequest) -> AskResponse | None:
+    """A quick question's checked answer replayed as a new answer, None when it is not cached. Both the cache and
+    the record of the answer (answered) are Postgres queries: the caller runs this in a worker thread."""
+    if cached := cached_answer(req):
         for event in replay_events(cached, req, on_done=answered):
             if event["type"] == "done":
                 return AskResponse.model_validate(event["response"])
+    return None
+
+
+@app.post("/api/ask", response_model=AskResponse)
+async def ask(req: AskRequest, request: Request) -> AskResponse:
+    pool, llm = await prepare_ask(request)
+    if replayed := await run_in_threadpool(replayed_answer, req):
+        return replayed
     try:
         return await run_in_threadpool(answer_question, app.state.store, llm, req, pool=pool,
                                        on_done=answered)
@@ -310,7 +320,7 @@ def sse(event: dict) -> str:
 
 @app.post("/api/ask/stream")
 async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
-    pool, llm = prepare_ask(request)
+    pool, llm = await prepare_ask(request)
 
     def events() -> Iterator[str]:  # sync: Starlette iterates it in a worker thread
         try:
