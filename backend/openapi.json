@@ -3463,7 +3463,9 @@
             "type": "string",
             "enum": [
               "crawl",
-              "refresh"
+              "refresh",
+              "check",
+              "backlog"
             ],
             "title": "Kind"
           },

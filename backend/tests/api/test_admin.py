@@ -307,3 +307,21 @@ def test_jobs_can_be_retried_deleted_and_cleared(client):
     assert client.delete(f"/api/admin/jobs/{jid}", headers=TOKEN).status_code == 404
     assert client.delete("/api/admin/jobs", headers=TOKEN).json() == {"deleted": 1}
     assert client.get("/api/admin/jobs", headers=TOKEN).json()["jobs"] == []
+
+
+def test_jobs_the_worker_queued_can_be_shown(client):
+    """The worker puts its check (nightly) and backlog (autopilot) jobs into the same table: listing, opening,
+    cancelling and retrying one, and the source whose last job it is, must not fail on its kind."""
+    source = add(client, "https://acc.md/").json()
+    store = main.app.state.admin
+    store.jobs[source["last_job"]["id"]]["status"] = "done"
+    check, backlog = store.create_job(source["id"], "check"), store.create_job(source["id"], "backlog")
+    r = client.get("/api/admin/jobs", headers=TOKEN)
+    assert r.status_code == 200 and [j["kind"] for j in r.json()["jobs"]] == ["crawl", "check", "backlog"]
+    assert client.get(f"/api/admin/jobs/{check['id']}", headers=TOKEN).json()["kind"] == "check"
+    assert client.post(f"/api/admin/jobs/{check['id']}/cancel", headers=TOKEN).json()["status"] == "cancelled"
+    backlog["status"] = "failed"
+    r = client.post(f"/api/admin/jobs/{backlog['id']}/retry", headers=TOKEN)
+    assert r.status_code == 201 and r.json()["kind"] == "backlog"
+    [row] = client.get("/api/admin/sources", headers=TOKEN).json()["sources"]
+    assert row["last_job"]["kind"] == "backlog"
