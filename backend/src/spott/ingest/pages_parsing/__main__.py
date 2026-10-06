@@ -24,7 +24,7 @@ from spott.ingest.parsing.html import parse_site_pages
 log = logging.getLogger("pages_parsing")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.pages_parsing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", type=Path, default=REGISTRY)
@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sites", nargs="+", metavar="ID", help="only these site ids")
     p.add_argument("--limit", type=int, help="at most N pages")
     p.add_argument("--reparse", action="store_true", help="reparse even if already parsed")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def run_pages_parsing(

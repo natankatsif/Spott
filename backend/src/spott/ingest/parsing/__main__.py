@@ -46,7 +46,7 @@ log = logging.getLogger("parsing")
 OK_STATUSES = {ConversionStatus.SUCCESS, ConversionStatus.PARTIAL_SUCCESS}
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.parsing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", type=Path, default=REGISTRY)
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sites", nargs="+", metavar="ID", help="only these sites (their files, or their pages with --pages)")
     p.add_argument("--keys-file", type=Path,
                    help="only the pending files of these documents (the \"documents\" of a check's JSON)")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 class FileParser:

@@ -12,14 +12,18 @@ from spott.ingest.common.registry import Registry
 from spott.ingest.common.urls import extension, url_key
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.worker.register", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--url", required=True)
     p.add_argument("--site", required=True)
     p.add_argument("--category", default="document")
     p.add_argument("--db", type=Path, default=REGISTRY)
-    args = p.parse_args()
+    return p.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_args()
     progress = Progress(total=1)
     registry = Registry(args.db)
     try:

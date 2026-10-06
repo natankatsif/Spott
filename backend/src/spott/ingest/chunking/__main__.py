@@ -24,7 +24,7 @@ from .chunker import chunk_document
 log = logging.getLogger("chunking")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.chunking", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="reads data/parsed/, writes data/chunks/")
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--files-only", action="store_true", help="only chunk parsed files")
     p.add_argument("--pages-only", action="store_true", help="only chunk parsed pages")
     p.add_argument("--stats", action="store_true", help="print corpus statistics without re-chunking")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def safe_id(doc_id: str) -> str:
