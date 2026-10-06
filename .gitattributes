@@ -1,4 +1,0 @@
-# GitHub language stats: count our code, not third-party or generated files
-backend/src/spott/api/static/pdfjs/** linguist-vendored
-frontend/public/mocks/** linguist-generated
-.agents/** linguist-vendored

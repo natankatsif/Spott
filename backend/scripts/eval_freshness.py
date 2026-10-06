@@ -1,4 +1,4 @@
-"""Freshness eval (docs/history/tasks/08): the same questions answered without and with the freshness pass.
+"""Freshness eval (docs/tasks/08): the same questions answered without and with the freshness pass.
 
     cd backend && uv run python scripts/eval_freshness.py [--only fresh|fast] [--repeat N]
 
@@ -8,18 +8,20 @@ newest-document hit rate, false conflicts, answers mentioning the expected fact,
 
 import argparse
 import statistics
+import sys
 import time
+from pathlib import Path
 
 import yaml
+from retrieval import get_pool
 
-from spott.api.answering import answer_question
-from spott.api.llm import OpenAILLM
-from spott.api.schemas import AskRequest
-from spott.api.store import PgStore
-from spott.core import get_pool
-from spott.core.paths import EVAL_DIR
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.answering import answer_question  # noqa: E402
+from app.llm import OpenAILLM  # noqa: E402
+from app.schemas import AskRequest  # noqa: E402
+from app.store import PgStore  # noqa: E402
 
-EVAL = EVAL_DIR / "freshness.yaml"
+EVAL = Path(__file__).resolve().parents[2] / "offline_indexation" / "eval" / "freshness.yaml"
 
 
 def check(case: dict, r) -> dict:

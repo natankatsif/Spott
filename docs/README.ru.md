@@ -6,13 +6,13 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 
 ## Структура
 
-Два независимых проекта, связанных только HTTP API (контракт: [`backend/openapi.json`](../backend/openapi.json)):
+Три независимых проекта:
 
 | Папка | Стек | Назначение |
 |---|---|---|
-| [`backend/`](../backend) | Python, uv | Один пакет `spott`: `core` (схема БД, эмбеддинги, поиск), `ingest` (сбор корпуса: обход сайтов из Annex 1, скачивание, OCR, индексация, worker админки), `api` (FastAPI: ответ с цитатами, админка). `api` и `ingest` зависят только от `core` |
-| [`frontend/`](../frontend) | Node, Next.js | Веб-чат (RO / RU), админка, виджет |
-| [`data/`](../data) | | Всё сгенерированное (обход, файлы, реестр, дампы, логи); в git только `data/sources/sites.toml` |
+| [`offline_indexation/`](../offline_indexation) | Python, uv | Сбор корпуса: обход сайтов из Annex 1, поиск документов, дальше — оцифровка (OCR) и индексация |
+| [`backend/`](../backend) | Python, uv, FastAPI | API ассистента: поиск по корпусу, ответ с цитатами |
+| [`frontend/`](../frontend) | Node, Next.js | Веб-чат (RO / RU) |
 
 ## Как запустить (Mac и Windows)
 
@@ -23,22 +23,22 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 ```bash
 git clone <repo-url> qwerty && cd qwerty
 cp .env.example .env                  # Windows: copy .env.example .env
-cd backend
-uv sync --all-extras
-uv run python -m spott.ingest.tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # поднимет Docker-базу и загрузит индекс
-uv run python -m spott.ingest.tools.doctor         # проверка окружения
-uv run qsearch                        # консольный поиск
+uv sync --all-packages
+cd offline_indexation
+uv run python -m tools.index_io import <path/to/index-YYYY-MM-DD.dump>   # поднимет Docker-базу и загрузит индекс
+uv run python -m tools.doctor         # проверка окружения
+cd .. && uv run qsearch               # консольный поиск
 ```
 
-API-сервер: `cd backend && uv run uvicorn spott.api.main:app --port 8000` → `http://localhost:8000/docs`.
+API-сервер: `cd backend && uv run uvicorn app.main:app --port 8000` → `http://localhost:8000/docs`.
 
-Служебные команды (одинаково на Mac и Windows, из `backend/`):
+Служебные команды (одинаково на Mac и Windows, из `offline_indexation/`):
 
 | Команда | Что делает |
 |---|---|
-| `uv run python -m spott.ingest.tools.index_io export` | дамп индекса в `data/export/index-<дата>.dump` (в git не коммитится) |
-| `uv run python -m spott.ingest.tools.pipeline update` | обновить уже обойдённые сайты: замена изменённых документов, удаление пропавших |
-| `uv run python -m spott.ingest.tools.pipeline full [--only crawler downloader]` | полный обход всех разрешённых сайтов (без chisinau.md — robots.txt) |
+| `uv run python -m tools.index_io export` | дамп индекса в `data/export/index-<дата>.dump` (в git не коммитится) |
+| `uv run python -m tools.pipeline update` | обновить уже обойдённые сайты: замена изменённых документов, удаление пропавших |
+| `uv run python -m tools.pipeline full [--only crawler downloader]` | полный обход всех разрешённых сайтов (без chisinau.md — robots.txt) |
 
 `scripts/*.sh` — тонкие обёртки над этими командами для Mac/Linux.
 
@@ -46,7 +46,7 @@ API-сервер: `cd backend && uv run uvicorn spott.api.main:app --port 8000` 
 
 ### Offline Indexation Pipeline
 
-Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр SQLite (`data/registry.sqlite`) и локальные директории хранения.
+Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр SQLite (`offline_indexation/data/registry.sqlite`) и локальные директории хранения.
 
 #### Порядок выполнения и зависимости этапов:
 
@@ -80,55 +80,55 @@ graph TD
 #### Команды и флаги запуска каждого этапа:
 
 ```bash
-cd backend
+cd offline_indexation
 
 # 1. Сбор ссылок (crawler)
-uv run python -m spott.ingest.crawler --list                          # Список поддерживаемых сайтов
-uv run python -m spott.ingest.crawler --max-depth 2 --max-pages 200   # Обход сайтов: страницы и документы
-uv run python -m spott.ingest.crawler --resume                        # Докачка прерванного обхода
-uv run python -m spott.ingest.crawler --site chisinau_decizii         # Обход конкретного источника
+uv run python -m crawler --list                          # Список поддерживаемых сайтов
+uv run python -m crawler --max-depth 2 --max-pages 200   # Обход сайтов: страницы и документы
+uv run python -m crawler --resume                        # Докачка прерванного обхода
+uv run python -m crawler --site chisinau_decizii         # Обход конкретного источника
 
 # 2. Скачивание файлов (downloader)
-uv run python -m spott.ingest.downloader                              # Скачать новые документы в data/raw/
-uv run python -m spott.ingest.downloader --refresh                    # Проверить обновления (HTTP 304 Not Modified)
-uv run python -m spott.ingest.downloader --limit 50                   # Скачать не более N файлов
+uv run python -m downloader                              # Скачать новые документы в data/raw/
+uv run python -m downloader --refresh                    # Проверить обновления (HTTP 304 Not Modified)
+uv run python -m downloader --limit 50                   # Скачать не более N файлов
 
 # 3. Парсинг файлов (parsing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (Docling + OCR)
-uv run python -m spott.ingest.parsing                                 # Полный парсинг документов из data/raw/
-uv run python -m spott.ingest.parsing --rebuild                       # Быстрая пересборка JSON/MD из кэша без повторного OCR
-uv run python -m spott.ingest.parsing --limit 10                      # Ограничить N документами
-uv run python -m spott.ingest.parsing --file data/raw/sample.pdf      # Разобрать один файл
+uv run python -m parsing                                 # Полный парсинг документов из data/raw/
+uv run python -m parsing --rebuild                       # Быстрая пересборка JSON/MD из кэша без повторного OCR
+uv run python -m parsing --limit 10                      # Ограничить N документами
+uv run python -m parsing --file data/raw/sample.pdf      # Разобрать один файл
 
 # 4. Парсинг HTML-страниц (pages_parsing)
-uv run python -m spott.ingest.pages_parsing                           # Парсинг сохранённых HTML в data/parsed/pages/
-uv run python -m spott.ingest.pages_parsing --limit 100               # Ограничение по числу страниц
+uv run python -m pages_parsing                           # Парсинг сохранённых HTML в data/parsed/pages/
+uv run python -m pages_parsing --limit 100               # Ограничение по числу страниц
 
 # 5. Чанкинг корпуса (chunking) — БЫСТРАЯ ОПЕРАЦИЯ (~0.5 сек)
-uv run python -m spott.ingest.chunking                                # Нарезка всех документов и страниц в data/chunks/
-uv run python -m spott.ingest.chunking --files-only                   # Только файлы (PDF/DOCX)
-uv run python -m spott.ingest.chunking --pages-only                   # Только веб-страницы
-uv run python -m spott.ingest.chunking --limit 50                     # Лимит обработки
+uv run python -m chunking                                # Нарезка всех документов и страниц в data/chunks/
+uv run python -m chunking --files-only                   # Только файлы (PDF/DOCX)
+uv run python -m chunking --pages-only                   # Только веб-страницы
+uv run python -m chunking --limit 50                     # Лимит обработки
 
 # 6. Запуск инфраструктуры хранения
 docker compose up -d                                     # Запуск PostgreSQL 16 + pgvector
 
 # 7. Индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
-uv run python -m spott.ingest.indexing                                # Генерация эмбеддингов BGE-M3 и загрузка в pgvector
-uv run python -m spott.ingest.indexing --from-jsonl                   # Загрузить чанки из готовых data/chunks/*.jsonl
-uv run python -m spott.ingest.indexing --recreate                     # Полный пересоздание схемы БД
-uv run python -m spott.ingest.indexing --batch-size 32                # Размер батча эмбеддингов
-uv run python -m spott.ingest.indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
+uv run python -m indexing                                # Генерация эмбеддингов BGE-M3 и загрузка в pgvector
+uv run python -m indexing --from-jsonl                   # Загрузить чанки из готовых data/chunks/*.jsonl
+uv run python -m indexing --recreate                     # Полный пересоздание схемы БД
+uv run python -m indexing --batch-size 32                # Размер батча эмбеддингов
+uv run python -m indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
 
 # 8. Проверка поиска (search)
-uv run python -m spott.core.search --query "bugetul municipal 2026"
-uv run python -m spott.core.search --query "компенсация за отопление" --lang ru --top-k 5
-uv run python -m spott.core.search --query "plan urbanistic" --doc-type decizie
+uv run python -m indexing.search --query "bugetul municipal 2026"
+uv run python -m indexing.search --query "компенсация за отопление" --lang ru --top-k 5
+uv run python -m indexing.search --query "plan urbanistic" --doc-type decizie
 ```
 
 **Backend** (http://localhost:8000, документация OpenAPI/Swagger — `/docs`):
 ```bash
 # Запуск сервиса поиска и API
-cd backend && uv run uvicorn spott.api.main:app --port 8000
+uv run uvicorn backend.app.main:app --port 8000
 ```
 
 #### Примеры запросов через curl:
@@ -208,4 +208,4 @@ npm run dev
 - `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
 - `POST /api/search` → `{ query, lang, count, not_found, results: [...], timings_ms: { embed, vector_sql, fts_sql, rerank, total } }`.
 - `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
-Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts).
+Описан в [`backend/app/schemas.py`](../backend/app/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts).

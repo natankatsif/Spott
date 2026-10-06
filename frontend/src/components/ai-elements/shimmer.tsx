@@ -48,8 +48,6 @@ const ShimmerComponent = ({
   );
 
   return (
-    // getMotionComponent caches per element type, so this is the same component on every render
-    // eslint-disable-next-line react-hooks/static-components
     <MotionComponent
       animate={{ backgroundPosition: "0% center" }}
       className={cn(

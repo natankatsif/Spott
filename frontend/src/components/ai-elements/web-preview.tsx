@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 export type WebPreviewContextValue = {
   url: string;
@@ -134,13 +134,11 @@ export const WebPreviewUrl = ({
 }: WebPreviewUrlProps) => {
   const { url, setUrl } = useWebPreview();
   const [inputValue, setInputValue] = useState(url);
-  const [syncedUrl, setSyncedUrl] = useState(url);
 
   // Sync input value with context URL when it changes externally
-  if (url !== syncedUrl) {
-    setSyncedUrl(url);
+  useEffect(() => {
     setInputValue(url);
-  }
+  }, [url]);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(event.target.value);

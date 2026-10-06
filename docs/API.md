@@ -1,8 +1,8 @@
 # API contract (frontend ↔ backend)
 
-**This document is the contract.** The backend implements it (Pydantic models in `backend/src/spott/api/schemas.py`); the machine-readable form is [`backend/openapi.json`](../backend/openapi.json), generated from those models (`cd backend && uv run python scripts/export_openapi.py`, CI fails when it is stale). The frontend mirrors it in `frontend/src/lib/api.ts` and `stream.ts`; `frontend/src/lib/api-contract.ts` checks those types against `openapi.json` at build time, and `npm run check:mocks` the mocks. Example payloads: `frontend/src/lib/mocks/`, one per UI state, built from **real corpus data** (real doc_ids, line_ids, quotes, bboxes). Wording of the mock answers is illustrative.
+**This document is the contract.** The backend implements it (Pydantic models in `backend/app/schemas.py`). The frontend mirrors it in `frontend/src/lib/api.ts` and `stream.ts`. Example payloads: `frontend/src/lib/mocks/`, one per UI state, built from **real corpus data** (real doc_ids, line_ids, quotes, bboxes). Wording of the mock answers is illustrative.
 
-**To change the contract**, change this file, the models, `openapi.json` (regenerate it), `api.ts` (`npm run api:types` refreshes the generated `api-schema.d.ts`) and the mocks in one PR, and tell the other side.
+**To change the contract**, change this file, `api.ts` and the mocks in one PR, and tell the other side.
 
 **For the backend:** add a test that validates every `frontend/src/lib/mocks/**/*.json` against your models. Then drift shows up in CI, not in the demo.
 
@@ -13,7 +13,7 @@
 | `POST /api/ask/stream` | works: real token streaming; each sentence is checked when the model closes it |
 | `POST /api/feedback` | works: 1–5 stars + reason tags, stored in Postgres `feedback` with the answer (without a DB: `data/feedback/<date>.jsonl`) |
 | `GET /api/suggestions` | works: quick questions from real questions, re-checked by their answers (seed list while the log is empty) |
-| `/api/admin/*` | works: login (credentials from env) → session token; sources (add by URL, one-call list), crawl jobs with progress (worker `python -m spott.ingest.worker`), questions without an answer (gaps), low ratings, quick questions |
+| `/api/admin/*` | works: login (credentials from env) → session token; sources (add by URL, one-call list), crawl jobs with progress (worker `python -m worker`), questions without an answer (gaps), low ratings, quick questions |
 | `GET /api/preview/{doc_id}` | works: the cited page/PDF scrolled to the quote and highlighted, for an iframe (`citation.preview_url`) |
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | `GET /api/wall` | works (in memory) |
@@ -216,8 +216,8 @@ PUT    /api/admin/usage/pricing              Pricing → Pricing
 - `GapList` = `{items: Gap[], totals: {not_found, partial, groups}}`.
 - `Gap` = `{id, example, questions[{answer_id, question, lang, status, ts}] (oldest first, the latest 20), count, last_asked, langs[], status: not_found|partial (the worst in the group), missing[] (what partial answers said is missing), hint_sites[{site, hits}] (sites that were found but not used: whom to ask), rechecked: {status, verified, answer_id, ts}|null, hidden}`. Questions are masked like the wall.
 - Loop for the demo: a gap → add the missing document by URL → when its job is done, **Recheck** → answered → the group leaves the list. A recheck costs one model call: only on a click, never automatically.
-- Mocks: `mocks/admin/gaps.json`, `gap-recheck.json`, `gap-hide.json`, `sources.json`, `add-source-{site,document,merged,blocked,unreachable}.json` (regenerate: `cd backend && uv run python scripts/make_admin_mocks.py ../frontend`).
-- The jobs run in a separate process next to uvicorn: `cd backend && uv run python -m spott.ingest.worker`.
+- Mocks: `mocks/admin/gaps.json`, `gap-recheck.json`, `gap-hide.json`, `sources.json`, `add-source-{site,document,merged,blocked,unreachable}.json` (regenerate: `backend/scripts/make_admin_mocks.py`).
+- The jobs run in a separate process next to uvicorn: `cd offline_indexation && uv run python -m worker`.
 
 ## `GET /api/documents/{doc_id}/file`
 - Returns the PDF (`application/pdf`) for the viewer: pdf.js + `bboxes` highlight. City hall sites don't send CORS headers, so the viewer can't load the originals directly: the backend fetches the document from its original `url` on request and passes it through (in-memory cache, nothing stored; a stored copy is used if the machine has one). Only documents in our index, only PDFs.
@@ -305,7 +305,7 @@ Poll every 2–3 s. `after` = newest id you already have, so the response only h
   - `pending`: an Annex-1 site we haven't crawled yet;
   - `blocked`: robots.txt forbids crawling (chisinau.md, actelocale.gov.md).
 - Sources for the backend:
-  - `data/sources/sites.toml`: all Annex-1 sites + category;
+  - `offline_indexation/data/sources/sites.toml`: all Annex-1 sites + category;
   - `registry.sqlite`: pages / documents per site, `version > 1` = replaced, `status = 'removed'`;
   - Postgres: chunks per site, lines total.
 
