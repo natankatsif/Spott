@@ -1,29 +1,30 @@
-"""Static source previews for the frontend's mock mode (docs/history/tasks/11 §3).
+"""Static source previews for the frontend's mock mode (docs/tasks/11 §3).
 
-For every citation in <frontend>/src/lib/mocks/ask/*.json this renders the same HTML that GET /api/preview/{doc_id}
-returns, saves it to <frontend>/public/mocks/preview/<mock>-<citation>.html and points the citation's preview_url at
+For every citation in frontend/src/lib/mocks/ask/*.json this renders the same HTML that GET /api/preview/{doc_id}
+returns, saves it to frontend/public/mocks/preview/<mock>-<citation>.html and points the citation's preview_url at
 it, so mock mode shows a real, highlighted preview without the backend.
 
-Works without Postgres: documents and lines come from the offline index files (data/chunks,
+Works without Postgres: documents and lines come from the offline index files (offline_indexation/data/chunks,
 crawl copies from registry.sqlite, PDFs from data/raw). PDFs are copied next to the pages (files/<sha>.pdf) with
 pdf.js (static/), all paths relative, so the folder works from any origin. No LLM, no network.
 
-    cd backend && uv run python scripts/export_previews.py ../frontend
-
-The frontend directory is an argument: the backend doesn't know where (or whether) a frontend lives.
+    uv run python backend/scripts/export_previews.py          (from the repo root)
 """
 
-import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
-from spott.api import preview
-from spott.api.answering import to_top_left
-from spott.api.files import DATA_DIR, raw_pdf
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "packages" / "retrieval" / "src")]
 
-MOCKS = Path()  # <frontend>/src/lib/mocks/ask, set by main()
-OUT = Path()  # <frontend>/public/mocks/preview
+from app import preview  # noqa: E402
+from app.answering import to_top_left  # noqa: E402
+from app.files import DATA_DIR, raw_pdf  # noqa: E402
+
+MOCKS = ROOT / "frontend" / "src" / "lib" / "mocks" / "ask"
+OUT = ROOT / "frontend" / "public" / "mocks" / "preview"
 PUBLIC_PREFIX = "/mocks/preview"
 # Mock mode is served by the frontend itself (same origin as the preview); any origin may talk to a static demo.
 ALLOWED = ["*"]
@@ -37,7 +38,7 @@ def load_doc(doc_id: str) -> tuple[dict, list[dict]]:
     """The document and its lines in reading order, like PgStore.preview_document + doc_lines."""
     path = chunks_file(doc_id)
     if not path.is_file():
-        raise SystemExit(f"{doc_id}: no {path} (run the indexing pipeline first)")
+        raise SystemExit(f"{doc_id}: no {path.relative_to(ROOT)} (run the indexing pipeline first)")
     chunks = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     chunks.sort(key=lambda c: (int(c["block_ids"][0]) if c.get("block_ids") else 1 << 30, c["chunk_id"]))
     first = chunks[0]
@@ -73,12 +74,6 @@ def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tupl
 
 
 def main() -> None:
-    global MOCKS, OUT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("frontend", type=Path, help="the frontend directory (its mocks are read and rewritten)")
-    frontend = ap.parse_args().frontend
-    MOCKS = frontend / "src" / "lib" / "mocks" / "ask"
-    OUT = frontend / "public" / "mocks" / "preview"
     OUT.mkdir(parents=True, exist_ok=True)
     shutil.copytree(preview.STATIC, OUT / "static", dirs_exist_ok=True)
     cache: dict[str, tuple[dict, list[dict]]] = {}

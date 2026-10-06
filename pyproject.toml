@@ -1,0 +1,12 @@
+[tool.uv.workspace]
+members = ["offline_indexation", "backend", "packages/retrieval"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+# PLW1514 (open() without encoding) is a preview rule; only explicitly listed preview rules run.
+preview = true
+explicit-preview-rules = true
+select = ["F", "E9", "B", "UP", "I", "SIM", "PLW1514"]

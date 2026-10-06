@@ -171,8 +171,6 @@ export const InlineCitationCarouselIndex = ({
       return;
     }
 
-    // read the scroll state embla already has; later changes come from its "select" event
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     syncState();
 
     api.on("select", syncState);

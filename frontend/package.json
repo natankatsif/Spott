@@ -6,10 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "api:types": "openapi-typescript ../backend/openapi.json --default-non-nullable false -o src/lib/api-schema.d.ts",
-    "api:check": "openapi-typescript ../backend/openapi.json --default-non-nullable false -o src/lib/api-schema.d.ts --check",
-    "check:mocks": "node scripts/check-mocks.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.295",
@@ -42,11 +39,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
-    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

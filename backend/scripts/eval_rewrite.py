@@ -1,4 +1,4 @@
-"""Query rewrite eval (docs/history/tasks/10 §5): hit@5 on the cross-language pairs of eval/lines.yaml, before/after.
+"""Query rewrite eval (docs/tasks/10 §5): hit@5 on the cross-language pairs of eval/lines.yaml, before/after.
 
     cd backend && uv run python scripts/eval_rewrite.py [--same]
 
@@ -8,17 +8,19 @@ Hits: gold chunk among the top 5 chunks; gold line among the matched lines of th
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 import yaml
+from retrieval import TOP_CANDIDATES, get_pool, retrieve
 
-from spott.api import answering
-from spott.api.llm import OpenAILLM
-from spott.api.schemas import AskRequest
-from spott.api.store import PgStore
-from spott.core import TOP_CANDIDATES, get_pool, retrieve
-from spott.core.paths import EVAL_DIR
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app import answering  # noqa: E402
+from app.llm import OpenAILLM  # noqa: E402
+from app.schemas import AskRequest  # noqa: E402
+from app.store import PgStore  # noqa: E402
 
-EVAL = EVAL_DIR / "lines.yaml"
+EVAL = Path(__file__).resolve().parents[2] / "offline_indexation" / "eval" / "lines.yaml"
 WEIGHTS = [1.0, 0.5, 0.25]
 
 
