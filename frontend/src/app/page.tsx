@@ -22,7 +22,7 @@ import {
   useIsDesktop,
 } from "@/components/chat/source-preview";
 import { LogoMark } from "@/components/logo-mark";
-import { PromptInput } from "@/components/PromptInput";
+import { PromptInput } from "@/components/prompt-input";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { type ErrorCode, health, type Suggestion as QuickQuestion, suggestions as fetchSuggestions, visit } from "@/lib/api";
