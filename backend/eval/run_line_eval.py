@@ -66,7 +66,6 @@ def evaluate_mode(
             w_vector=w_vector,
             w_line=w_line,
             w_fts=w_fts,
-            rerank=False,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         latencies.append(elapsed_ms)
@@ -118,7 +117,6 @@ def evaluate_mode(
             w_vector=w_vector,
             w_line=w_line,
             w_fts=w_fts,
-            rerank=False,
         )
         if res.items:
             neg_top_scores.append(float(res.items[0].get("score", 0.0)))

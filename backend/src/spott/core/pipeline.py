@@ -1,4 +1,4 @@
-"""Unified retrieval pipeline combining chunk vector, line vector, FTS, weighted RRF, and optional reranking."""
+"""Unified retrieval pipeline combining chunk vector, line vector, FTS and weighted RRF."""
 
 from __future__ import annotations
 
@@ -14,18 +14,15 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from .config import (
-    NOT_FOUND_THRESHOLD,
-    RERANK_TOP_K,
-    RERANKER_ENABLED,
     RRF_K,
     TOP_CANDIDATES,
+    TOP_K,
     W_FTS,
     W_LINE,
     W_VECTOR,
 )
 from .embeddings import get_device, get_embedding_model
 from .links import make_deep_link
-from .rerank import rerank_candidates
 from .search import (
     build_fts_query,
     deduplicate_results,
@@ -65,8 +62,7 @@ def retrieve(
     site: str | None = None,
     sites: list[str] | None = None,
     date_after: str | None = None,
-    k: int = RERANK_TOP_K,
-    rerank: bool = False,
+    k: int = TOP_K,
     top_candidates: int = TOP_CANDIDATES,
     w_vector: float | None = None,
     w_fts: float | None = None,
@@ -75,28 +71,18 @@ def retrieve(
 ) -> RetrievalResult:
     """Core retrieval function of the application.
 
-    1. Validates reranker availability (if rerank=True and not RERANKER_ENABLED -> ValueError).
-    2. Embeds query with BGE-M3.
-    3. Runs vector chunk search, line vector search, and FTS search.
-    4. Aggregates matched lines per chunk and fuses rankings with weighted RRF.
-    5. Deduplicates candidates.
-    6. Reranks with CrossEncoder if rerank=True.
-    7. Evaluates rejection threshold for not_found.
+    1. Embeds query with BGE-M3.
+    2. Runs vector chunk search, line vector search, and FTS search.
+    3. Aggregates matched lines per chunk and fuses rankings with weighted RRF.
+    4. Deduplicates candidates and keeps the first k; not_found when there are none.
 
     sites / date_after restrict the search to chunks of these sites / with an ISO date after this one.
     """
-    if rerank and not RERANKER_ENABLED:
-        raise ValueError(
-            "Reranker is disabled on this server instance (RERANKER_ENABLED=false). "
-            "Set RERANKER_ENABLED=true in .env to enable cross-encoder reranking."
-        )
-
     t_start = time.perf_counter()
     timings: dict[str, float] = {
         "embed": 0.0,
         "vector_sql": 0.0,
         "fts_sql": 0.0,
-        "rerank": 0.0,
         "total": 0.0,
     }
 
@@ -264,34 +250,11 @@ def retrieve(
         item["matched_lines"] = c_lines
 
     # 5. Deduplicate results
-    candidates = deduplicate_results(fused, k=top_candidates)
-
-    # 6. Reranking (optional)
-    if rerank and candidates:
-        t_rerank_start = time.perf_counter()
-        candidates = rerank_candidates(
-            query=query,
-            candidates=candidates,
-            top_k=k,
-            device=dev,
-        )
-        timings["rerank"] = round((time.perf_counter() - t_rerank_start) * 1000.0, 2)
-    else:
-        candidates = candidates[:k]
-        timings["rerank"] = 0.0
-
+    candidates = deduplicate_results(fused, k=top_candidates)[:k]
     timings["total"] = round((time.perf_counter() - t_start) * 1000.0, 2)
-
-    # 7. Check rejection threshold
-    not_found = False
-    if not candidates:
-        not_found = True
-    elif rerank:
-        top_score = candidates[0].get("rerank_score", 0.0)
-        not_found = top_score < NOT_FOUND_THRESHOLD
 
     return RetrievalResult(
         items=candidates,
         timings_ms=timings,
-        not_found=not_found,
+        not_found=not candidates,
     )

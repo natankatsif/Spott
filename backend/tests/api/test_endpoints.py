@@ -1,5 +1,5 @@
-"""HTTP layer of docs/API.md without models or a database: error bodies, the checks before an answer, wall,
-rate limit, feedback."""
+"""HTTP layer of docs/API.md without models or a database: error bodies, the checks before an answer,
+masking of personal data, rate limit, feedback."""
 
 import asyncio
 import json
@@ -10,14 +10,13 @@ from fastapi.testclient import TestClient
 from spott.api import main
 from spott.api.errors import ApiException, RateLimiter
 from spott.api.llm import LLMUnavailable
-from spott.api.schemas import AnswerMeta, AskRequest, AskResponse
-from spott.api.wall import Wall, mask
+from spott.api.masking import mask
+from spott.api.schemas import AnswerMeta, AskResponse
 
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "FEEDBACK_DIR", tmp_path / "feedback")
-    main.app.state.wall = Wall()
     main.app.state.rate_limiter = RateLimiter(limit=2)
     main.app.state.pool = None
     main.app.state.store = None
@@ -142,18 +141,7 @@ def test_feedback_rejects_unknown_vote(client):
     assert client.post("/api/feedback", json={"answer_id": "a1", "vote": "maybe"}).status_code == 422
 
 
-def test_wall_returns_newest_first_and_only_newer_than_after(client):
-    wall = main.app.state.wall
-    for i, status in enumerate(["answered", "not_found", "refused"], 1):
-        wall.add(AskRequest(question=f"Întrebarea {i}"), response(status, f"a{i}"))
-
-    body = client.get("/api/wall").json()
-    assert [i["id"] for i in body["items"]] == ["a3", "a2", "a1"]
-    assert body["total_questions"] == 3 and body["by_status"]["not_found"] == 1
-    assert [i["id"] for i in client.get("/api/wall?after=a1").json()["items"]] == ["a3", "a2"]
-
-
-def test_wall_masks_personal_data():
+def test_personal_data_is_masked():
     assert mask("Sunați-mă la 069 123 456 sau ion.popescu@mail.md") == "Sunați-mă la ••• sau •••"
     assert mask("IDNP 2002001234567, dosarul") == "IDNP •••, dosarul"
     assert mask("Decizia nr. 12/14 din 2020") == "Decizia nr. 12/14 din 2020"

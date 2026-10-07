@@ -183,21 +183,6 @@ CREATE INDEX IF NOT EXISTS idx_lines_content_hash ON lines(content_hash);
 CREATE INDEX IF NOT EXISTS idx_lines_tsv ON lines USING GIN(tsv);
 CREATE INDEX IF NOT EXISTS idx_lines_text_trgm ON lines USING GIN(text gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_lines_embedding ON lines USING HNSW(embedding vector_cosine_ops);
-
--- References between acts, built by `python -m spott.ingest.lineage` from the lines above (every row cites its line).
--- No foreign keys: pg_restore --clean of older dumps must be able to drop and recreate documents/lines.
-CREATE TABLE IF NOT EXISTS act_relations (
-    from_doc_id TEXT NOT NULL,
-    to_doc_id TEXT,              -- NULL when the referenced act isn't in the corpus
-    to_ref_text TEXT NOT NULL,   -- "Dispoziția 185-d din 23.04.2020"
-    to_doc_type TEXT,
-    to_number TEXT,
-    to_date TEXT,
-    relation TEXT NOT NULL,      -- amends | repeals | refers
-    line_id TEXT NOT NULL,
-    PRIMARY KEY (from_doc_id, line_id, to_ref_text)
-);
-CREATE INDEX IF NOT EXISTS idx_act_relations_to ON act_relations(to_doc_id);
 """
 
 

@@ -8,7 +8,7 @@
 
 | Endpoint | State |
 |---|---|
-| `POST /api/search`, `/api/tools/*`, `GET /health` | work |
+| `GET /health` | works |
 | `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
 | `POST /api/ask/stream` | works: real token streaming; each sentence is checked when the model closes it |
 | `POST /api/feedback` | works: 1–5 stars + reason tags, stored in Postgres `feedback` with the answer (without a DB: `data/feedback/<date>.jsonl`) |
@@ -16,8 +16,6 @@
 | `/api/admin/*` | works: login (credentials from env) → session token; sources (add by URL, one-call list), crawl jobs with progress (worker `python -m spott.ingest.worker`), questions without an answer (gaps), low ratings, quick questions |
 | `GET /api/preview/{doc_id}` | works: the cited page/PDF scrolled to the quote and highlighted, for an iframe (`citation.preview_url`) |
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
-| `GET /api/wall` | works (in memory) |
-| `GET /api/corpus/stats` | works; for a site the registry has nothing on (an index restored from a dump), pages/documents come from the index |
 | Error body `ApiError`, CORS | works: `CORS_ORIGINS`, rate limit `ASK_RATE_LIMIT` per minute per client |
 
 Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. Then `ask()` picks a mock by keywords in the question:
@@ -31,8 +29,6 @@ Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. The
 | any Cyrillic | answer in RU with a quote in RO + translation |
 | «când» / «termen» / «когда» / «срок» | partial |
 | anything else | answered (RO) |
-
-`wall()` and `corpusStats()` return `mocks/wall.json` and `mocks/corpus-stats.json`. The corpus stats mock is built from the real registry: 40 Annex-1 sites, 5 indexed.
 
 ---
 
@@ -57,7 +53,7 @@ Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. The
 | `history` | optional, max 10 turns, oldest first; for follow-ups like "а сколько это стоит?" |
 | `page_context` | the embeddable widget sends the page the user is on. Used to bias navigation and search |
 | `mode` | `fast` = one retrieval + answer; `deep` = agent walks the corpus (`search/grep/toc/open`); `auto` = backend decides |
-| `session_id` | anonymous id: live wall, analytics |
+| `session_id` | anonymous id: analytics |
 
 ### Response: `AskResponse`
 
@@ -202,7 +198,7 @@ PUT    /api/admin/usage/pricing              Pricing → Pricing
   - `status`: `disabled` > `blocked` > `running` > `queued` > `failed` (the last job failed) > `indexed` (has chunks) > `pending` (never indexed, no job): the first that applies.
   - `progress` = `{job_id, stage, percent, eta_s}` while a job is queued/running, else `null`. **Poll `GET /sources` every 2 s while any row is `running`/`queued`**; stop when none is.
   - `category_source`: `toml` (sites.toml) · `index` (found in the index) · `rule` (domain) · `keywords` (page title/description) · `default` (`other`) · `manual`.
-  - `totals` = the same object as `/api/corpus/stats` totals (header numbers, no second call).
+  - `totals` = `{sites_total, sites_indexed, pages, documents_found, documents_downloaded, chunks, lines, documents_replaced, documents_removed}`, the page header's numbers (no second call). Pages and documents come from the registry; for a site it has nothing on (an index restored from a dump), from the index.
   - The list is never empty on a machine with an index: the backend seeds it from sites.toml and the index at startup.
 - **Add = paste one link.** `POST {url}`: a website, a page of one, or a link to a PDF/DOC/DOCX. No file uploads. The server decides the rest (no LLM): robots.txt first (chisinau.md, actelocale.gov.md are never fetched), then HEAD/GET (8 s), kind by content type/extension, category by domain rule → title keywords → `other`, crawl settings (domain root: depth 4 / 2000 pages; a deeper path: depth 2 under that path; a document: download + parse), and queues the job at once.
   - `SourceAdded` = `SourceRow` + `detected: {kind, category, category_source, title, crawl_depth, max_pages, reason}` + `merged_into: id|null`. Show `detected.reason` (one English sentence) in the toast, or your own RO/RU text built from the fields.
@@ -240,13 +236,6 @@ Query: `line` = line_id (repeatable, max 5; unknown ids ignored), `lang` = ro|ru
 
 Wiring guide for the frontend (WebPreview snippet, mobile, gotchas): `docs/FRONTEND-11.md`.
 
-## `POST /api/search` (works now)
-```json
-{ "query": "autobuze 2020", "lang": "ro", "k": 5 }
-```
-→ `{ results: [{chunk_id, doc_id, citation_label, text, url, site, lang, page, matched_lines: [{line_id, idx, text, score}]}], timings_ms, not_found }`.
-Useful for a "what search found" debug panel and for the demo before `/api/ask` is ready.
-
 ## Errors: every non-2xx response
 
 ```json
@@ -259,7 +248,7 @@ Useful for a "what search found" debug panel and for the demo before `/api/ask` 
 | `unauthorized` | 401 | admin: wrong login/password or the session is over: show the login form |
 | `not_found` | 404 | unknown doc_id in viewer: open `deep_link` instead |
 | `conflict` | 409 | admin: duplicate source, robots.txt forbids crawling, a job already running |
-| `rate_limited` | 429 | "too many questions, wait N s" (QR-wall protection: suggested 10 questions/min per IP) |
+| `rate_limited` | 429 | "too many questions, wait N s" (a QR stand must not flood the model: suggested 10 questions/min per IP) |
 | `unavailable` | 503 | "service warming up / DB down, try again" |
 | `not_implemented` | 501 | feature not ready: hide it |
 | `internal` | 500 | generic error |
@@ -278,36 +267,6 @@ Before the stream starts (bad request, rate limit), `/api/ask/stream` answers wi
 
 ## `GET /health`
 `{status, device, models_loaded, chunk_count}`. While `models_loaded=false` (first ~20 s after start), show "warming up".
-
-## `GET /api/wall?after=<id>&limit=50`: live "break the bot" wall
-Poll every 2–3 s. `after` = newest id you already have, so the response only has newer items.
-
-```json
-{ "items": [{ "id": "…", "ts": "2026-09-26T10:17:00+00:00", "question": "… мой тел •••", "lang": "ru",
-              "status": "not_found", "verified": true, "latency_ms": 1810, "top_source": null }],
-  "total_questions": 7, "by_status": { "answered": 3, "not_found": 1, "conflict": 1, "refused": 1, "partial": 1 } }
-```
-- Items are newest first.
-- The backend masks personal data before storing: phones, IDNP and other long digit runs, e-mails → `•••`. `question` is at most 200 chars.
-- In-memory is fine (resets on restart).
-- Every `/api/ask` and `/api/ask/stream` call adds an item.
-
-## `GET /api/corpus/stats`: corpus health dashboard
-```json
-{ "updated_at": "…",
-  "totals": { "sites_total": 40, "sites_indexed": 5, "pages": 484, "documents_found": 372, "documents_downloaded": 79,
-              "chunks": 2284, "lines": 9906, "documents_replaced": 0, "documents_removed": 0 },
-  "sites": [{ "site": "dgaurf.md", "category": "urban", "status": "indexed", "pages": 44, "documents_found": 252,
-              "documents_downloaded": 15, "chunks": 260, "last_crawled": "…" }] }
-```
-- `status` is one of:
-  - `indexed`: has chunks in the index;
-  - `pending`: an Annex-1 site we haven't crawled yet;
-  - `blocked`: robots.txt forbids crawling (chisinau.md, actelocale.gov.md).
-- Sources for the backend:
-  - `data/sources/sites.toml`: all Annex-1 sites + category;
-  - the registry (`registry_pages`, `registry_documents`): pages / documents per site, `version > 1` = replaced, `status = 'removed'`;
-  - Postgres: chunks per site, lines total.
 
 ## Not in the contract (frontend owns)
 - Example questions for the empty state.

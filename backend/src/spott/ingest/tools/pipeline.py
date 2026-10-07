@@ -28,7 +28,7 @@ from .common import child_env, utf8_console
 
 # robots.txt "Disallow: /" — do not crawl without the mentor's explicit permission
 EXCLUDED_SITES = {"chisinau.md", "actelocale.gov.md"}
-STAGES = ("crawler", "downloader", "parsing", "pages_parsing", "chunking", "indexing")
+STAGES = ("crawler", "downloader", "parsing", "pages_parsing", "indexing")
 
 
 def allowed_sites(config: Path = SITES_TOML) -> list[str]:
@@ -68,8 +68,7 @@ def plan(mode: str, sites: list[str], max_depth: int | None) -> list[tuple[str, 
         ("downloader", ["-m", "spott.ingest.downloader"]),
         ("parsing", ["-m", "spott.ingest.parsing"]),
         ("pages_parsing", ["-m", "spott.ingest.pages_parsing"]),
-        ("chunking", ["-m", "spott.ingest.chunking"]),
-        ("indexing", ["-m", "spott.ingest.indexing"]),
+        ("indexing", ["-m", "spott.ingest.indexing"]),  # it chunks the parsed documents itself
     ]
 
 
@@ -136,10 +135,6 @@ def main(argv: list[str] | None = None) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     failed: list[str] = []
     for name, a in steps:
-        if name == "indexing" and "chunking" in failed:
-            print("\nЧанкинг упал — индексацию пропускаю.")
-            failed.append("indexing (пропущен)")
-            continue
         if not run_stage(name, a, log_dir / f"{name}.log"):
             failed.append(name)
 

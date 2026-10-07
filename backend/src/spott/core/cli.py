@@ -228,7 +228,7 @@ class Session:
         from .pipeline import retrieve
 
         t0 = time.perf_counter()
-        res = retrieve(self.pool, query, lang=self.lang, k=self.k, rerank=False)
+        res = retrieve(self.pool, query, lang=self.lang, k=self.k)
         ms = (time.perf_counter() - t0) * 1000
         self.query_id, self.query, self.results = uuid.uuid4().hex[:12], query, res.items
         console.print()
@@ -370,7 +370,7 @@ def print_report() -> None:
 def one_shot(pool: Any, query: str, *, lang: str | None, k: int, as_json: bool) -> None:
     from .pipeline import retrieve
 
-    res = retrieve(pool, query, lang=lang, k=k, rerank=False)
+    res = retrieve(pool, query, lang=lang, k=k)
     if as_json:
         out = {
             "query": query,

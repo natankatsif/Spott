@@ -5,11 +5,9 @@ Response models forbid unknown fields: a field the frontend sends or expects tha
 is a contract change, not something to pass through silently.
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from spott.core.config import RERANK_TOP_K
 
 Lang = Literal["ro", "ru", "en"]  # answers follow the question; the documents are RO/RU
 SearchLang = Literal["ro", "ru", "en", "uk"]
@@ -273,7 +271,7 @@ class SuggestionCreate(Strict):
 
 class GapQuestion(Strict):
     answer_id: str
-    question: str  # masked like the public wall
+    question: str  # personal data masked (masking.mask)
     lang: Lang
     status: Literal["not_found", "partial"]
     ts: str
@@ -438,7 +436,7 @@ class SourceRow(Strict):
 
 class SourceList(Strict):
     sources: list[SourceRow]
-    totals: "CorpusTotals"  # the same as /api/corpus/stats totals: the page header needs no second call
+    totals: "CorpusTotals"  # the page header needs no second call
 
 
 class SourceCreate(Strict):
@@ -485,27 +483,7 @@ class ApiError(Strict):
     retry_after_s: float | None = None
 
 
-# ─────────────── GET /api/wall ───────────────
-
-
-class WallItem(Strict):
-    id: str
-    ts: str
-    question: str  # personal data masked as •••, at most 200 characters
-    lang: Lang
-    status: AskStatus
-    verified: bool
-    latency_ms: float
-    top_source: str | None
-
-
-class WallResponse(Strict):
-    items: list[WallItem]  # newest first
-    total_questions: int
-    by_status: dict[str, int]
-
-
-# ─────────────── GET /api/corpus/stats ───────────────
+# ─────────────── corpus stats (spott/api/stats.py): the totals of the admin's sources page ───────────────
 
 
 class SiteStats(Strict):
@@ -537,54 +515,6 @@ class CorpusStats(Strict):
     sites: list[SiteStats]
 
 
-# ─────────────── POST /api/search, /api/tools/*, GET /health ───────────────
-
-
-class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2000)
-    lang: SearchLang | None = None
-    k: int = Field(default=RERANK_TOP_K, ge=1, le=50)
-    rerank: bool = False
-
-
-class MatchedLine(BaseModel):
-    line_id: str
-    idx: int
-    text: str
-    score: float | None = None
-
-
-class SearchResultItem(BaseModel):
-    chunk_id: str
-    doc_id: str
-    citation_label: str
-    text: str
-    url: str
-    found_on: str | None = None
-    site: str | None = None
-    lang: str | None = None
-    page: int | None = None
-    parent_legal_path: list[Any] | None = None
-    rerank_score: float | None = None
-    vec_rank: int | None = None
-    fts_rank: int | None = None
-    matched_lines: list[MatchedLine] = []
-
-
-class SearchTimings(BaseModel):
-    embed: float
-    vector_sql: float
-    fts_sql: float
-    rerank: float
-    total: float
-
-
-class SearchResponse(BaseModel):
-    results: list[SearchResultItem]
-    timings_ms: SearchTimings
-    not_found: bool = False
-
-
 # ─────────────── POST /api/visits ───────────────
 
 
@@ -596,33 +526,11 @@ class VisitorCount(Strict):
     visitors: int
 
 
+# ─────────────── GET /health ───────────────
+
+
 class HealthResponse(BaseModel):
     status: str
     device: str
     models_loaded: bool
     chunk_count: int
-
-
-class ToolSearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2000)
-    lang: str | None = None
-    site: str | None = None
-    k: int = Field(default=8, ge=1, le=50)
-
-
-class ToolGrepRequest(BaseModel):
-    pattern: str = Field(min_length=1, max_length=500)
-    doc_id: str | None = None
-    site: str | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-
-
-class ToolTocRequest(BaseModel):
-    doc_id: str = Field(min_length=1)
-
-
-class ToolOpenRequest(BaseModel):
-    doc_id: str = Field(min_length=1)
-    node_id: str | None = None
-    chunk_id: str | None = None
-    max_lines: int = Field(default=60, ge=1, le=200)

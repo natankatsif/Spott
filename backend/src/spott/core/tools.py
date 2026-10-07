@@ -1,4 +1,4 @@
-"""Document tree and agent tools (search, grep, toc, open) with OpenAI tool schemas."""
+"""Document tree and the corpus tools of qsearch: search, grep, toc, open."""
 
 from __future__ import annotations
 
@@ -20,118 +20,6 @@ from .links import make_deep_link
 from .pipeline import acquire_conn, retrieve
 
 log = logging.getLogger("retrieval.tools")
-
-TOOL_SCHEMAS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search",
-            "description": "Search document corpus using hybrid dense vector + FTS search over chunks and lines.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "User question or search terms",
-                    },
-                    "lang": {
-                        "type": "string",
-                        "enum": ["ro", "ru"],
-                        "description": "Optional language filter ('ro' or 'ru')",
-                    },
-                    "site": {
-                        "type": "string",
-                        "description": "Optional site domain filter (e.g. 'chisinau.md', 'dgaurf.md')",
-                    },
-                    "k": {
-                        "type": "integer",
-                        "description": "Number of top chunks to return (default: 8)",
-                        "default": 8,
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "grep",
-            "description": "Exact text pattern matching in lines table via PostgreSQL trigram ILIKE.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "Literal text pattern to match (case-insensitive, special characters safely escaped)",
-                    },
-                    "doc_id": {
-                        "type": "string",
-                        "description": "Optional document ID to restrict search to",
-                    },
-                    "site": {
-                        "type": "string",
-                        "description": "Optional site domain filter",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of matching lines to return (default: 20)",
-                        "default": 20,
-                    },
-                },
-                "required": ["pattern"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "toc",
-            "description": "Get table of contents (document tree nodes ordered by document position).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "doc_id": {
-                        "type": "string",
-                        "description": "Document ID to fetch the table of contents for",
-                    },
-                },
-                "required": ["doc_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "open",
-            "description": "Open and read verbatim lines of a document node or chunk in document order.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "doc_id": {
-                        "type": "string",
-                        "description": "Document ID containing the lines",
-                    },
-                    "node_id": {
-                        "type": "string",
-                        "description": "Optional node/chunk identifier to read",
-                    },
-                    "chunk_id": {
-                        "type": "string",
-                        "description": "Optional chunk ID to read (alternative to node_id)",
-                    },
-                    "max_lines": {
-                        "type": "integer",
-                        "description": "Maximum number of lines to return (default: 60)",
-                        "default": 60,
-                    },
-                },
-                "required": ["doc_id"],
-            },
-        },
-    },
-]
-
 
 def escape_like_pattern(pattern: str) -> str:
     """Escapes SQL LIKE / ILIKE special wildcard characters (%, _, and backslash)."""
@@ -187,7 +75,7 @@ def search_tool(
     k: int = 8,
 ) -> dict[str, Any]:
     """Tool: search corpus via hybrid retrieval pipeline."""
-    result = retrieve(pool, query, lang=lang, site=site, k=k, rerank=False)
+    result = retrieve(pool, query, lang=lang, site=site, k=k)
     items = []
     for c in result.items:
         items.append(

@@ -1,9 +1,8 @@
-"""Tests for retrieval tools (search, grep, toc, open), schemas, escaping, and toc tree assembly."""
+"""Tests for retrieval tools (search, grep, toc, open), escaping, and toc tree assembly."""
 
 import pytest
 
 from spott.core.tools import (
-    TOOL_SCHEMAS,
     build_toc_nodes,
     enforce_char_limit,
     escape_like_pattern,
@@ -12,20 +11,6 @@ from spott.core.tools import (
     search_tool,
     toc_tool,
 )
-
-
-def test_tool_schemas_format():
-    names = {s["function"]["name"] for s in TOOL_SCHEMAS}
-    assert names == {"search", "grep", "toc", "open"}
-    for s in TOOL_SCHEMAS:
-        assert s["type"] == "function"
-        fn = s["function"]
-        assert "name" in fn
-        assert "description" in fn
-        assert "parameters" in fn
-        assert fn["parameters"]["type"] == "object"
-        assert "properties" in fn["parameters"]
-        assert "required" in fn["parameters"]
 
 
 def test_escape_like_pattern():

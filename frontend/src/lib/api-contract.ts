@@ -30,11 +30,8 @@ export type ResponsesFit = Check<{
   FeedbackItem: Fits<Sent<S["FeedbackItem"]>, api.FeedbackItem>;
   FeedbackStats: Fits<Sent<S["FeedbackStats"]>, api.FeedbackStats>;
   ApiError: Fits<Sent<S["ApiError"]>, api.ApiError>;
-  WallResponse: Fits<Sent<S["WallResponse"]>, api.WallResponse>;
-  CorpusStats: Fits<Sent<S["CorpusStats"]>, api.CorpusStats>;
   HealthResponse: Fits<Sent<S["HealthResponse"]>, api.HealthResponse>;
   VisitorCount: Fits<Sent<S["VisitorCount"]>, api.VisitorCount>;
-  SearchResponse: Fits<Sent<S["SearchResponse"]>, api.SearchResponse>;
   LLMSettings: Fits<Sent<S["LLMSettingsView"]>, LLMSettingsMap>;
   LLMModelTest: Fits<Sent<S["ModelTest"]>, api.LLMModelTest>;
   Pricing: Fits<Sent<S["Pricing"]>, PricingMap>;

@@ -1,4 +1,4 @@
-"""Corpus health dashboard (GET /api/corpus/stats): every Annex-1 site, what is crawled and indexed.
+"""Corpus stats, every Annex-1 site, what is crawled and indexed: the totals of the admin's sources page.
 
 Sources: the admin panel's `sources` table (all sites, robots status; sites.toml only until it is imported),
 the registry (pages and documents per site, where this database was crawled into), the index (chunks, lines).

@@ -7,7 +7,7 @@ document would answer (the same service, fee, procedure, place or schedule, in a
 a new one with a short title, and gives it a topic. That decision is stored on the wording group's first answer
 (answers.gap_group, answers.topic; the title in answers.gap_title of the group's first answer), so each question is
 sorted once and groups stay put. A group's id is the answer_id of its first question.
-Questions are masked like the public wall (e-mails, phones, long digit runs).
+Questions are masked (e-mails, phones, long digit runs: masking.mask).
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from .masking import mask
 from .schemas import AskRequest, AskResponse
-from .wall import mask
 
 log = logging.getLogger("backend.gaps")
 

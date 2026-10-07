@@ -2,7 +2,7 @@
 
 A question qualifies when it was answered (`answered`, verified, with a citation), no one rated it 2 stars or less
 and its average is 4+ if rated, it was asked at least twice (or the admin pinned it), nothing in it looks personal
-(wall.mask leaves it as it is), it is 10-120 characters long. Near-identical wordings (cosine > 0.9, bge-m3) are one
+(masking.mask leaves it as it is), it is 10-120 characters long. Near-identical wordings (cosine > 0.9, bge-m3) are one
 question, in its most frequent wording. Every candidate is asked again after the index changes and at least once a
 day (`recheck`); one that is no longer answered and verified is dropped. The last good answer is kept per index
 version and replayed when the quick question is clicked (meta.path = "cache").
@@ -24,8 +24,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from .masking import mask
 from .schemas import AskRequest, AskResponse, Suggestion
-from .wall import mask
 
 log = logging.getLogger("backend.suggestions")
 

@@ -99,21 +99,6 @@ class PgStore:
             ([f"%{like_escape(k)}%" for k in keywords], limit),
         )
 
-    def relation_lines(self, doc_ids: list[str]) -> list[dict]:
-        """Amend/repeal lines touching these acts (act_relations, built by `python -m spott.ingest.lineage`): lines of later
-        acts that amend or repeal them, and their own lines amending or repealing other acts. Empty when
-        lineage hasn't been run on this index."""
-        try:
-            return self._rows(
-                "SELECT r.from_doc_id, r.to_doc_id, r.to_ref_text, r.relation, r.line_id, l.chunk_id "
-                "FROM act_relations r JOIN lines l ON l.line_id = r.line_id "
-                "WHERE (r.to_doc_id = ANY(%s) OR r.from_doc_id = ANY(%s)) AND r.relation IN ('amends', 'repeals') "
-                "AND r.from_doc_id IS DISTINCT FROM r.to_doc_id",
-                (doc_ids, doc_ids),
-            )
-        except psycopg.errors.UndefinedTable:
-            return []
-
     def dated_lines(self, doc_ids: list[str]) -> dict[str, list[str]]:
         """Lines with a year in them, per document: to tell how recent an undated document is."""
         by_doc: dict[str, list[str]] = {}

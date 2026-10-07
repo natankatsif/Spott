@@ -45,9 +45,9 @@ LINES = {
 
 
 class FakeStore:
-    def __init__(self, meta=None, following=(), has_file=True, links=(), later=(), contacts=(), general=None):
+    def __init__(self, meta=None, following=(), has_file=True, later=(), contacts=(), general=None):
         self.meta, self.following, self.has_file = meta or {}, list(following), has_file
-        self.links, self.later = list(links), list(later)
+        self.later = list(later)
         self.contacts, self.general = list(contacts), general
         self.anchors, self.grep_patterns = [], []
 
@@ -76,9 +76,6 @@ class FakeStore:
         return [{"chunk_id": cid, "line_id": line["line_id"], "text": line["text"]}
                 for cid, lines in LINES.items() for line in lines
                 if any(k.casefold() in line["text"].casefold() for k in keywords)]
-
-    def relation_lines(self, doc_ids):
-        return [link for link in self.links if link["to_doc_id"] in doc_ids or link["from_doc_id"] in doc_ids]
 
     def dated_lines(self, doc_ids):
         return {d: [line["text"] for lines in LINES.values() for line in lines if d in line.get("doc", "")]

@@ -19,7 +19,7 @@ from spott.core.paths import DATA_DIR, REPO_ROOT, SITES_TOML
 
 from .common import CONTAINER, db_env, utf8_console
 
-TABLES = ("documents", "chunks", "lines", "act_relations", "contacts")  # contacts: python -m spott.ingest.contacts
+TABLES = ("documents", "chunks", "lines", "contacts")  # contacts: python -m spott.ingest.contacts
 
 
 def docker(*args: str, **kw) -> subprocess.CompletedProcess:
@@ -40,10 +40,7 @@ def export(out: Path | None) -> Path:
     env = db_env()
     out = out or DATA_DIR / "export" / f"index-{date.today()}.dump"
     out.parent.mkdir(parents=True, exist_ok=True)
-    existing = docker("exec", CONTAINER, "psql", "-U", env["user"], "-d", env["db"], "-At", "-c",
-                      "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
-                      capture_output=True, text=True, encoding="utf-8").stdout.split()
-    tables = [a for t in TABLES if t in existing for a in ("-t", t)]  # act_relations: only after lineage ran
+    tables = [a for t in TABLES for a in ("-t", t)]
     with out.open("wb") as f:
         docker("exec", CONTAINER, "pg_dump", "-U", env["user"], "-d", env["db"], "-Fc", *tables, stdout=f)
     print(f"Готово: {out} ({out.stat().st_size / 1024**2:.1f} МБ)")

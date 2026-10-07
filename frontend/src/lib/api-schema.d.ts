@@ -545,23 +545,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/wall": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Wall */
-        get: operations["wall_api_wall_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/suggestions": {
         parameters: {
             query?: never;
@@ -574,23 +557,6 @@ export interface paths {
          * @description Real questions we know we answer well (answered, verified, re-checked against the current index).
          */
         get: operations["suggestions_api_suggestions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/corpus/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Stats */
-        get: operations["stats_api_corpus_stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -613,108 +579,6 @@ export interface paths {
          * @description Counts this browser once (its anonymous id) and returns the number of unique visitors, for the header.
          */
         post: operations["visit_api_visits_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Search Endpoint */
-        post: operations["search_endpoint_api_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/schemas": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Tool Schemas */
-        get: operations["tool_schemas_api_tools_schemas_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Tool Search */
-        post: operations["tool_search_api_tools_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/grep": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Tool Grep */
-        post: operations["tool_grep_api_tools_grep_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/toc": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Tool Toc */
-        post: operations["tool_toc_api_tools_toc_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/open": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Tool Open */
-        post: operations["tool_open_api_tools_open_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -972,14 +836,6 @@ export interface components {
             line_ids: string[];
             /** Deep Link */
             deep_link: string;
-        };
-        /** CorpusStats */
-        CorpusStats: {
-            /** Updated At */
-            updated_at: string | null;
-            totals: components["schemas"]["CorpusTotals"];
-            /** Sites */
-            sites: components["schemas"]["SiteStats"][];
         };
         /** CorpusTotals */
         CorpusTotals: {
@@ -1321,17 +1177,6 @@ export interface components {
                 [key: string]: components["schemas"]["RoleView"] | null;
             };
         };
-        /** MatchedLine */
-        MatchedLine: {
-            /** Line Id */
-            line_id: string;
-            /** Idx */
-            idx: number;
-            /** Text */
-            text: string;
-            /** Score */
-            score?: number | null;
-        };
         /** ModelCheck */
         ModelCheck: {
             /**
@@ -1500,103 +1345,6 @@ export interface components {
              * @enum {string}
              */
             source: "admin" | "env";
-        };
-        /** SearchRequest */
-        SearchRequest: {
-            /** Query */
-            query: string;
-            /** Lang */
-            lang?: ("ro" | "ru" | "en" | "uk") | null;
-            /**
-             * K
-             * @default 8
-             */
-            k?: number;
-            /**
-             * Rerank
-             * @default false
-             */
-            rerank?: boolean;
-        };
-        /** SearchResponse */
-        SearchResponse: {
-            /** Results */
-            results: components["schemas"]["SearchResultItem"][];
-            timings_ms: components["schemas"]["SearchTimings"];
-            /**
-             * Not Found
-             * @default false
-             */
-            not_found?: boolean;
-        };
-        /** SearchResultItem */
-        SearchResultItem: {
-            /** Chunk Id */
-            chunk_id: string;
-            /** Doc Id */
-            doc_id: string;
-            /** Citation Label */
-            citation_label: string;
-            /** Text */
-            text: string;
-            /** Url */
-            url: string;
-            /** Found On */
-            found_on?: string | null;
-            /** Site */
-            site?: string | null;
-            /** Lang */
-            lang?: string | null;
-            /** Page */
-            page?: number | null;
-            /** Parent Legal Path */
-            parent_legal_path?: unknown[] | null;
-            /** Rerank Score */
-            rerank_score?: number | null;
-            /** Vec Rank */
-            vec_rank?: number | null;
-            /** Fts Rank */
-            fts_rank?: number | null;
-            /**
-             * Matched Lines
-             * @default []
-             */
-            matched_lines?: components["schemas"]["MatchedLine"][];
-        };
-        /** SearchTimings */
-        SearchTimings: {
-            /** Embed */
-            embed: number;
-            /** Vector Sql */
-            vector_sql: number;
-            /** Fts Sql */
-            fts_sql: number;
-            /** Rerank */
-            rerank: number;
-            /** Total */
-            total: number;
-        };
-        /** SiteStats */
-        SiteStats: {
-            /** Site */
-            site: string;
-            /** Category */
-            category: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "indexed" | "pending" | "blocked";
-            /** Pages */
-            pages: number;
-            /** Documents Found */
-            documents_found: number;
-            /** Documents Downloaded */
-            documents_downloaded: number;
-            /** Chunks */
-            chunks: number;
-            /** Last Crawled */
-            last_crawled: string | null;
         };
         /** SourceAdded */
         SourceAdded: {
@@ -1926,53 +1674,6 @@ export interface components {
             /** Count */
             count: number;
         };
-        /** ToolGrepRequest */
-        ToolGrepRequest: {
-            /** Pattern */
-            pattern: string;
-            /** Doc Id */
-            doc_id?: string | null;
-            /** Site */
-            site?: string | null;
-            /**
-             * Limit
-             * @default 20
-             */
-            limit?: number;
-        };
-        /** ToolOpenRequest */
-        ToolOpenRequest: {
-            /** Doc Id */
-            doc_id: string;
-            /** Node Id */
-            node_id?: string | null;
-            /** Chunk Id */
-            chunk_id?: string | null;
-            /**
-             * Max Lines
-             * @default 60
-             */
-            max_lines?: number;
-        };
-        /** ToolSearchRequest */
-        ToolSearchRequest: {
-            /** Query */
-            query: string;
-            /** Lang */
-            lang?: string | null;
-            /** Site */
-            site?: string | null;
-            /**
-             * K
-             * @default 8
-             */
-            k?: number;
-        };
-        /** ToolTocRequest */
-        ToolTocRequest: {
-            /** Doc Id */
-            doc_id: string;
-        };
         /** Totals */
         Totals: {
             /**
@@ -2061,42 +1762,6 @@ export interface components {
         VisitorCount: {
             /** Visitors */
             visitors: number;
-        };
-        /** WallItem */
-        WallItem: {
-            /** Id */
-            id: string;
-            /** Ts */
-            ts: string;
-            /** Question */
-            question: string;
-            /**
-             * Lang
-             * @enum {string}
-             */
-            lang: "ro" | "ru" | "en";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "answered" | "partial" | "not_found" | "conflict" | "refused";
-            /** Verified */
-            verified: boolean;
-            /** Latency Ms */
-            latency_ms: number;
-            /** Top Source */
-            top_source: string | null;
-        };
-        /** WallResponse */
-        WallResponse: {
-            /** Items */
-            items: components["schemas"]["WallItem"][];
-            /** Total Questions */
-            total_questions: number;
-            /** By Status */
-            by_status: {
-                [key: string]: number;
-            };
         };
         /** ApiError */
         ApiError: {
@@ -3212,38 +2877,6 @@ export interface operations {
             };
         };
     };
-    wall_api_wall_get: {
-        parameters: {
-            query?: {
-                after?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WallResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     suggestions_api_suggestions_get: {
         parameters: {
             query?: {
@@ -3276,26 +2909,6 @@ export interface operations {
             };
         };
     };
-    stats_api_corpus_stats_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CorpusStats"];
-                };
-            };
-        };
-    };
     visit_api_visits_post: {
         parameters: {
             query?: never;
@@ -3316,201 +2929,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VisitorCount"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_endpoint_api_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    tool_schemas_api_tools_schemas_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-        };
-    };
-    tool_search_api_tools_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ToolSearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    tool_grep_api_tools_grep_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ToolGrepRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    tool_toc_api_tools_toc_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ToolTocRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    tool_open_api_tools_open_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ToolOpenRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */

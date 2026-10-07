@@ -1,4 +1,4 @@
-"""Hybrid search combining Vector (BAAI/bge-m3) + FTS (ro/ru unaccent) with RRF and Rerank."""
+"""Hybrid search combining Vector (BAAI/bge-m3) + FTS (ro/ru unaccent) with RRF."""
 
 import argparse
 import hashlib
@@ -9,10 +9,9 @@ import numpy as np
 import psycopg
 from psycopg.rows import dict_row
 
-from .config import RERANK_TOP_K, RRF_K, TOP_CANDIDATES
+from .config import RRF_K, TOP_CANDIDATES
 from .db import get_connection
 from .embeddings import get_device, get_embedding_model
-from .rerank import rerank_candidates
 
 log = logging.getLogger("retrieval.search")
 
@@ -300,7 +299,7 @@ def get_chunks_by_ids(conn: psycopg.Connection, chunk_ids: list[str]) -> dict[st
 
 
 class HybridSearcher:
-    """Vector, full-text, hybrid (RRF) and reranked search over the chunks table."""
+    """Vector, full-text and hybrid (RRF) search over the chunks table."""
 
     def __init__(self, conn: psycopg.Connection | None = None):
         self._conn = conn
@@ -343,26 +342,7 @@ class HybridSearcher:
         fts = self.search_fts(query, k=top_candidates, lang=lang, limit=top_candidates)
         return deduplicate_results(rrf_fuse(vec, fts), k=k)
 
-    def search_rerank(
-        self,
-        query: str,
-        k: int = RERANK_TOP_K,
-        lang: str | None = None,
-        top_candidates: int = TOP_CANDIDATES,
-    ) -> list[dict]:
-        """Hybrid top candidates re-scored by the bge-reranker-v2-m3 cross-encoder."""
-        candidates = self.search_hybrid(query, k=top_candidates, lang=lang, top_candidates=top_candidates)
-        return rerank_candidates(query, candidates, top_k=k, device=self.device)
-
-    def search(
-        self,
-        query: str,
-        k: int = 5,
-        lang: str | None = None,
-        rerank: bool = False,
-    ) -> list[dict]:
-        if rerank:
-            return self.search_rerank(query, k=k, lang=lang)
+    def search(self, query: str, k: int = 5, lang: str | None = None) -> list[dict]:
         return self.search_hybrid(query, k=k, lang=lang)
 
 
@@ -372,7 +352,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("query", help="search query in Romanian or Russian")
     p.add_argument("-k", type=int, default=5, help="number of top results to return (default: 5)")
     p.add_argument("--lang", choices=["ro", "ru", "en", "uk"], help="filter by language")
-    p.add_argument("--rerank", action="store_true", help="re-score hybrid candidates with the cross-encoder")
     return p.parse_args()
 
 
@@ -380,7 +359,7 @@ def main() -> None:
     args = parse_args()
     searcher = HybridSearcher()
 
-    results = searcher.search(args.query, k=args.k, lang=args.lang, rerank=args.rerank)
+    results = searcher.search(args.query, k=args.k, lang=args.lang)
     if not results:
         print(f"No results found for query: '{args.query}'")
         return
@@ -390,8 +369,7 @@ def main() -> None:
     for i, r in enumerate(results, 1):
         vec_str = f"#{r['vec_rank']}" if r.get("vec_rank") else "-"
         fts_str = f"#{r['fts_rank']}" if r.get("fts_rank") else "-"
-        rerank_str = f" | Rerank: {r['rerank_score']:.3f}" if "rerank_score" in r else ""
-        print(f"[{i}] RRF: {r['rrf_score']:.4f} | Vec: {vec_str:>3} | FTS: {fts_str:>3}{rerank_str} | Lang: {r['lang']}")
+        print(f"[{i}] RRF: {r['rrf_score']:.4f} | Vec: {vec_str:>3} | FTS: {fts_str:>3} | Lang: {r['lang']}")
         print(f"    Citation: {r['citation_label']}")
         if r["url"]:
             print(f"    URL:      {r['url']}")
