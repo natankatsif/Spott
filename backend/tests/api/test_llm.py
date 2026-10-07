@@ -162,18 +162,17 @@ def test_roles_route_to_their_providers(clean_env):
                        roles={"answer": {"provider": "anthropic", "model": "claude-sonnet-5"},
                               "fast": {"provider": "openai", "model": "gpt-6-luna"}})
     routed = RoutedLLM(config)
-    client, model = routed.resolve(None)
-    assert isinstance(client, AnthropicLLM) and model == "claude-sonnet-5"
-    client, model = routed.resolve(llm.FAST)
-    assert isinstance(client, OpenAILLM) and model == "gpt-6-luna"
-    assert routed.resolve(llm.DEEP)[1] == "claude-sonnet-5"  # no deep model: the answer model
+    answer, fast = routed.resolve(None), routed.resolve(llm.FAST)
+    assert isinstance(answer.client, AnthropicLLM) and answer.model == "claude-sonnet-5"
+    assert isinstance(fast.client, OpenAILLM) and fast.model == "gpt-6-luna"
+    assert routed.resolve(llm.DEEP).model == "claude-sonnet-5"  # no deep model: the answer model
 
 
 def test_fast_role_without_key_uses_the_answer_model(clean_env):
     config = LLMConfig(providers={"anthropic": {"api_key": "sk-ant"}},
                        roles={"answer": {"provider": "anthropic", "model": "claude-sonnet-5"},
                               "fast": {"provider": "openai", "model": "gpt-6-luna"}})
-    assert RoutedLLM(config).resolve(llm.FAST)[1] == "claude-sonnet-5"
+    assert RoutedLLM(config).resolve(llm.FAST).model == "claude-sonnet-5"
 
 
 def test_no_answer_key_is_unavailable(clean_env):
@@ -231,7 +230,7 @@ def test_save_keys_and_roles(api):
     assert view["roles"]["answer"] == {"provider": "anthropic", "model": "claude-sonnet-5", "source": "admin"}
     assert store.data["llm"]["providers"]["anthropic"]["api_key"] == "sk-ant-abcdefgh1234"
     routed = main.app.state.llm_holder.get()
-    assert isinstance(routed.resolve(None)[0], AnthropicLLM)
+    assert isinstance(routed.resolve(None).client, AnthropicLLM)
     # back to the environment's model
     view = c.put("/api/admin/llm", headers=AUTH, json={"roles": {"answer": None}}).json()
     assert view["roles"]["answer"]["source"] == "env" and view["roles"]["answer"]["provider"] == "openai"
