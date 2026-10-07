@@ -8,9 +8,8 @@ from spott.api import admin, answering, main
 
 @pytest.fixture(autouse=True)
 def log_dirs(monkeypatch, tmp_path):
-    """Every answer, greetings included, and every feedback vote is appended to a log under data/."""
+    """Every answer, greetings included, is appended to a log under data/."""
     monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path / "query_logs")
-    monkeypatch.setattr(main, "FEEDBACK_DIR", tmp_path / "feedback")
 
 
 @pytest.fixture(autouse=True)

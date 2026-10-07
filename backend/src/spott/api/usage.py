@@ -126,31 +126,6 @@ class PgUsage:
         return row[0] if row else 0
 
 
-class MemoryUsage:
-    def __init__(self):
-        self.calls: list[Call] = []
-        self.answered: list[datetime] = []
-
-    def record(self, call: Call) -> None:
-        call.at = call.at or datetime.now(TZ)
-        self.calls.append(call)
-
-    def groups(self, since: datetime | None) -> list[Group]:
-        out: dict[tuple, Group] = {}
-        for c in self.calls:
-            if since and c.at < since:
-                continue
-            key = (c.at.astimezone(TZ).date(), c.provider, c.model, c.kind)
-            g = out.setdefault(key, Group(*key, calls=0, input_tokens=0, output_tokens=0))
-            g.calls += 1
-            g.input_tokens += c.input_tokens
-            g.output_tokens += c.output_tokens
-        return list(out.values())
-
-    def questions(self, since: datetime | None) -> int:
-        return sum(1 for t in self.answered if not since or t >= since)
-
-
 # ─────────────── pricing ───────────────
 
 class Price(BaseModel):

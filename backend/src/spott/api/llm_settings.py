@@ -49,17 +49,6 @@ class PgSettings:
                          "SET value = EXCLUDED.value, updated_at = NOW()", (key, Jsonb(value)))
 
 
-class MemorySettings:
-    def __init__(self):
-        self.data: dict[str, dict] = {}
-
-    def get(self, key: str) -> dict | None:
-        return self.data.get(key)
-
-    def set(self, key: str, value: dict) -> None:
-        self.data[key] = value
-
-
 class LLMHolder:
     """The routed client built from env + saved settings; rebuilt after a save, re-read every RELOAD_S."""
 

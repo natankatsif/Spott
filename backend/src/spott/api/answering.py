@@ -29,12 +29,13 @@ from typing import Protocol
 from urllib.parse import quote as url_quote
 from zoneinfo import ZoneInfo
 
-from spott.core import TOP_CANDIDATES, RetrievalResult, retrieve
+from spott.core.config import TOP_CANDIDATES
 from spott.core.links import make_deep_link
 from spott.core.paths import DATA_DIR
+from spott.core.pipeline import RetrievalResult, retrieve
 
 from .jsonstream import JsonEvents
-from .llm import DEEP_MODEL, LLM, REWRITE_MODEL, LLMResult, LLMUnavailable
+from .llm import DEEP, FAST, LLM, LLMResult, LLMUnavailable
 from .pdf_source import is_pdf_url
 from .preview import preview_kind, preview_url
 from .schemas import (
@@ -903,7 +904,7 @@ def route_question(llm: LLM, req: AskRequest, lang: str) -> dict | None:
     user = today_line() + (f"Conversation so far:\n{history}\n" if history else "") + f"Latest message: {req.question}"
     try:
         r = llm.complete_json(ROUTE_PROMPT.format(language=LANGUAGE_NAMES[lang]), user, "route", ROUTE_SCHEMA,
-                              model=REWRITE_MODEL, effort="none", max_tokens=400)
+                              model=FAST, effort="none", max_tokens=400)
     except LLMUnavailable as e:
         log.warning("routing failed: %s", e)
         return None
@@ -930,7 +931,7 @@ def translate_missing(llm: LLM | None, response: AskResponse) -> AskResponse:
     try:
         r = llm.complete_json(TRANSLATE_QUOTES_PROMPT.format(language=LANGUAGE_NAMES[response.lang]),
                               "\n".join(f"{i + 1}. {c.quote}" for i, c in enumerate(todo)), "quotes",
-                              TRANSLATE_QUOTES_SCHEMA, model=REWRITE_MODEL, effort="none",
+                              TRANSLATE_QUOTES_SCHEMA, model=FAST, effort="none",
                               max_tokens=200 + 120 * len(todo))
         texts = [t.strip() for t in r.data.get("translations") or []]
     except Exception as e:  # noqa: BLE001 - untranslated is still a correct answer
@@ -948,7 +949,7 @@ def rewrite_query(llm: LLM, req: AskRequest) -> LLMResult | None:
     history = "".join(f"{t.role}: {t.text[:300]}\n" for t in req.history[-HISTORY_TURNS:])
     user = today_line() + (f"Conversation so far:\n{history}\n" if history else "") + f"Question: {req.question}"
     try:
-        return llm.complete_json(REWRITE_PROMPT, user, "rewrite", REWRITE_SCHEMA, model=REWRITE_MODEL, effort="none",
+        return llm.complete_json(REWRITE_PROMPT, user, "rewrite", REWRITE_SCHEMA, model=FAST, effort="none",
                                  max_tokens=REWRITE_MAX_TOKENS)
     except LLMUnavailable as e:
         log.warning("query rewrite failed: %s", e)
@@ -1306,7 +1307,7 @@ def with_contacts(response: AskResponse, contacts: list[ContactCard]) -> AskResp
 
 
 def answer_model(req: AskRequest) -> str | None:
-    return DEEP_MODEL if req.mode == "deep" else None
+    return DEEP if req.mode == "deep" else None
 
 
 def answer_events(

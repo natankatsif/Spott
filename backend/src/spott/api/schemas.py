@@ -484,17 +484,6 @@ class ApiError(Strict):
 # ─────────────── corpus stats (spott/api/stats.py): the totals of the admin's sources page ───────────────
 
 
-class SiteStats(Strict):
-    site: str
-    category: str | None
-    status: Literal["indexed", "pending", "blocked"]
-    pages: int
-    documents_found: int
-    documents_downloaded: int
-    chunks: int
-    last_crawled: str | None
-
-
 class CorpusTotals(Strict):
     sites_total: int
     sites_indexed: int
@@ -505,12 +494,6 @@ class CorpusTotals(Strict):
     lines: int
     documents_replaced: int
     documents_removed: int
-
-
-class CorpusStats(Strict):
-    updated_at: str | None
-    totals: CorpusTotals
-    sites: list[SiteStats]
 
 
 # ─────────────── POST /api/visits ───────────────

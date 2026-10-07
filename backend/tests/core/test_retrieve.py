@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from psycopg_pool import ConnectionPool
 
-from spott.core import pipeline
+from spott.core import embeddings, pipeline
 from spott.core.pipeline import retrieve
 from spott.core.search import build_fts_query
 from spott.core.tools import search_tool
@@ -153,8 +153,7 @@ def index(monkeypatch):
     for function, name in QUERIES.items():
         monkeypatch.setattr(pipeline, function, found.query(name))
     monkeypatch.setattr(pipeline, "get_chunks_by_ids", found.chunks_by_ids)
-    monkeypatch.setattr(pipeline, "get_embedding_model", lambda device: found.model)
-    monkeypatch.setattr(pipeline, "get_device", lambda: "test-device")
+    monkeypatch.setattr(embeddings, "get_embedding_model", lambda: found.model)
     monkeypatch.setattr(pipeline, "time", found.clock)
     return found
 

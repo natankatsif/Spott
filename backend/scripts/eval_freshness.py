@@ -16,7 +16,7 @@ from spott.api.answering import answer_question
 from spott.api.llm import OpenAILLM
 from spott.api.schemas import AskRequest
 from spott.api.store import PgStore
-from spott.core import get_pool
+from spott.core.db import get_pool
 from spott.core.paths import EVAL_DIR
 
 EVAL = EVAL_DIR / "freshness.yaml"

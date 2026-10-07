@@ -8,7 +8,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-import numpy as np
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -21,7 +20,7 @@ from .config import (
     W_LINE,
     W_VECTOR,
 )
-from .embeddings import get_device, get_embedding_model
+from .embeddings import embed_texts
 from .links import make_deep_link
 from .search import (
     build_fts_query,
@@ -67,7 +66,6 @@ def retrieve(
     w_vector: float | None = None,
     w_fts: float | None = None,
     w_line: float | None = None,
-    device: str | None = None,
 ) -> RetrievalResult:
     """Core retrieval function of the application.
 
@@ -90,12 +88,9 @@ def retrieve(
     w_ft = W_FTS if w_fts is None else w_fts
     w_ln = W_LINE if w_line is None else w_line
 
-    dev = device or get_device()
-    model = get_embedding_model(dev)
-
     # 1. Embed query
     t_embed_start = time.perf_counter()
-    q_vec = np.asarray(model.encode([query], normalize_embeddings=True)[0], dtype=np.float32)
+    q_vec = embed_texts([query])[0]
     timings["embed"] = round((time.perf_counter() - t_embed_start) * 1000.0, 2)
 
     fts_q = build_fts_query(query)

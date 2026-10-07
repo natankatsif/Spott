@@ -23,6 +23,9 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from spott.core.embeddings import embed_texts
+
+from .llm import FAST
 from .masking import mask
 from .schemas import AskRequest, AskResponse
 
@@ -164,8 +167,6 @@ def gaps(rows: list[dict], embed: Callable[[list[str]], np.ndarray], *, hidden: 
 
 def llm_cluster(llm) -> Cluster:
     """The small model sorts new wording groups into groups, in batches; what it can't do stays unsorted."""
-    from .llm import REWRITE_MODEL
-
     def cluster(new: list[dict], existing: list[dict]) -> dict:
         out: dict = {"group": {}, "topic": {}, "title": {}}
         existing = list(existing)
@@ -177,7 +178,7 @@ def llm_cluster(llm) -> Cluster:
                     if existing else "Existing groups: none\n")
             user += "\nNew questions:\n" + "".join(f"{i + 1}. {mask(h['question'])[:200]}\n" for i, h in enumerate(batch))
             try:
-                r = llm().complete_json(CLUSTER_PROMPT, user, "gap_groups", CLUSTER_SCHEMA, model=REWRITE_MODEL,
+                r = llm().complete_json(CLUSTER_PROMPT, user, "gap_groups", CLUSTER_SCHEMA, model=FAST,
                                         effort="none", max_tokens=200 + 60 * len(batch))
             except Exception as e:  # noqa: BLE001 - unsorted this time: asked again on the next list
                 log.warning("gap groups not sorted: %s", e)
@@ -226,10 +227,8 @@ class CachedEmbed:
 class PgGaps:
     def __init__(self, pool: ConnectionPool, embed: Callable[[list[str]], np.ndarray] | None = None,
                  cluster: Cluster | None = None):
-        from .suggestions import default_embed
-
         self.pool = pool
-        self.embed = CachedEmbed(embed or default_embed)
+        self.embed = CachedEmbed(embed or embed_texts)
         self.cluster = cluster
         self.listing = threading.Lock()
 

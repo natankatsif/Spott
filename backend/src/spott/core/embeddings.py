@@ -4,6 +4,8 @@ import logging
 import time
 from functools import cache
 
+import numpy as np
+
 from .config import EMBEDDING_MODEL_NAME
 
 log = logging.getLogger("retrieval.embeddings")
@@ -40,6 +42,11 @@ def _load_model(device: str):
 def get_embedding_model(device: str | None = None):
     """Returns the cached SentenceTransformer instance for the given device."""
     return _load_model(device or get_device())
+
+
+def embed_texts(texts: list[str]) -> np.ndarray:
+    """Normalized embeddings of the texts, one float32 row each (cosine similarity = dot product)."""
+    return np.asarray(get_embedding_model().encode(texts, normalize_embeddings=True), dtype=np.float32)
 
 
 def free_device_cache(device: str) -> None:

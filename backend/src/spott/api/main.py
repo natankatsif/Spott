@@ -12,7 +12,6 @@ import os
 import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import quote as url_quote
 
@@ -23,8 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from starlette.concurrency import run_in_threadpool
 
-from spott.core import get_device, get_embedding_model, get_pool, retrieve
-from spott.core.db import init_app_db
+from spott.core.db import get_pool, init_app_db
+from spott.core.embeddings import get_device, get_embedding_model
+from spott.core.pipeline import retrieve
 from spott.core.sources import seed_sources
 
 from . import admin, errors, freshness, llm_settings, preview, usage
@@ -60,7 +60,6 @@ ASK_RATE_LIMIT = int(os.getenv("ASK_RATE_LIMIT", "10"))  # questions per minute 
 # Quick questions are re-asked (LLM calls) when the index changes and daily; checked every this many seconds.
 SUGGESTIONS_EVERY_S = float(os.getenv("SUGGESTIONS_EVERY_S", "600"))
 SUGGESTIONS_RECHECK = os.getenv("SUGGESTIONS_RECHECK", "true").lower() in ("1", "true", "yes")
-FEEDBACK_DIR = DATA_DIR / "feedback"
 
 
 @asynccontextmanager
@@ -309,21 +308,17 @@ async def ask_stream(req: AskRequest, request: Request) -> StreamingResponse:
 @app.post("/api/feedback", response_model=FeedbackResponse)
 def feedback(req: FeedbackRequest) -> FeedbackResponse:
     """1-5 stars (or the older up/down vote), reason tags, comment. Stored in Postgres with the question, status,
-    cited documents and path of the answer; without a database (local UI work) appended to data/feedback."""
+    cited documents and path of the answer."""
     answers = getattr(app.state, "answers", None)
-    if answers is not None:
-        if not answers.rate(req):
-            raise ApiException(404, "not_found", f"Unknown answer {req.answer_id}")
-        if "outdated" in req.tags and (pool := getattr(app.state, "pool", None)) is not None:
-            try:  # "outdated": check the cited sites sooner (never breaks the rating)
-                freshness.signal_answer(pool, req.answer_id)
-            except Exception as e:
-                log.warning("outdated signal not recorded: %s", e)
-        return FeedbackResponse(ok=True)
-    record = req.model_dump() | {"rating": req.stars, "ts": datetime.now(UTC).isoformat(timespec="seconds")}
-    FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
-    with (FEEDBACK_DIR / f"{datetime.now(UTC):%Y-%m-%d}.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if answers is None:
+        raise ApiException(503, "unavailable", "Database pool not initialized")
+    if not answers.rate(req):
+        raise ApiException(404, "not_found", f"Unknown answer {req.answer_id}")
+    if "outdated" in req.tags and (pool := getattr(app.state, "pool", None)) is not None:
+        try:  # "outdated": check the cited sites sooner (never breaks the rating)
+            freshness.signal_answer(pool, req.answer_id)
+        except Exception as e:
+            log.warning("outdated signal not recorded: %s", e)
     return FeedbackResponse(ok=True)
 
 

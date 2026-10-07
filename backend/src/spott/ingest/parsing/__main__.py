@@ -54,8 +54,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--reparse", action="store_true", help="also parse already parsed files, with OCR")
     p.add_argument("--rebuild", action="store_true",
                    help="re-derive JSON/Markdown of parsed files from cached Docling output")
-    p.add_argument("--pages", action="store_true", help="parse crawled HTML pages instead of files")
-    p.add_argument("--sites", nargs="+", metavar="ID", help="only these sites (their files, or their pages with --pages)")
+    p.add_argument("--sites", nargs="+", metavar="ID", help="only the files of these sites")
     p.add_argument("--keys-file", type=Path,
                    help="only the pending files of these documents (the \"documents\" of a check's JSON)")
     return p.parse_args(argv)
@@ -139,18 +138,6 @@ def main() -> None:
     try:
         if killed := registry.fail_interrupted_parses():
             log.warning("%d file(s) were being parsed when a previous run was killed: marked failed", killed)
-        if args.pages:
-            from spott.ingest.pages_parsing.__main__ import run_pages_parsing
-
-            run_pages_parsing(
-                registry=registry,
-                data_dir=args.data,
-                sites=args.sites,
-                limit=args.limit,
-                reparse=args.reparse,
-            )
-            return
-
         if args.keys_file:  # a check: its documents only, not every pending file of every site
             keys = json.loads(args.keys_file.read_text(encoding="utf-8")).get("documents") or []
             files = registry.files_of_documents(keys, statuses)

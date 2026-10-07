@@ -44,7 +44,7 @@ class PdfSource:
     async def get(self, doc: dict) -> bytes:
         """doc: a row of the documents table (doc_id, kind, url, sha256)."""
         doc_id = doc["doc_id"]
-        if local := raw_pdf(doc_id, doc.get("sha256")):
+        if local := raw_pdf(doc.get("sha256")):
             return await run_in_threadpool(local.read_bytes)
         if doc_id in self.cache:
             self.cache.move_to_end(doc_id)

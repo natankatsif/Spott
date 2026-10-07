@@ -1,12 +1,15 @@
 """Fakes the API tests share, no database and no network: two acts with their lines, a contacts page, a contact card,
-a store and an answer model over them, an OpenAI-compatible server and the admin login."""
+a store and an answer model over them, an OpenAI-compatible server, the admin login, in-memory settings and
+spending logs."""
 
 import json
+from datetime import datetime
 
 import httpx
 
 from spott.api import answering
 from spott.api.llm import LLMResult
+from spott.api.usage import TZ, Call, Group
 
 LOGIN = {"login": "admin", "password": "correct horse battery"}
 
@@ -169,3 +172,39 @@ class CompatServer:
             text = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
             return httpx.Response(200, text=text, headers={"content-type": "text/event-stream"})
         return httpx.Response(200, json=completion(self.reply))
+
+
+class MemorySettings:
+    def __init__(self):
+        self.data: dict[str, dict] = {}
+
+    def get(self, key: str) -> dict | None:
+        return self.data.get(key)
+
+    def set(self, key: str, value: dict) -> None:
+        self.data[key] = value
+
+
+class MemoryUsage:
+    def __init__(self):
+        self.calls: list[Call] = []
+        self.answered: list[datetime] = []
+
+    def record(self, call: Call) -> None:
+        call.at = call.at or datetime.now(TZ)
+        self.calls.append(call)
+
+    def groups(self, since: datetime | None) -> list[Group]:
+        out: dict[tuple, Group] = {}
+        for c in self.calls:
+            if since and c.at < since:
+                continue
+            key = (c.at.astimezone(TZ).date(), c.provider, c.model, c.kind)
+            g = out.setdefault(key, Group(*key, calls=0, input_tokens=0, output_tokens=0))
+            g.calls += 1
+            g.input_tokens += c.input_tokens
+            g.output_tokens += c.output_tokens
+        return list(out.values())
+
+    def questions(self, since: datetime | None) -> int:
+        return sum(1 for t in self.answered if not since or t >= since)

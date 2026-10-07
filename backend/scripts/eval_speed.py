@@ -25,7 +25,7 @@ from pathlib import Path
 
 import yaml
 
-from spott.core import get_pool
+from spott.core.db import get_pool
 from spott.core.paths import DATA_DIR, EVAL_DIR
 
 EVAL = EVAL_DIR

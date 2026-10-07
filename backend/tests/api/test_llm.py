@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.api.fakes import SCHEMA, CompatServer
+from tests.api.fakes import SCHEMA, CompatServer, MemorySettings
 
 from spott.api import llm, llm_settings, main
 from spott.api.llm import AnthropicLLM, LLMConfig, LLMUnavailable, OpenAILLM, RoutedLLM
@@ -200,7 +200,7 @@ def api(clean_env):
     clean_env.setenv("ADMIN_PASSWORD", "secret-pass")
     clean_env.delenv("ADMIN_SECRET", raising=False)
     clean_env.setenv("OPENAI_API_KEY", "sk-env-123456789")
-    store = llm_settings.MemorySettings()
+    store = MemorySettings()
     main.app.state.llm_holder = llm_settings.LLMHolder(store)
     c = TestClient(main.app)
     AUTH["Authorization"] = "Bearer " + c.post("/api/admin/login", json={"login": "admin",

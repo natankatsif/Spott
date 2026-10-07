@@ -23,9 +23,6 @@ TIMEOUT_S = 40.0
 # Role tokens: callers ask for a role, the configuration says which provider and model plays it.
 FAST = "@fast"  # the short calls (routing, query rewrite, translations, gap groups): the cheapest fast model
 DEEP = "@deep"  # mode=deep: a stronger model if one is set, else the answer model
-# Kept for the callers that import them by these names.
-REWRITE_MODEL = FAST
-DEEP_MODEL = DEEP
 # For reasoning models; models without reasoning ignore it (the option is dropped on their first call).
 REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT") or "low"
 ROLES = ("answer", "fast", "deep")

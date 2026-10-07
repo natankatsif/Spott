@@ -15,8 +15,10 @@ from spott.api import answering
 from spott.api.llm import OpenAILLM
 from spott.api.schemas import AskRequest
 from spott.api.store import PgStore
-from spott.core import TOP_CANDIDATES, get_pool, retrieve
+from spott.core.config import TOP_CANDIDATES
+from spott.core.db import get_pool
 from spott.core.paths import EVAL_DIR
+from spott.core.pipeline import retrieve
 
 EVAL = EVAL_DIR / "lines.yaml"
 WEIGHTS = [1.0, 0.5, 0.25]

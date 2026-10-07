@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.api.fakes import SCHEMA, CompatServer
+from tests.api.fakes import SCHEMA, CompatServer, MemorySettings, MemoryUsage
 
 from spott.api import llm_settings, main, usage
 from spott.api.llm import LLMConfig, OpenAILLM, RoutedLLM
@@ -43,7 +43,7 @@ def test_a_failing_counter_never_breaks_the_answer():
 
 
 def test_prices_turn_tokens_into_money_and_unpriced_models_are_flagged():
-    log = usage.MemoryUsage()
+    log = MemoryUsage()
     now = datetime(2026, 9, 27, 12, tzinfo=usage.TZ)
     for days_ago, model, kind, i, o in [(0, "gpt-4o-2024-08-06", "answer", 1_000_000, 100_000),
                                         (0, "gpt-6-luna", "rewrite", 200_000, 10_000),
@@ -75,8 +75,8 @@ def api(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-pass")
     monkeypatch.delenv("ADMIN_SECRET", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-env-123456789")
-    store = llm_settings.MemorySettings()
-    log = usage.MemoryUsage()
+    store = MemorySettings()
+    log = MemoryUsage()
     main.app.state.llm_holder = llm_settings.LLMHolder(store, on_usage=main.record_usage)
     main.app.state.usage = log
     c = TestClient(main.app)

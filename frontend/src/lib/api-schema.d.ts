@@ -475,7 +475,7 @@ export interface paths {
         /**
          * Feedback
          * @description 1-5 stars (or the older up/down vote), reason tags, comment. Stored in Postgres with the question, status,
-         *     cited documents and path of the answer; without a database (local UI work) appended to data/feedback.
+         *     cited documents and path of the answer.
          */
         post: operations["feedback_api_feedback_post"];
         delete?: never;

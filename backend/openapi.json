@@ -1199,7 +1199,7 @@
     "/api/feedback": {
       "post": {
         "summary": "Feedback",
-        "description": "1-5 stars (or the older up/down vote), reason tags, comment. Stored in Postgres with the question, status,\ncited documents and path of the answer; without a database (local UI work) appended to data/feedback.",
+        "description": "1-5 stars (or the older up/down vote), reason tags, comment. Stored in Postgres with the question, status,\ncited documents and path of the answer.",
         "operationId": "feedback_api_feedback_post",
         "requestBody": {
           "content": {

@@ -55,7 +55,7 @@ from .schemas import (
     SuggestionCreate,
     SuggestionList,
 )
-from .stats import corpus_stats, registry_counts
+from .stats import corpus_totals, registry_counts
 
 # The crawler's User-Agent (backend/src/spott/ingest/common/http.py): robots.txt is checked for the bot that will crawl.
 CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
@@ -331,7 +331,7 @@ class PgAdminStore:
         return self.get_source(source_id)
 
     def totals(self) -> dict:
-        return corpus_stats(self.pool).totals.model_dump()
+        return corpus_totals(self.pool).model_dump()
 
     def patch_source(self, source_id: int, fields: dict) -> dict | None:
         if fields:
