@@ -18,8 +18,8 @@ from psycopg.types.json import Jsonb
 
 from spott.core.db import get_connection, init_app_db
 from spott.core.paths import DATA_DIR
+from spott.core.sources import EXCLUDED_SITES
 from spott.ingest.tools.common import utf8_console
-from spott.ingest.tools.pipeline import EXCLUDED_SITES
 
 from . import schedule
 from .core import JobRunner

@@ -30,6 +30,11 @@ def clean_tsquery_term(term: str) -> str:
     return re.sub(r"[&|!()\\:*\'\"]", "", term).strip()
 
 
+def ilike_contains(text: str) -> str:
+    """An ILIKE pattern finding the text anywhere, its % _ and \\ taken literally (ESCAPE is \\, the default)."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
 def build_fts_query(query: str) -> str:
     """Builds a sanitized OR-connected tsquery string for PostgreSQL to_tsquery('ro_unaccent/ru_unaccent', ...).
 

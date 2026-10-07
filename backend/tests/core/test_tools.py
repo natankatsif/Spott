@@ -2,10 +2,10 @@
 
 import pytest
 
+from spott.core.search import ilike_contains
 from spott.core.tools import (
     build_toc_nodes,
     enforce_char_limit,
-    escape_like_pattern,
     grep_tool,
     open_tool,
     search_tool,
@@ -13,12 +13,12 @@ from spott.core.tools import (
 )
 
 
-def test_escape_like_pattern():
-    assert escape_like_pattern("abc") == "abc"
-    assert escape_like_pattern("100% pure") == r"100\% pure"
-    assert escape_like_pattern("a_b_c") == r"a\_b\_c"
-    assert escape_like_pattern(r"path\to\file") == r"path\\to\\file"
-    assert escape_like_pattern(r"100%_val\test") == r"100\%\_val\\test"
+def test_ilike_contains_takes_wildcards_literally():
+    assert ilike_contains("abc") == "%abc%"
+    assert ilike_contains("100% pure") == r"%100\% pure%"
+    assert ilike_contains("a_b_c") == r"%a\_b\_c%"
+    assert ilike_contains(r"path\to\file") == r"%path\\to\\file%"
+    assert ilike_contains(r"100%_val\test") == r"%100\%\_val\\test%"
 
 
 def test_enforce_char_limit():

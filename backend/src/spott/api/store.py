@@ -5,6 +5,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from spott.core.embeddings import embed_texts
+from spott.core.search import ilike_contains
 
 from .files import raw_pdf
 
@@ -14,10 +15,6 @@ CHUNK_COLUMNS = (
 )
 # Position of a chunk in its document: its first block.
 POSITION = "(c.block_ids->>0)::int"
-
-
-def like_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class PgStore:
@@ -91,14 +88,14 @@ class PgStore:
         return self._rows(
             "SELECT DISTINCT ON (l.chunk_id) l.chunk_id, l.line_id FROM lines l "
             "WHERE l.text ILIKE ANY(%s) AND NOT (l.doc_id = ANY(%s)) ORDER BY l.chunk_id, l.idx LIMIT %s",
-            ([f"%{like_escape(p)}%" for p in patterns], exclude_doc_ids, limit),
+            ([ilike_contains(p) for p in patterns], exclude_doc_ids, limit),
         )
 
     def grep_lines(self, keywords: list[str], limit: int = 200) -> list[dict]:
         """Lines containing any of the keywords verbatim (act numbers, names): {chunk_id, line_id, text}."""
         return self._rows(
             "SELECT chunk_id, line_id, text FROM lines WHERE text ILIKE ANY(%s) LIMIT %s",
-            ([f"%{like_escape(k)}%" for k in keywords], limit),
+            ([ilike_contains(k) for k in keywords], limit),
         )
 
     def dated_lines(self, doc_ids: list[str]) -> dict[str, list[str]]:

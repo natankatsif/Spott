@@ -24,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 
 from spott.core.db import get_pool, init_app_db
 from spott.core.embeddings import get_device, get_embedding_model
+from spott.core.paths import DATA_DIR
 from spott.core.pipeline import retrieve
 from spott.core.sources import seed_sources
 
@@ -32,7 +33,6 @@ from .admin import PgAdminStore
 from .answering import answer_events, answer_question, replay_events
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter, client_address
-from .files import DATA_DIR
 from .gaps import PgGaps, llm_cluster
 from .llm import LLM, LLMUnavailable
 from .llm_settings import LLMHolder, PgSettings

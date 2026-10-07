@@ -28,7 +28,7 @@ from psycopg_pool import ConnectionPool
 from selectolax.parser import HTMLParser
 from starlette.concurrency import run_in_threadpool
 
-from spott.core.sources import DEFAULTS, EXCLUDED_SITES, categorize
+from spott.core.sources import DEFAULTS, DOCUMENT_TYPES, EXCLUDED_SITES, USER_AGENT, categorize, is_document_link
 
 from .errors import ApiException, RateLimiter, client_address
 from .schemas import (
@@ -56,15 +56,6 @@ from .schemas import (
     SuggestionList,
 )
 from .stats import corpus_totals, registry_counts
-
-# The crawler's User-Agent (backend/src/spott/ingest/common/http.py): robots.txt is checked for the bot that will crawl.
-CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
-DOCUMENT_TYPES = {
-    "application/pdf": ".pdf",
-    "application/msword": ".doc",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-}
-
 
 SESSION_HOURS = float(os.getenv("ADMIN_SESSION_HOURS", "12"))
 LOGIN_ATTEMPTS_PER_MINUTE = 5
@@ -148,7 +139,6 @@ def me(login: str = Depends(require_admin)) -> AdminMe:
 
 # ─────────────── what a URL is: robots.txt, kind, title, category (no LLM) ───────────────
 
-DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
 PROBE_TIMEOUT_S = 8.0
 MAX_HEAD_BYTES = 300_000  # enough of a page for its <title> and meta description
 
@@ -170,16 +160,8 @@ def normalize_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc.lower(), path, parts.query, ""))
 
 
-def check_url(url: str) -> str:
-    return site_of(normalize_url(url))
-
-
 def is_root(url: str) -> bool:
     return urlsplit(url).path in ("", "/")
-
-
-def document_extension(url: str) -> bool:
-    return urlsplit(url).path.lower().endswith(DOCUMENT_EXTENSIONS)
 
 
 async def robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
@@ -194,7 +176,7 @@ async def robots_allowed(client: httpx.AsyncClient, url: str) -> bool:
         return True
     parser = RobotFileParser()
     parser.parse(resp.text.splitlines())
-    return parser.can_fetch(CRAWLER_AGENT, url)
+    return parser.can_fetch(USER_AGENT, url)
 
 
 @dataclass
@@ -538,10 +520,10 @@ async def add_source(req: SourceCreate, request: Request, response: Response) ->
     blocked = site_id in EXCLUDED_SITES or not await robots_allowed(client, url)
     title = text = None
     if blocked:
-        kind = req.kind or ("document" if document_extension(url) else "site")
+        kind = req.kind or ("document" if is_document_link(url) else "site")
     else:
         found = await probe(client, url)
-        kind = req.kind or ("document" if found.content_type in DOCUMENT_TYPES or document_extension(url) else "site")
+        kind = req.kind or ("document" if found.content_type in DOCUMENT_TYPES or is_document_link(url) else "site")
         title, text = found.title, " ".join(x for x in (found.title, found.description) if x)
 
     existing = await run_in_threadpool(admin.find_by_site, site_id)

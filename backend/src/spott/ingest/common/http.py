@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 
 import httpx
 
-USER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
+from spott.core.sources import USER_AGENT
+
 HTML_TYPES = ("text/html", "application/xhtml+xml")
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 

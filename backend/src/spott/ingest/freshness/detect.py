@@ -25,7 +25,8 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-from spott.ingest.common.http import HTML_TYPES, USER_AGENT, content_type
+from spott.core.sources import USER_AGENT
+from spott.ingest.common.http import HTML_TYPES, content_type
 from spott.ingest.common.urls import bare_host, is_document_url, normalize, url_key
 
 log = logging.getLogger(__name__)

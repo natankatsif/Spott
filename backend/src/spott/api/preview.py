@@ -30,14 +30,15 @@ import psycopg
 from psycopg_pool import ConnectionPool
 from selectolax.parser import HTMLParser
 
-from .files import DATA_DIR
+from spott.core.paths import DATA_DIR
+from spott.core.sources import USER_AGENT
+
 from .pdf_source import is_pdf_url
 
 log = logging.getLogger("backend.preview")
 
 STATIC = Path(__file__).resolve().parent / "static"
 STATIC_PREFIX = "/api/preview-static"
-CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
 LIVE_TIMEOUT_S = 5.0
 LIVE_CACHE_S = 3600
 MAX_LINES = 5
@@ -181,7 +182,7 @@ class PageSource:
         if self.client is None:
             return None
         try:
-            resp = await self.client.get(url, timeout=LIVE_TIMEOUT_S, headers={"User-Agent": CRAWLER_AGENT})
+            resp = await self.client.get(url, timeout=LIVE_TIMEOUT_S, headers={"User-Agent": USER_AGENT})
         except httpx.HTTPError as e:
             log.info("live fetch of %s failed: %s", url, e)
             return None

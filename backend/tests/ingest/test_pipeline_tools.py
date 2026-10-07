@@ -1,6 +1,7 @@
 """tools/: the pipeline never plans a robots-forbidden site; plans stay in stage order."""
 
-from spott.ingest.tools.pipeline import EXCLUDED_SITES, STAGES, allowed_sites, main, plan
+from spott.core.sources import EXCLUDED_SITES
+from spott.ingest.tools.pipeline import STAGES, allowed_sites, main, plan
 
 
 def test_allowed_sites_skip_robots_forbidden():
