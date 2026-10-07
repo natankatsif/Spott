@@ -1,32 +1,64 @@
 [project]
-name = "backend"
-description = "Municipal assistant API: retrieval, answers with citations"
+name = "spott"
+description = "Municipal assistant backend: the corpus pipeline, search, and the API with cited answers"
 version = "0.1.0"
 requires-python = ">=3.12"
+# spott.core: the database, embeddings and search. The API and the ingest pipeline add their own extras;
+# `uv sync --all-extras` installs everything (that is what CI and the Docker image do).
 dependencies = [
+    "psycopg[binary,pool]>=3.3.6",
+    "pgvector>=0.5.0",
+    "numpy>=1.26.0",
+    "sentence-transformers>=6.1.0",
+    # Intel Macs: torch 2.2 is the last version with x86_64 macOS wheels (and it needs Python 3.12 and NumPy 1.x).
+    # Everyone else, including the Linux server and Docker image on Python 3.14, gets a current torch.
+    "torch<2.3.0; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch>=2.4; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "python-dotenv>=1.2.3",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+api = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "openai>=3.19.2",
-    "retrieval",
     "selectolax>=0.4.12",
     "uvicorn[standard]>=0.54.0",
 ]
+ingest = [
+    "docling>=2.130.0",
+    # .odt / .ods / .odp: Docling reads them with odfdo, which plain `docling` does not install
+    "docling-slim[format-opendocument]>=2.130.0",
+    "httpx>=0.28.1",
+    "ocrmac>=1.0.1; sys_platform == 'darwin'",
+    "selectolax>=0.4.12",
+    "trafilatura>=2.2.0",
+]
 
-[tool.uv.sources]
-retrieval = { workspace = true }
+[project.scripts]
+qsearch = "spott.core.cli:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "import-linter>=2.3",
     "playwright>=1.63.0",
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.5.0",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spott"]
+
 [tool.pytest.ini_options]
-pythonpath = ["."]
-asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]  # the tests import their shared fakes as tests.api.fakes
 markers = [
     "db: database integration tests",
     "browser: headless Chromium end-to-end tests (Playwright, a running API)",
@@ -34,6 +66,7 @@ markers = [
 
 [tool.ruff]
 line-length = 120
+src = ["src", "tests"]
 extend-exclude = [".venv"]
 
 [tool.ruff.lint]
@@ -41,3 +74,21 @@ extend-exclude = [".venv"]
 preview = true
 explicit-preview-rules = true
 select = ["F", "E9", "B", "UP", "I", "SIM", "PLW1514"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["spott"]
+
+# `uv run lint-imports`: the layers of the package (spott/__init__.py).
+[tool.importlinter]
+root_package = "spott"
+
+[[tool.importlinter.contracts]]
+name = "core depends on neither the API nor the ingest pipeline"
+type = "forbidden"
+source_modules = ["spott.core"]
+forbidden_modules = ["spott.api", "spott.ingest"]
+
+[[tool.importlinter.contracts]]
+name = "the API and the ingest pipeline don't import each other"
+type = "independence"
+modules = ["spott.api", "spott.ingest"]

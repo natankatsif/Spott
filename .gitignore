@@ -2,28 +2,17 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 
-# Generated data: crawl output, downloaded files, registry (only the site list is versioned)
-offline_indexation/data/*
-!offline_indexation/data/sources/
+# Generated data (SPOTT_DATA_DIR): crawl output, downloaded files, registry.sqlite, index dumps (export/, xfer/),
+# tester, query and feedback logs, eval runs. Only the site list is versioned.
+data/*
+!data/sources/
+*.dump
 
 # Env / OS
 .env
 .DS_Store
 
-# Index dumps
-data/export/
-*.dump
-
-# Tester logs and /api/ask query logs
-data/test_logs/
-data/query_logs/
-data/feedback/
-
-# Build metadata
-*.egg-info/
-data/eval/
-backend/tests/artifacts/
-
-# Local transfer dumps (index, parsed data, chunks) — never committed
-data/xfer/
+# Test artifacts
+backend/tests/api/artifacts/

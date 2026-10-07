@@ -1,0 +1,165 @@
+[
+  {
+    "type": "start",
+    "id": "<answer id>",
+    "lang": "ro"
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Bună! "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Sunt "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "asistentul "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Primăriei "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Chișinău. "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Întrebați-mă "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "despre "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "serviciile, "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "deciziile "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "și "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "documentele "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "publice "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "ale "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Primăriei, "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "iar "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "eu "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "răspund "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "cu "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "trimitere "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "la "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "documentul "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "și "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "pasajul "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "exact. "
+  },
+  {
+    "type": "sentence",
+    "index": 0,
+    "sentence": {
+      "text": "Bună! Sunt asistentul Primăriei Chișinău. Întrebați-mă despre serviciile, deciziile și documentele publice ale Primăriei, iar eu răspund cu trimitere la documentul și pasajul exact.",
+      "cites": []
+    },
+    "verified": false
+  },
+  {
+    "type": "done",
+    "response": {
+      "id": "<answer id>",
+      "status": "answered",
+      "lang": "ro",
+      "answer": "Bună! Sunt asistentul Primăriei Chișinău. Întrebați-mă despre serviciile, deciziile și documentele publice ale Primăriei, iar eu răspund cu trimitere la documentul și pasajul exact.",
+      "sentences": [
+        {
+          "text": "Bună! Sunt asistentul Primăriei Chișinău. Întrebați-mă despre serviciile, deciziile și documentele publice ale Primăriei, iar eu răspund cu trimitere la documentul și pasajul exact.",
+          "cites": []
+        }
+      ],
+      "citations": [],
+      "conflict": null,
+      "checklist": null,
+      "nav_links": [],
+      "followups": [],
+      "trace": [],
+      "meta": {
+        "model": null,
+        "path": "none",
+        "latency_ms": "<ms>",
+        "verified": false
+      },
+      "focus_citation_id": null,
+      "contacts": []
+    }
+  }
+]

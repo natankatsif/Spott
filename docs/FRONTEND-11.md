@@ -124,13 +124,13 @@ The demo loop: a gap → paste the missing document's link → wait until its ro
 
 ## 5. Mock mode
 - Ask mocks already carry `preview_url` = `/mocks/preview/<mock>-<citation>.html`. Those are real static previews in `frontend/public/mocks/preview/`: pdf.js, the PDFs, highlights and `postMessage` all work, with no backend.
-- Regenerate them after the mocks change: `uv run python backend/scripts/export_previews.py` (reads the local index files, no DB, no LLM).
+- Regenerate them after the mocks change: `cd backend && uv run python scripts/export_previews.py ../frontend` (reads the local index files, no DB, no LLM).
 - Admin mocks are in `src/lib/mocks/admin/`:
   - `sources.json`: 40 sites + a document; one running at 63 %, one failed, one blocked;
   - `add-source-{site,document,merged,blocked,unreachable}.json`;
   - `gaps.json`, `gap-recheck.json`, `gap-hide.json`.
 
-  Regenerate: `uv run python backend/scripts/make_admin_mocks.py`. Validated by `backend/tests/test_contract.py`.
+  Regenerate: `cd backend && uv run python scripts/make_admin_mocks.py ../frontend`. Validated by `npm run check:mocks` (frontend) against `backend/openapi.json`.
 - In mock mode, the polling can simply stop after the first response: the mock never finishes.
 
 ## 6. Gotchas we hit

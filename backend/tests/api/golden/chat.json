@@ -1,0 +1,83 @@
+[
+  {
+    "type": "start",
+    "id": "<answer id>",
+    "lang": "ru"
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Спасибо, "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "всё "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "хорошо! "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Чем "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "помочь "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "по "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Примэрии? "
+  },
+  {
+    "type": "sentence",
+    "index": 0,
+    "sentence": {
+      "text": "Спасибо, всё хорошо! Чем помочь по Примэрии?",
+      "cites": []
+    },
+    "verified": false
+  },
+  {
+    "type": "done",
+    "response": {
+      "id": "<answer id>",
+      "status": "answered",
+      "lang": "ru",
+      "answer": "Спасибо, всё хорошо! Чем помочь по Примэрии?",
+      "sentences": [
+        {
+          "text": "Спасибо, всё хорошо! Чем помочь по Примэрии?",
+          "cites": []
+        }
+      ],
+      "citations": [],
+      "conflict": null,
+      "checklist": null,
+      "nav_links": [],
+      "followups": [
+        "Как получить справку?",
+        "Сколько стоит разрешение на строительство?"
+      ],
+      "trace": [],
+      "meta": {
+        "model": "fake-mini",
+        "path": "none",
+        "latency_ms": "<ms>",
+        "verified": false
+      },
+      "focus_citation_id": null,
+      "contacts": []
+    }
+  }
+]

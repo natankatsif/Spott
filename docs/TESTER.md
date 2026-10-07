@@ -10,7 +10,7 @@
 
 | Часть | Статус | Что делает |
 |---|---|---|
-| Обход сайтов (`crawler`) | ✅ | Обходит сайты из списка Annex 1 (`offline_indexation/data/sources/sites.toml`), соблюдает robots.txt. `chisinau.md` не обходим: robots.txt это запрещает |
+| Обход сайтов (`crawler`) | ✅ | Обходит сайты из списка Annex 1 (`data/sources/sites.toml`), соблюдает robots.txt. `chisinau.md` не обходим: robots.txt это запрещает |
 | Скачивание (`downloader`) | ✅ | Качает PDF/DOCX. Изменившийся файл **заменяет** старую версию, а не лежит рядом. Документ, пропавший с сайта два обхода подряд, удаляется из поиска |
 | Разбор (`parsing`, `pages_parsing`) | ✅ | Достаёт текст из PDF и страниц, распознаёт сканы (OCR: на Mac — Apple Vision, на Windows — Tesseract) |
 | Нарезка (`chunking`) | ✅ | Режет документы на куски по статьям/пунктам и на отдельные строки |
@@ -33,7 +33,7 @@
 └── папка проекта (Python, uv)
     ├── qsearch                    ← консольный поиск: модель bge-m3 превращает вопрос в вектор,
     │                                 дальше запрос в базу
-    └── offline_indexation/tools   ← doctor (проверка), pipeline (обход сайтов), index_io (дамп)
+    └── backend/src/spott/ingest/tools   ← doctor (проверка), pipeline (обход сайтов), index_io (дамп)
 ```
 
 - **Docker** нужен только для базы. Сам Python-код работает прямо на компьютере.
@@ -64,15 +64,15 @@ git clone https://github.com/rlwq/DocumentParsing.git qwerty
 cd qwerty
 cp .env.example .env                # ключ OpenAI для тестирования не нужен
 
-# 3. Зависимости (uv сам поставит Python 3.14; первый раз 5–10 минут)
-uv sync --all-packages
+# 3. Зависимости (нужен Python ≥ 3.12, нет подходящего — uv скачает сам; первый раз 5–10 минут)
+cd backend
+uv sync --all-extras
 
 # 4. Индекс (путь к присланному файлу)
-cd offline_indexation
-uv run python -m tools.index_io import ~/Downloads/index-2026-09-26.dump
+uv run python -m spott.ingest.tools.index_io import ~/Downloads/index-2026-09-26.dump
 
 # 5. Проверка — все пункты должны быть ✅ или ⚠️
-uv run python -m tools.doctor
+uv run python -m spott.ingest.tools.doctor
 ```
 
 ### Windows
@@ -95,14 +95,14 @@ cd qwerty
 copy .env.example .env
 
 # 3. Зависимости (первый раз 5–10 минут)
-uv sync --all-packages
+cd backend
+uv sync --all-extras
 
 # 4. Индекс
-cd offline_indexation
-uv run python -m tools.index_io import $HOME\Downloads\index-2026-09-26.dump
+uv run python -m spott.ingest.tools.index_io import $HOME\Downloads\index-2026-09-26.dump
 
 # 5. Проверка
-uv run python -m tools.doctor
+uv run python -m spott.ingest.tools.doctor
 ```
 
 **Tesseract (OCR сканов) для тестирования поиска не нужен.** Понадобится, только если попросим тебя разбирать документы: поставь с https://github.com/UB-Mannheim/tesseract/wiki, в установщике отметь языки **Romanian** и **Russian**. Если `doctor` его не видит, пропиши путь в `.env`:
@@ -114,7 +114,7 @@ TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 
 ## 3. Тестирование поиска: `qsearch`
 
-Из **корня** проекта (`qwerty`):
+Из папки **`backend`** (`qwerty/backend`):
 
 ```bash
 uv run qsearch
@@ -189,7 +189,7 @@ uv run qsearch --report
 
 ## 4. Если что-то сломалось
 
-Сначала запусти `uv run python -m tools.doctor` из папки `offline_indexation`: он скажет, что не так, и подскажет, как исправить.
+Сначала запусти `uv run python -m spott.ingest.tools.doctor` из папки `backend`: он скажет, что не так, и подскажет, как исправить.
 
 | Симптом | Что делать |
 |---|---|
@@ -208,15 +208,15 @@ uv run qsearch --report
 
 ## 5. Для команды: другие команды
 
-Всё запускается из `offline_indexation/` и работает одинаково на Mac и Windows:
+Всё запускается из `backend/` и работает одинаково на Mac и Windows:
 
 ```bash
-uv run python -m tools.doctor                         # проверка окружения
-uv run python -m tools.index_io export                # выгрузить индекс в data/export/index-<дата>.dump
-uv run python -m tools.index_io import <файл.dump>    # загрузить индекс
-uv run python -m tools.pipeline update                # обновить уже обойдённые сайты и переиндексировать изменения
-uv run python -m tools.pipeline full --only crawler downloader   # обойти все разрешённые сайты и скачать документы
-uv run python -m tools.pipeline full --dry-run        # показать план, ничего не запуская
+uv run python -m spott.ingest.tools.doctor                         # проверка окружения
+uv run python -m spott.ingest.tools.index_io export                # выгрузить индекс в data/export/index-<дата>.dump
+uv run python -m spott.ingest.tools.index_io import <файл.dump>    # загрузить индекс
+uv run python -m spott.ingest.tools.pipeline update                # обновить уже обойдённые сайты и переиндексировать изменения
+uv run python -m spott.ingest.tools.pipeline full --only crawler downloader   # обойти все разрешённые сайты и скачать документы
+uv run python -m spott.ingest.tools.pipeline full --dry-run        # показать план, ничего не запуская
 ```
 
-Логи этапов пишутся в `offline_indexation/data/logs/`. На Mac/Linux то же самое есть обёртками в `scripts/*.sh`.
+Логи этапов пишутся в `data/logs/`. На Mac/Linux то же самое есть обёртками в `scripts/*.sh`.
