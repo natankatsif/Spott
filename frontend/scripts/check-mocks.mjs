@@ -69,8 +69,6 @@ for (const file of askMocks) {
 
 // ─────────────── the other endpoints ───────────────
 const models = {
-  "wall.json": "WallResponse",
-  "corpus-stats.json": "CorpusStats",
   "suggestions.json": "SuggestionList",
   "admin/session.json": "AdminSession",
   "admin/sources.json": "SourceList",

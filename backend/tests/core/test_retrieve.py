@@ -14,15 +14,14 @@ import pytest
 from psycopg_pool import ConnectionPool
 
 from spott.core import pipeline
-from spott.core.pipeline import NOT_FOUND_THRESHOLD, retrieve
+from spott.core.pipeline import retrieve
 from spott.core.search import build_fts_query
 from spott.core.tools import search_tool
 
 QUERY = "autorizație de construire"
 WEIGHTS = {"w_vector": 1.0, "w_fts": 0.1, "w_line": 1.0}  # given, so RRF_W_* in the environment can't move them
 # Seconds each step takes on the fake clock.
-DURATIONS = {"embed": 0.004, "chunk_vector": 0.010, "line_vector": 0.030, "chunk_fts": 0.002, "line_fts": 0.005,
-             "rerank": 0.020}
+DURATIONS = {"embed": 0.004, "chunk_vector": 0.010, "line_vector": 0.030, "chunk_fts": 0.002, "line_fts": 0.005}
 QUERIES = {"execute_vector_query": "chunk_vector", "execute_line_vector_query": "line_vector",
            "execute_fts_query": "chunk_fts", "execute_line_fts_query": "line_fts"}
 
@@ -162,7 +161,7 @@ def index(monkeypatch):
 
 @pytest.fixture(params=["pool", "connection"])
 def db(request, index):
-    """The API and qsearch call retrieve() with a pool, eval_smoke with one connection."""
+    """The API and qsearch call retrieve() with a pool, the eval scripts with one connection."""
     return Pool(index.conn) if request.param == "pool" else index.conn
 
 
@@ -280,10 +279,10 @@ def test_timings_in_pool_mode_take_the_slower_query_of_each_kind(index):
 
     result = retrieve(Pool(index.conn), QUERY, **WEIGHTS)
 
-    assert set(result.timings_ms) == {"embed", "vector_sql", "fts_sql", "rerank", "total"}
+    assert set(result.timings_ms) == {"embed", "vector_sql", "fts_sql", "total"}
     # vector_sql = max(chunk vector 10, line vector 30), fts_sql = max(chunk FTS 2, line FTS 5)
     assert {k: v for k, v in result.timings_ms.items() if k != "total"} == {
-        "embed": 4.0, "vector_sql": 30.0, "fts_sql": 5.0, "rerank": 0.0}
+        "embed": 4.0, "vector_sql": 30.0, "fts_sql": 5.0}
 
 
 def test_timings_on_one_connection_add_the_queries_up(index):
@@ -291,32 +290,7 @@ def test_timings_on_one_connection_add_the_queries_up(index):
 
     result = retrieve(index.conn, QUERY, **WEIGHTS)
 
-    assert result.timings_ms == {"embed": 4.0, "vector_sql": 40.0, "fts_sql": 7.0, "rerank": 0.0, "total": 51.0}
-
-
-@pytest.mark.parametrize("top_score,not_found", [(NOT_FOUND_THRESHOLD, False), (NOT_FOUND_THRESHOLD / 2, True)])
-def test_rerank_orders_the_candidates_and_its_top_score_decides_not_found(index, db, monkeypatch, top_score, not_found):
-    index.results["chunk_vector"] = [hit("c1", 0.9), hit("c2", 0.8), hit("c3", 0.7)]
-    calls = []
-
-    def rerank_candidates(query, candidates, top_k, device):
-        calls.append((query, [c["chunk_id"] for c in candidates], top_k, device))
-        index.clock.advance("rerank")
-        scores = {"c1": top_score / 4, "c2": top_score / 2, "c3": top_score}
-        reranked = sorted((c | {"rerank_score": scores[c["chunk_id"]]} for c in candidates),
-                          key=lambda c: c["rerank_score"], reverse=True)
-        return reranked[:top_k]
-
-    monkeypatch.setattr(pipeline, "RERANKER_ENABLED", True)
-    monkeypatch.setattr(pipeline, "rerank_candidates", rerank_candidates)
-
-    result = retrieve(db, QUERY, k=2, rerank=True, **WEIGHTS)
-
-    # the reranker sees every candidate, not only the first k
-    assert calls == [(QUERY, ["c1", "c2", "c3"], 2, "test-device")]
-    assert [c["chunk_id"] for c in result.items] == ["c3", "c2"]
-    assert result.not_found is not_found
-    assert result.timings_ms["rerank"] == 20.0
+    assert result.timings_ms == {"embed": 4.0, "vector_sql": 40.0, "fts_sql": 7.0, "total": 51.0}
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError,

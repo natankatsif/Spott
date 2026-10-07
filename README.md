@@ -47,7 +47,7 @@ Mapped one-to-one to the challenge brief.
 
 - **Scanned acts become searchable and citable.** Most official acts on the sites, such as council decisions and mayor's dispositions, are published as scans with no text at all. The pipeline OCRs them and recovers their structure (points, tables), so they can be cited down to the point. A plain text extractor would find nothing in them. ✅
 - **Every quote is traceable.** Each passage carries its full provenance: the file, the page of the PDF, the point of the act, the website page where the document was published, and the link text used there. ✅
-- **Document lineage.** The registry keeps every version of a document, and act numbers and dates are extracted. "Se modifică / se abrogă" references between acts are parsed into act relations, so when a later decision amends or repeals the act being cited, the answer quotes that line too instead of presenting an outdated rule as current. ✅
+- **Newer acts first.** The registry keeps every version of a document, and act numbers and dates are extracted. Alongside the question's own search, the assistant looks for later acts that mention the found acts by number and for newer acts on the same sites. The model sees the newest first, and a partial or conflicting answer gets a second pass over what turned up, so an outdated rule isn't presented as current. ✅
 - **Publication quality report for the City Hall.** Cross-checking the site against the documents reveals inconsistencies. We already found a link labelled "Dispoziția nr. 23/1" whose document is actually a *Decizie*. Collected into a report, these checks help the City Hall fix its own publications. ⏳
 - **Anti-hallucination guard.** The model never writes quotes. It only points at numbered lines of the retrieved passages; the quotes are taken from the index, a sentence without a backing line is dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. ✅
 
@@ -87,7 +87,7 @@ Each stage is a separate command. The stages share one registry, the `registry_*
    - results are fused with weighted RRF; each hit carries a deep link to the PDF page (`#page=N`) or the exact text on the web page (`#:~:text=`).
 
    Documents are keyed by their source URL: a changed file **replaces** the old version in the index (history stays in the registry), and a document missing from the site on two crawls in a row is removed. Unchanged text reuses its embeddings.
-5. **Agent tools.** `search`, `grep`, `toc` and `open` let the LLM walk the corpus like a file tree and quote lines by their id (available over HTTP at `/api/tools/*`, with OpenAI function-calling schemas).
+5. **Corpus tools.** `search`, `grep`, `toc` and `open` walk the corpus like a file tree and quote lines by their id; testers use them in the `qsearch` console (`:grep`, `:toc`, `:open`).
 
 ### Online
 
@@ -107,7 +107,7 @@ Two independent projects that talk only over HTTP: the Python backend and the Ne
 | Directory | Stack | Purpose |
 |---|---|---|
 | [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`), in three layers: |
-| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the database schema, embeddings, hybrid search, agent tools, the `qsearch` console |
+| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the database schema, embeddings, hybrid search, corpus tools, the `qsearch` console |
 | [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Docling | corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, the admin `worker`, `tools` (doctor, pipeline, index export/import) |
 | [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the question answering and admin API |
 | [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | | eval sets, benchmarks and one-off scripts |
@@ -200,15 +200,15 @@ The daily re-check of quick questions adds at most 20 calls a day: under $0.50 a
 | Crawler, downloader, parsing (incl. OCR) | ✅ working, tested on a subset of the sites |
 | Chunking, line index, hybrid search (Postgres + pgvector) | ✅ ~0.1–0.2 s per query; the background worker indexes the remaining sites batch by batch |
 | Document updates (replace, not duplicate; removal of vanished documents) | ✅ |
-| Agent tools `search / grep / toc / open`, console `qsearch` for testers | ✅ |
+| Corpus tools `search / grep / toc / open` in the `qsearch` console for testers | ✅ |
 | Cited answers `/api/ask` + `/api/ask/stream` (docs/API.md): answered / partial / not_found / conflict / refused, checklists, translations of quotes | ✅ fast path; agent path (`mode=deep`) ⏳ |
 | Mac / Windows setup, CI on Linux + Windows (backend) and frontend lint + build | ✅ |
-| Act lineage (amends / repeals) in answers | ✅ |
+| Later acts that amend or repeal a cited act, found by number and put first | ✅ |
 | Corpus-wide contradiction scan, highlighting the element on the page from the widget | ⏳ planned |
 | Chat UI | ✅ streaming answers with inline citations, the source opened next to the answer with the quote highlighted (PDF and web pages), RO / RU / EN, light / dark, mobile; embeddable site widget |
 | Admin panel | ✅ sources added by URL, processing jobs with progress, unanswered questions grouped by topic, ratings, quick questions, models and spending |
 | Automatic updates | ✅ nightly check of what changed, weekly full refresh, earlier on users' signals |
-| Feedback, live wall, corpus stats endpoints | ✅ |
+| Feedback, corpus totals in the admin | ✅ |
 | Legacy and OpenDocument files (`.doc`, `.rtf`, `.xls`, `.ppt`, `.odt`, `.ods`, `.odp`) | ✅ the binary formats through LibreOffice (in the Docker image) |
 | Monthly maintenance budget | ✅ [Budget](#budget) |
 
@@ -217,4 +217,4 @@ The daily re-check of quick questions adds at most 20 calls a day: under $0.50 a
 Built at DeepTech GigaHack 2026 by [Natan Katsif](https://github.com/natankatsif), [Karnavski S.](https://github.com/rlwq), [TheMorkovkaBest](https://github.com/TheMorkovkaBest) and [Pooromens](https://github.com/Pooromens).
 
 - **Natan Katsif**: chunking and the line index, hybrid search, the chat and admin UI, source preview.
-- **Karnavski S.**: crawler, downloader, parsing and OCR; the answering API with verified citations, streaming, act lineage; admin backend and the background worker; Docker deploy.
+- **Karnavski S.**: crawler, downloader, parsing and OCR; the answering API with verified citations, streaming, the search for later acts; admin backend and the background worker; Docker deploy.

@@ -35,7 +35,6 @@ from .errors import ApiException
 log = logging.getLogger(__name__)
 
 PRICING_KEY = "pricing"
-CURRENCIES = ("USD", "EUR", "MDL")
 Currency = Literal["USD", "EUR", "MDL"]
 # Starting values only, to be checked and edited in the admin: units of each currency per 1 USD.
 DEFAULT_RATES = {"USD": 1.0, "EUR": 0.86, "MDL": 17.0}

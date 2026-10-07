@@ -221,7 +221,7 @@ def test_boxes_without_page_size_are_skipped():
     assert to_top_left([BOX], []) == []
 
 
-# ─────────────── task 08: freshness pass, act lineage, bigger context ───────────────
+# ─────────────── task 08: freshness pass, bigger context ───────────────
 
 OLD_ACT = DECISION | {"chunk_id": "o1", "doc_id": "file:dgaurf.md/storage/4-1.pdf", "number": "4/1",
                       "date": "2020-03-05", "text": "9. Asociația CCDD va asigura elaborarea PUG."}
@@ -318,18 +318,6 @@ def test_newest_candidate_joins_the_top_chunks():
     assert len(answering.pick_chunks(candidates[:12] + [MID_ACT | {"date": "2019-01-01"}])) == 12
 
 
-def test_amending_act_is_added_with_a_note(monkeypatch, tmp_path):
-    amending = DECISION | {"chunk_id": "a1", "doc_id": "file:dgaurf.md/storage/12-14.pdf", "number": "12/14",
-                           "date": "2020-07-28", "text": "Se operează modificări în decizia nr. 4/1."}
-    monkeypatch.setitem(LINES, "a1", [{"line_id": "a1-l1", "idx": 0, "text": amending["text"], "page": 1,
-                                       "bboxes": []}])
-    link = {"from_doc_id": amending["doc_id"], "to_doc_id": OLD_ACT["doc_id"], "relation": "amends",
-            "line_id": "a1-l1", "chunk_id": "a1"}
-    store = FakeStore(links=[link], meta={"a1": amending})
-    _, _, llm = run("Ce prevede decizia 4/1?", [OLD_ACT], model("not_found"), monkeypatch, tmp_path, store=store)
-    assert "note: this act amends Decizia nr. 4/1 din 05.03.2020 cu privire la taxe (line S2.L1)" in llm.user
-
-
 def test_undated_document_is_as_recent_as_the_dates_it_mentions():
     assert answering.latest_date(["Contract nr. 45/25 din 16.06.2025", "Dispoziția nr. 366-d din 09 octombrie 2025",
                                   "Planul 2025-2040", "termen 01.01.2099"], today="2026-09-26") == "2025-10-09"
@@ -337,16 +325,6 @@ def test_undated_document_is_as_recent_as_the_dates_it_mentions():
     page = {"chunk_id": "p", "doc_id": "d-page"}
     assert [c["chunk_id"] for c in answering.newest_first([OLD_ACT, page, regulation, NEW_ACT, MID_ACT])] == [
         "n1", "r", "o2", "o1", "p"]
-
-
-def test_own_repeal_line_is_noted_even_when_the_target_is_not_in_the_corpus(monkeypatch, tmp_path):
-    repeal = NEW_ACT | {"chunk_id": "g6", "text": "6. Grupul aprobat prin Dispoziția 185-d își încetează activitatea."}
-    monkeypatch.setitem(LINES, "g6", [{"line_id": "g6-l1", "idx": 0, "text": repeal["text"], "page": 1, "bboxes": []}])
-    link = {"from_doc_id": NEW_ACT["doc_id"], "to_doc_id": None, "to_ref_text": "Dispoziția 185-d din 23.04.2020",
-            "relation": "repeals", "line_id": "g6-l1", "chunk_id": "g6"}
-    _, _, llm = run("Ce grup?", [NEW_ACT], model("not_found"), monkeypatch, tmp_path,
-                    store=FakeStore(links=[link], meta={"g6": repeal}))
-    assert "note: this act repeals Dispoziția 185-d din 23.04.2020 (line S2.L1)" in llm.user
 
 
 def test_second_pass_searches_with_the_models_romanian_query(monkeypatch, tmp_path):
@@ -466,26 +444,6 @@ def test_romanian_question_skips_the_rewrite_but_greps_act_numbers(monkeypatch, 
     assert line in llm.user  # found by the number
     assert answering.ACT_NUMBER.findall("decizia nr. 4/1 și 6/19-15, dispoziția 251-d din 2026") == [
         "4/1", "6/19-15", "251-d"]
-
-
-def test_answer_leaving_out_a_repeal_gets_it_quoted(monkeypatch, tmp_path):
-    ended = NEW_ACT | {"chunk_id": "g6", "text": "6. Grupul aprobat prin Dispoziția 185-d își încetează activitatea."}
-    monkeypatch.setitem(LINES, "g6", [{"line_id": "g6-l1", "idx": 0, "text": ended["text"], "page": 1, "bboxes": []}])
-    link = {"from_doc_id": NEW_ACT["doc_id"], "to_doc_id": None, "to_ref_text": "Dispoziția 185-d din 23.04.2020",
-            "relation": "repeals", "line_id": "g6-l1", "chunk_id": "g6"}
-    store = FakeStore(links=[link], meta={"g6": ended})
-    data = model(sentences=[s("Elaboratorul PUG este Consorțiul ARHICON.", "S1.L1")])
-    events, r, _ = run("Ce grup supraveghează PUG?", [NEW_ACT], data, monkeypatch, tmp_path, store=store)
-
-    note = r.sentences[-1]
-    assert note.text == ("De reținut: Dispoziția nr. 366-d din 09.10.2025 cu privire la taxe prevede: „6. Grupul aprobat "
-                         "prin Dispoziția 185-d își încetează activitatea.”")
-    assert [c.line_ids for c in r.citations if c.id in note.cites] == [["g6-l1"]]
-    assert r.meta.verified and [e["index"] for e in events if e["type"] == "sentence"] == [0, 1]
-
-    cited = model(sentences=[s("Grupul 185-d și-a încetat activitatea.", "S2.L1")])
-    _, r, _ = run("Ce grup?", [NEW_ACT], cited, monkeypatch, tmp_path, store=store)
-    assert len(r.sentences) == 1  # already said: no note
 
 
 def test_members_question_prefers_the_list_of_people(monkeypatch, tmp_path):

@@ -9,8 +9,8 @@ from tests.api.fakes import DECISION, LOGIN, FakeLLM, FakeStore, model
 
 from spott.api import answering, main
 from spott.api.gaps import gaps, group
+from spott.api.masking import mask
 from spott.api.schemas import AskRequest, GapList
-from spott.api.wall import mask
 from spott.core.pipeline import RetrievalResult
 
 T0 = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)

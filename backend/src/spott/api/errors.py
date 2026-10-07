@@ -72,7 +72,7 @@ def client_address(request: Request) -> str:
 
 
 class RateLimiter:
-    """At most `limit` questions per `window_s` per client (QR-wall protection)."""
+    """At most `limit` questions per `window_s` per client (a QR stand must not flood the model)."""
 
     MAX_CLIENTS = 10_000  # remembered clients before the idle ones are forgotten
 

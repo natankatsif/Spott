@@ -29,7 +29,7 @@ from typing import Protocol
 from urllib.parse import quote as url_quote
 from zoneinfo import ZoneInfo
 
-from spott.core import RERANKER_ENABLED, TOP_CANDIDATES, RetrievalResult, retrieve
+from spott.core import TOP_CANDIDATES, RetrievalResult, retrieve
 from spott.core.links import make_deep_link
 from spott.core.paths import DATA_DIR
 
@@ -59,7 +59,7 @@ MAX_SOURCES = 20  # after continuations, amending acts and the freshness queries
 MAX_LINES_PER_CHUNK = 40
 CONTEXT_LINES = 5  # lines shown around a matched line of one of the first WIDE_SOURCES chunks
 WIDE_SOURCES = 4
-NARROW_CONTEXT_LINES = 2  # around a matched line of the other chunks, and around an amend/repeal line
+NARROW_CONTEXT_LINES = 2  # around a matched line of the other chunks
 MAX_HITS = 2  # matched lines per chunk that get context: the best ones
 SOURCE_BUDGET_CHARS = int(os.getenv("SOURCE_BUDGET_CHARS", "6500"))  # source lines per prompt (~2,100 tokens)
 FRESH_RANK = 6  # newer acts come right after the 6 most relevant chunks in the budget order
@@ -148,9 +148,6 @@ GENERAL_REASON = {"ro": "Contactul general al Primăriei municipiului Chișinău
                   "ru": "Общий контакт Примэрии муниципия Кишинэу.",
                   "en": "The general contact of the Chișinău City Hall."}
 # Said by code, not by the model, when a cited act ended another one (or was ended) and the answer left it out.
-REPEAL_NOTE = {"ro": "De reținut: {act} prevede: „{quote}”", "ru": "Обратите внимание: в документе «{act}» сказано: «{quote}»",
-               "en": "Note: {act} says: “{quote}”"}
-MAX_NOTE_QUOTE = 300
 # Added to the question to reach documents about the current state, which rarely reuse its wording.
 FRESH_TERMS = {"ro": "reactualizare modificare abrogare în vigoare actual",
                "ru": "reactualizare modificare abrogare în vigoare обновление изменение отмена действующий",
@@ -188,8 +185,6 @@ matters, e.g. that a term has already expired.
 - Current state first, from the newest applicable act, then older acts as history ("Anterior, decizia nr. … \
 prevedea …" / "Ранее решение № … предусматривало …"). An act beats a general web page; an undated document \
 mentioning recent dates is as current as a dated act of that time.
-- A source note "this act amends / repeals …" is that act's own line: if either act is on the question's subject, \
-say what was amended, repealed or ended, citing that line.
 - conflict: only different values for the same thing (fee, deadline, requirement, address, schedule, who does \
 what). "outdated": a newer act replaces an older one (preferred_ref = the newer line); "contradiction": acts of \
 the same period disagree and neither supersedes the other (preferred_ref null). Different roles (beneficiary vs \
@@ -308,7 +303,6 @@ class Store(Protocol):
     def later_acts(self, patterns: list[str], exclude_doc_ids: list[str], limit: int = 20) -> list[dict]: ...
     def grep_lines(self, keywords: list[str], limit: int = 200) -> list[dict]: ...
     def dated_lines(self, doc_ids: list[str]) -> dict[str, list[str]]: ...
-    def relation_lines(self, doc_ids: list[str]) -> list[dict]: ...
     def contacts_near(self, question: str, limit: int = 8) -> tuple[list[dict], dict | None]: ...
 
 
@@ -355,8 +349,8 @@ def build_sources(chunks: list[dict], lines_by_chunk: dict[str, list[dict]],
                   focus: dict[str, list[str]] | None = None, budget: int | None = None,
                   by_date: bool = False) -> list[Source]:
     """Numbered lines per chunk, chunks in priority order. Only the lines around what the search matched go to
-    the model (a list that continues an introduction goes whole; an amend/repeal line found through
-    act_relations, and chunks past the first WIDE_SOURCES, with less context); a line already shown in an earlier source, or with no letters (OCR noise
+    the model (a list that continues an introduction goes whole; chunks past the first WIDE_SOURCES with less
+    context); a line already shown in an earlier source, or with no letters (OCR noise
     of table rules), is left out. Chunks are taken while their lines fit the character budget, then ordered
     newest first if `by_date`. Line numbers stay the line's place in the chunk."""
     picked, seen, used = [], set(), 0
@@ -367,7 +361,7 @@ def build_sources(chunks: list[dict], lines_by_chunk: dict[str, list[dict]],
                      for t in chunk.get("text", "").split("\n") if t.strip()]
         numbered = list(enumerate(lines, 1))
         if not chunk.get("continuation"):
-            wide = len(picked) < WIDE_SOURCES and not chunk.get("relation_only")
+            wide = len(picked) < WIDE_SOURCES
             numbered = window(numbered, (focus or {}).get(chunk["chunk_id"], []),
                               CONTEXT_LINES if wide else NARROW_CONTEXT_LINES)
         shown, keys = [], set()
@@ -626,10 +620,6 @@ class ResponseBuilder:
         if not sentences:  # a checklist needs at least its title as text
             sentences.append(AnswerSentence(text=checklist.title, cites=[]))
             verified.append(True)
-        for note in self.repeal_notes():
-            sentences.append(note)
-            verified.append(True)  # the quote itself is the claim
-
         conflict = None
         c = data.get("conflict")
         if c and len(refs := self.valid(c.get("refs"))) >= 2:
@@ -667,28 +657,6 @@ class ResponseBuilder:
             contacts=contacts,
         )
         return Built(response, verified, self.dropped)
-
-    def repeal_notes(self) -> list[AnswerSentence]:
-        """A line where a cited act repeals or ends another act, or where a later act repeals a cited one
-        (act_relations), must be in the answer: if the model left it out, it is added as a quote."""
-        cited_docs = {c.doc_id for c in self.citations}
-        cited_lines = {lid for c in self.citations for lid in c.line_ids}
-        ref_of = {line.get("line_id"): ref for ref, (_, line) in self.lines.items() if line.get("line_id")}
-        notes, done = [], set()
-        for s in self.sources:
-            for rel in s.chunk.get("relations") or []:
-                ref = ref_of.get(rel["line_id"])
-                if (rel["relation"] != "repeals" or not ref or rel["line_id"] in cited_lines | done
-                        or not {rel["from_doc_id"], rel.get("to_doc_id")} & cited_docs):
-                    continue
-                done.add(rel["line_id"])
-                source, line = self.lines[ref]
-                quote = line["text"] if len(line["text"]) <= MAX_NOTE_QUOTE else \
-                    line["text"][:MAX_NOTE_QUOTE - 1].rstrip() + "…"
-                notes.append(AnswerSentence(text=REPEAL_NOTE[self.lang].format(act=document_title(source.chunk),
-                                                                              quote=quote),
-                                            cites=self.cite_all([ref])))
-        return notes
 
     def focus(self, sentences: list[AnswerSentence]) -> str | None:
         """First citation of the answer, preferring one the viewer can open (a PDF)."""
@@ -1023,7 +991,7 @@ def gather(store: Store, llm: LLM, pool, retrieve_fn: Callable, req: AskRequest,
     started = time.perf_counter()
     executor = ThreadPoolExecutor(max_workers=8)
     try:
-        main_f = executor.submit(retrieve_fn, pool, query, k=TOP_CANDIDATES, rerank=RERANKER_ENABLED)
+        main_f = executor.submit(retrieve_fn, pool, query, k=TOP_CANDIDATES)
         rewrite_f = executor.submit(rewrite_query, llm, req) if rewrite and needs_rewrite(req, lang) else None
         result = main_f.result()
         main = complete(result.items, store)
@@ -1047,7 +1015,7 @@ def gather(store: Store, llm: LLM, pool, retrieve_fn: Callable, req: AskRequest,
         for name, q in (("ro", ro), ("ru", ru)):
             # The rewrite in the question's own language repeats it, unless it makes a follow-up standalone.
             if q and q.casefold() != query.casefold() and (name != lang or req.history):
-                jobs[name] = lambda q=q: retrieve_fn(pool, q, k=TOP_CANDIDATES, rerank=False)
+                jobs[name] = lambda q=q: retrieve_fn(pool, q, k=TOP_CANDIDATES)
                 queries.append(q)
         if keywords:
             jobs["grep"] = lambda: store.grep_lines(keywords)
@@ -1055,14 +1023,14 @@ def gather(store: Store, llm: LLM, pool, retrieve_fn: Callable, req: AskRequest,
         if fresh:
             search = ro or query
             terms = FRESH_TERMS["ro" if ro else lang]
-            jobs["fresh_terms"] = lambda: retrieve_fn(pool, f"{search} {terms}", k=FRESH_PER_QUERY, rerank=False)
+            jobs["fresh_terms"] = lambda: retrieve_fn(pool, f"{search} {terms}", k=FRESH_PER_QUERY)
             if patterns := act_patterns(acts):
                 exclude = list({c["doc_id"] for c in acts})
                 jobs["later"] = lambda: store.later_acts(patterns, exclude, limit=FRESH_PER_QUERY)
             newest = max((c["date"] for c in acts if c.get("date")), default=None)
             sites = sorted({c["site"] for c in main[:TOP_CHUNKS] if c.get("site")}) or None
             if newest:
-                jobs["newer"] = lambda: retrieve_fn(pool, search, k=FRESH_PER_QUERY, rerank=False, date_after=newest,
+                jobs["newer"] = lambda: retrieve_fn(pool, search, k=FRESH_PER_QUERY, date_after=newest,
                                                     sites=sites)
         found = run_parallel(executor, jobs, FRESHNESS_TIMEOUT_S) if jobs else {}
     finally:
@@ -1113,35 +1081,10 @@ def gather(store: Store, llm: LLM, pool, retrieve_fn: Callable, req: AskRequest,
                     fresh=added, by_date=by_date, rewrite=rw, timings_ms=timings)
 
 
-def add_relation_lines(chunks: list[dict], store: Store) -> list[dict]:
-    """For every act among the sources, the lines where a later act amends or repeals it, and where it amends
-    or repeals another act (act_relations); each such chunk carries the relation as a note."""
-    act_docs = list(dict.fromkeys(c["doc_id"] for c in chunks if is_act(c)))
-    links = store.relation_lines(act_docs) if act_docs else []
-    if not links:
-        return chunks
-    by_chunk: dict[str, list[dict]] = defaultdict(list)
-    for link in links:
-        by_chunk[link["chunk_id"]].append(link)
-    known = {c["chunk_id"] for c in chunks}
-    new_ids = [cid for cid in by_chunk if cid not in known]
-    meta = store.chunk_meta(new_ids) if new_ids else {}
-    out = list(chunks)
-    for cid in new_ids:  # right after the first chunk of an act the line is about, so the budget keeps them together
-        if cid in meta:
-            docs = {d for link in by_chunk[cid] for d in (link["from_doc_id"], link.get("to_doc_id"))}
-            at = next((i + 1 for i, c in enumerate(out) if c["doc_id"] in docs), len(out))
-            out.insert(at, meta[cid] | {"relation_only": True})
-    return [c | {"relations": by_chunk[c["chunk_id"]]} if c["chunk_id"] in by_chunk else c for c in out]
-
-
 def prepare_sources(chunks: list[dict], store: Store, focus: dict[str, list[str]] | None = None,
                     by_date: bool = False) -> tuple[list[dict], list[Source], dict[str, dict]]:
     """Chunks in priority order → the prompt's sources, within the character budget."""
-    chunks = add_relation_lines(add_continuations(chunks, store), store)[:MAX_SOURCES]
-    focus = {cid: list(ids) for cid, ids in (focus or {}).items()}
-    for c in chunks:
-        add_focus(focus, c["chunk_id"], [rel["line_id"] for rel in c.get("relations") or []], first=True)
+    chunks = add_continuations(chunks, store)[:MAX_SOURCES]
     sources = build_sources(chunks, store.lines([c["chunk_id"] for c in chunks]), focus, SOURCE_BUDGET_CHARS,
                             by_date)
     used = {s.chunk["chunk_id"] for s in sources}
@@ -1172,15 +1115,14 @@ def freshness_candidates(store: Store, pool, retrieve_fn: Callable, query: str, 
     search = model_query.strip() or query
     jobs: dict[str, Callable] = {}
     if model_query.strip():  # the documents' own nouns rank the right chunk higher than generic "current" terms
-        jobs["model"] = lambda: ids(retrieve_fn(pool, search, k=FRESH_MODEL_QUERY_K, rerank=False))
+        jobs["model"] = lambda: ids(retrieve_fn(pool, search, k=FRESH_MODEL_QUERY_K))
     else:
-        jobs["terms"] = lambda: ids(retrieve_fn(pool, f"{query} {FRESH_TERMS[lang]}", k=FRESH_PER_QUERY,
-                                                rerank=False))
+        jobs["terms"] = lambda: ids(retrieve_fn(pool, f"{query} {FRESH_TERMS[lang]}", k=FRESH_PER_QUERY))
     if patterns:
         exclude = list({c["doc_id"] for c in acts})
         jobs["later"] = lambda: [r["chunk_id"] for r in store.later_acts(patterns, exclude, limit=FRESH_PER_QUERY)]
     if newest:
-        jobs["newer"] = lambda: ids(retrieve_fn(pool, search, k=FRESH_PER_QUERY, rerank=False, date_after=newest,
+        jobs["newer"] = lambda: ids(retrieve_fn(pool, search, k=FRESH_PER_QUERY, date_after=newest,
                                                 sites=sites))
     executor = ThreadPoolExecutor(max_workers=len(jobs))
     try:
@@ -1213,7 +1155,6 @@ def today_line(now: datetime | None = None) -> str:
 
 
 def render_prompt(req: AskRequest, sources: list[Source]) -> str:
-    titles = {s.chunk["doc_id"]: document_title(s.chunk) for s in sources}
     blocks = []
     for s in sources:
         c = s.chunk
@@ -1223,11 +1164,6 @@ def render_prompt(req: AskRequest, sources: list[Source]) -> str:
                  "web page on": c.get("site") if c.get("kind") != "file" else None,
                  "language": c.get("lang") if quote_lang(c) != "ro" else None}
         header = f"[{s.ref}] {document_title(c)}\n" + " | ".join(f"{k}: {v}" for k, v in facts.items() if v)
-        line_refs = {line.get("line_id"): f"{s.ref}.L{n}" for n, line in s.lines}
-        for rel in c.get("relations") or []:
-            target = titles.get(rel["to_doc_id"]) or rel.get("to_ref_text") or "another act"
-            where = line_refs.get(rel["line_id"])
-            header += f"\nnote: this act {rel['relation']} {target}" + (f" (line {where})" if where else "")
         body, previous = [], None
         for n, line in s.lines:
             if previous is not None and n != previous + 1:
@@ -1502,7 +1438,7 @@ def answer_events(
     built.response = response
     if replaced:  # the second answer: streamed whole if nothing was shown yet, else it arrives with done
         tail = stream_sentences(built) if not (live and live.emitted) else iter(())
-    else:  # what the model's stream didn't show: notes, missing parts, not_found / refused texts
+    else:  # what the model's stream didn't show: missing parts, not_found / refused texts
         tail = stream_sentences(built, start=live.emitted, sent=live.sent) if live else stream_sentences(built)
     for event in tail:
         if ttft_ms is None and event["type"] == "delta":

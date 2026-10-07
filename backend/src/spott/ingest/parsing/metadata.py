@@ -83,11 +83,6 @@ def anchor_texts(sources: list[dict]) -> str:
     return " | ".join(s["anchor_text"] for s in sources if s.get("anchor_text"))
 
 
-def link_text(sources: list[dict]) -> str:
-    """Anchor texts and file names of all links to the document, as one searchable string."""
-    return " | ".join(p for p in (anchor_texts(sources), file_names(sources).replace("_", " ")) if p)
-
-
 # Letterhead lines that open every act and say nothing about its content.
 LETTERHEAD = re.compile(
     r"^(republica moldova|prim[aă]r|consiliul municipal|республика молдова|примар|муниципальный совет)", re.I)

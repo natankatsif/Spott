@@ -23,23 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
 from starlette.concurrency import run_in_threadpool
 
-from spott.core import (
-    RERANKER_ENABLED,
-    get_device,
-    get_embedding_model,
-    get_pool,
-    get_reranker_model,
-    retrieve,
-)
+from spott.core import get_device, get_embedding_model, get_pool, retrieve
 from spott.core.db import init_app_db
 from spott.core.sources import seed_sources
-from spott.core.tools import (
-    TOOL_SCHEMAS,
-    grep_tool,
-    open_tool,
-    search_tool,
-    toc_tool,
-)
 
 from . import admin, errors, freshness, llm_settings, preview, usage
 from .admin import PgAdminStore
@@ -54,30 +40,17 @@ from .pdf_source import PdfSource, make_clients
 from .schemas import (
     AskRequest,
     AskResponse,
-    CorpusStats,
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
-    MatchedLine,
-    SearchRequest,
-    SearchResponse,
-    SearchResultItem,
-    SearchTimings,
     StaleSignal,
     SuggestionList,
-    ToolGrepRequest,
-    ToolOpenRequest,
-    ToolSearchRequest,
-    ToolTocRequest,
     VisitorCount,
     VisitRequest,
-    WallResponse,
 )
-from .stats import corpus_stats
 from .store import PgStore
 from .suggestions import PgSuggestions, llm_translate
 from .visitors import PgVisitors
-from .wall import Wall
 
 log = logging.getLogger("backend")
 
@@ -97,7 +70,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.device = device
     app.state.models_loaded = False
     app.state.chunk_count = 0
-    app.state.wall = Wall()
     app.state.rate_limiter = RateLimiter(limit=ASK_RATE_LIMIT)
     app.state.signal_limiter = RateLimiter(limit=20)  # outdated-content signals per client per minute
 
@@ -131,16 +103,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("Loading embedding model on %s...", device)
     await run_in_threadpool(get_embedding_model, device)
-    if RERANKER_ENABLED:
-        log.info("Loading reranker model on %s...", device)
-        await run_in_threadpool(get_reranker_model, device)
-    else:
-        log.info("Reranker is disabled (RERANKER_ENABLED=false), skipping reranker pre-load.")
     app.state.models_loaded = True
 
     # Warm-up query compiles MPS/CUDA kernels before the first real question.
     try:
-        await run_in_threadpool(retrieve, pool, "warmup query", k=2, rerank=False)
+        await run_in_threadpool(retrieve, pool, "warmup query", k=2)
     except Exception as e:
         log.warning("Warmup search query encountered error (ignored): %s", e)
 
@@ -212,7 +179,7 @@ def require_pool() -> ConnectionPool:
 
 
 def get_llm() -> LLM:
-    # Created on the first question, so the server starts (and /api/search works) without an API key; the keys and
+    # Created on the first question, so the server starts without an API key; the keys and
     # models come from the environment and the admin's settings (admin → Models), re-read after a change.
     if (fixed := getattr(app.state, "llm", None)) is not None:
         return fixed
@@ -307,8 +274,7 @@ async def ask(req: AskRequest, request: Request) -> AskResponse:
 
 
 def answered(req: AskRequest, resp: AskResponse, info: dict | None = None) -> None:
-    """Every answer: onto the question wall, and into `answers` for ratings, quick questions and the admin's gaps."""
-    app.state.wall.add(req, resp)
+    """Every answer into `answers`, for ratings, quick questions and the admin's gaps."""
     answers = getattr(app.state, "answers", None)
     if answers is not None:
         answers.record(req, resp, info or {})
@@ -413,11 +379,6 @@ def preview_line(row: dict, page_sizes: list[dict]) -> dict:
             "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
 
 
-@app.get("/api/wall", response_model=WallResponse)
-def wall(after: str | None = None, limit: int = Query(default=50, ge=1, le=200)) -> WallResponse:
-    return app.state.wall.since(after, limit)
-
-
 @app.get("/api/suggestions", response_model=SuggestionList)
 async def suggestions(lang: str = Query("ro", pattern="^(ro|ru|en)$"), limit: int = Query(6, ge=1, le=20)) -> SuggestionList:
     """Real questions we know we answer well (answered, verified, re-checked against the current index)."""
@@ -427,11 +388,6 @@ async def suggestions(lang: str = Query("ro", pattern="^(ro|ru|en)$"), limit: in
     return SuggestionList(items=await run_in_threadpool(store.list, lang, limit))
 
 
-@app.get("/api/corpus/stats", response_model=CorpusStats)
-async def stats() -> CorpusStats:
-    return await run_in_threadpool(corpus_stats, require_pool())
-
-
 @app.post("/api/visits", response_model=VisitorCount)
 async def visit(req: VisitRequest) -> VisitorCount:
     """Counts this browser once (its anonymous id) and returns the number of unique visitors, for the header."""
@@ -439,71 +395,3 @@ async def visit(req: VisitRequest) -> VisitorCount:
     if visitors is None:
         raise ApiException(503, "unavailable", "Database pool not initialized")
     return VisitorCount(visitors=await run_in_threadpool(visitors.visit, req.visitor_id))
-
-
-# ─────────────── search and agent tools ───────────────
-
-
-@app.post("/api/search", response_model=SearchResponse)
-async def search_endpoint(req: SearchRequest) -> SearchResponse:
-    pool = require_pool()
-    try:
-        res = await run_in_threadpool(retrieve, pool, req.query, lang=req.lang, k=req.k, rerank=req.rerank)
-    except ValueError as e:
-        raise ApiException(422, "validation_error", str(e)) from e
-
-    results = []
-    for c in res.items:
-        pages = c.get("pages")
-        results.append(SearchResultItem(
-            chunk_id=c["chunk_id"],
-            doc_id=c.get("doc_id", ""),
-            citation_label=c.get("citation_label", ""),
-            text=c.get("text", ""),
-            url=c.get("url", ""),
-            found_on=c.get("found_on"),
-            site=c.get("site"),
-            lang=c.get("lang"),
-            page=pages[0] if isinstance(pages, list) and pages else None,
-            parent_legal_path=c.get("parent_legal_path"),
-            rerank_score=c.get("rerank_score"),
-            vec_rank=c.get("vec_rank"),
-            fts_rank=c.get("fts_rank"),
-            matched_lines=[MatchedLine(line_id=m["line_id"], idx=m["idx"], text=m["text"], score=m.get("score"))
-                           for m in c.get("matched_lines", [])],
-        ))
-    t = res.timings_ms
-    return SearchResponse(
-        results=results,
-        timings_ms=SearchTimings(embed=t.get("embed", 0.0), vector_sql=t.get("vector_sql", 0.0),
-                                 fts_sql=t.get("fts_sql", 0.0), rerank=t.get("rerank", 0.0),
-                                 total=t.get("total", 0.0)),
-        not_found=res.not_found,
-    )
-
-
-@app.get("/api/tools/schemas")
-def tool_schemas() -> list[dict]:
-    return TOOL_SCHEMAS
-
-
-@app.post("/api/tools/search")
-async def tool_search(req: ToolSearchRequest) -> dict:
-    return await run_in_threadpool(search_tool, require_pool(), req.query, lang=req.lang, site=req.site, k=req.k)
-
-
-@app.post("/api/tools/grep")
-async def tool_grep(req: ToolGrepRequest) -> dict:
-    return await run_in_threadpool(grep_tool, require_pool(), req.pattern, doc_id=req.doc_id, site=req.site,
-                                   limit=req.limit)
-
-
-@app.post("/api/tools/toc")
-async def tool_toc(req: ToolTocRequest) -> dict:
-    return await run_in_threadpool(toc_tool, require_pool(), req.doc_id)
-
-
-@app.post("/api/tools/open")
-async def tool_open(req: ToolOpenRequest) -> dict:
-    return await run_in_threadpool(open_tool, require_pool(), req.doc_id, node_id=req.node_id,
-                                   chunk_id=req.chunk_id, max_lines=req.max_lines)

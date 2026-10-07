@@ -153,15 +153,6 @@ def test_weighted_rrf_fuse():
     assert fused[0]["chunk_id"] in ("c1", "c2")
 
 
-def test_retrieve_disabled_reranker_raises():
-    import pytest
-
-    from spott.core.pipeline import retrieve
-
-    with pytest.raises(ValueError, match="Reranker is disabled"):
-        retrieve(None, "test query", rerank=True)
-
-
 def test_make_deep_link_pdf():
     from spott.core.links import make_deep_link
 

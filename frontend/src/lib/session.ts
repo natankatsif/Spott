@@ -1,4 +1,4 @@
-// Anonymous per-browser id for AskRequest.session_id (docs/API.md: live wall, analytics). No personal data.
+// Anonymous per-browser id for AskRequest.session_id (docs/API.md: analytics). No personal data.
 
 const KEY = "sessionId";
 let cached: string | null = null;

@@ -9,9 +9,7 @@ import crosslingualRu from "./mocks/ask/crosslingual-ru.json";
 import notFoundRu from "./mocks/ask/not-found-ru.json";
 import partialRo from "./mocks/ask/partial-ro.json";
 import refusedRo from "./mocks/ask/refused-ro.json";
-import corpusStatsMock from "./mocks/corpus-stats.json";
 import suggestionsMock from "./mocks/suggestions.json";
-import wallMock from "./mocks/wall.json";
 
 export type Lang = "ro" | "ru" | "en"; // answers follow the question; the documents are RO/RU
 export type SearchLang = "ro" | "ru" | "en" | "uk";
@@ -418,37 +416,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-// ─────────────── GET /api/wall (live "break the bot" wall, poll every 2–3 s) ───────────────
-
-export type WallItem = {
-  id: string;
-  ts: string;
-  question: string; // personal data already masked as •••
-  lang: Lang;
-  status: AskStatus;
-  verified: boolean;
-  latency_ms: number;
-  top_source: string | null;
-};
-
-export type WallResponse = {
-  items: WallItem[]; // newest first
-  total_questions: number;
-  by_status: Record<string, number>;
-};
-
-// ─────────────── GET /api/corpus/stats (corpus health dashboard) ───────────────
-
-export type SiteStats = {
-  site: string;
-  category: string | null;
-  status: "indexed" | "pending" | "blocked";
-  pages: number;
-  documents_found: number;
-  documents_downloaded: number;
-  chunks: number;
-  last_crawled: string | null;
-};
+// ─────────────── corpus totals (the admin's sources page) ───────────────
 
 export type CorpusTotals = {
   sites_total: number;
@@ -460,12 +428,6 @@ export type CorpusTotals = {
   lines: number;
   documents_replaced: number;
   documents_removed: number;
-};
-
-export type CorpusStats = {
-  updated_at: string | null;
-  totals: CorpusTotals;
-  sites: SiteStats[];
 };
 
 // ─────────────── GET /health ───────────────
@@ -480,29 +442,6 @@ export type HealthResponse = {
 // ─────────────── POST /api/visits ───────────────
 
 export type VisitorCount = { visitors: number }; // unique browsers so far, this one included
-
-// ─────────────── POST /api/search (works now, no LLM) ───────────────
-
-export type MatchedLine = { line_id: string; idx: number; text: string; score: number | null };
-
-export type SearchResultItem = {
-  chunk_id: string;
-  doc_id: string;
-  citation_label: string;
-  text: string;
-  url: string;
-  found_on: string | null;
-  site: string | null;
-  lang: string | null;
-  page: number | null;
-  matched_lines: MatchedLine[];
-};
-
-export type SearchResponse = {
-  results: SearchResultItem[];
-  timings_ms: { embed: number; vector_sql: number; fts_sql: number; rerank: number; total: number };
-  not_found: boolean;
-};
 
 // ─────────────── client ───────────────
 
@@ -581,38 +520,19 @@ export async function sendFeedback(req: FeedbackRequest): Promise<void> {
   await post<{ ok: boolean }>("/api/feedback", req);
 }
 
-export async function search(query: string, lang?: SearchLang, k = 5): Promise<SearchResponse> {
-  return post<SearchResponse>("/api/search", { query, lang, k });
-}
-
 /** The source preview URL for an iframe / new tab: backend paths get API_URL, mock paths (/mocks/preview/…) stay. */
 export function resolvePreviewUrl(c: Pick<Citation, "preview_url">): string {
   return c.preview_url.startsWith("/api/") ? `${API_URL}${c.preview_url}` : c.preview_url;
-}
-
-/** Absolute URL of our PDF copy for the source viewer, or null for web pages. */
-export function documentFileUrl(c: Citation): string | null {
-  return c.file_url ? `${API_URL}${c.file_url}` : null;
 }
 
 export async function health(): Promise<HealthResponse> {
   return get<HealthResponse>("/health");
 }
 
-export async function wall(after?: string): Promise<WallResponse> {
-  if (isMock()) return wallMock as unknown as WallResponse;
-  return get<WallResponse>(`/api/wall${after ? `?after=${encodeURIComponent(after)}` : ""}`);
-}
-
 /** `en`: the Romanian questions with their English text (answers are RO/RU only). */
 export async function suggestions(lang: Lang | "en", limit = 6): Promise<SuggestionList> {
   if (isMock()) return { items: (suggestionsMock as unknown as SuggestionList).items.filter((s) => s.lang === lang) };
   return get<SuggestionList>(`/api/suggestions?lang=${lang}&limit=${limit}`);
-}
-
-export async function corpusStats(): Promise<CorpusStats> {
-  if (isMock()) return corpusStatsMock as unknown as CorpusStats;
-  return get<CorpusStats>("/api/corpus/stats");
 }
 
 /** Counts this browser once (its anonymous session id) and returns the number of unique visitors. */
