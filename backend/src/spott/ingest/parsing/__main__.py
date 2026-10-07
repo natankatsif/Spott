@@ -17,7 +17,6 @@ import argparse
 import gc
 import json
 import logging
-import sqlite3
 import time
 from collections import Counter
 from pathlib import Path
@@ -26,7 +25,7 @@ from docling.datamodel.base_models import ConversionStatus
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
 
-from spott.core.paths import DATA_DIR, REGISTRY
+from spott.core.paths import DATA_DIR
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
 
@@ -49,7 +48,6 @@ OK_STATUSES = {ConversionStatus.SUCCESS, ConversionStatus.PARTIAL_SUCCESS}
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.parsing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--db", type=Path, default=REGISTRY)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="reads <data>/raw/, writes <data>/parsed/")
     p.add_argument("--limit", type=int, help="at most N files")
     p.add_argument("--sha", nargs="+", metavar="PREFIX", help="only files whose sha256 starts with these")
@@ -83,7 +81,7 @@ class FileParser:
             self._converters[ocr] = make_converter(ocr=ocr)
         return self._converters[ocr]
 
-    def parse(self, row: sqlite3.Row) -> tuple[str, bool]:
+    def parse(self, row: dict) -> tuple[str, bool]:
         """(outcome, whether this file went through OCR)."""
         sha, ext = row["sha256"], row["extension"]
         if ext not in SUPPORTED_EXTENSIONS:
@@ -138,7 +136,7 @@ def main() -> None:
     if args.sha:
         statuses = ["pending", "parsed", "failed", "unsupported"]
 
-    registry = Registry(args.db)
+    registry = Registry.open()
     try:
         if killed := registry.fail_interrupted_parses():
             log.warning("%d file(s) were being parsed when a previous run was killed: marked failed", killed)

@@ -16,10 +16,9 @@ def page_html(body: str) -> str:
             f"<main><h1>Pagina</h1><p>{body}</p><p>{REPEATED}</p></main></body></html>")
 
 
-def test_one_new_page_still_loses_the_site_menu(tmp_path: Path):
-    reg = Registry(tmp_path / "registry.sqlite")
+def test_one_new_page_still_loses_the_site_menu(tmp_path: Path, registry: Registry):
+    reg = registry
     (tmp_path / "crawl" / "a.md" / "html").mkdir(parents=True)
-    rows = []
     for i in range(5):
         body = (f"Conținutul unic al paginii numărul {i}, cu informații despre serviciul municipal {i} "
                 f"și condițiile de acordare, termenele de depunere și actele necesare pentru cetățeni. ") * 3
@@ -27,7 +26,7 @@ def test_one_new_page_still_loses_the_site_menu(tmp_path: Path):
         (tmp_path / "crawl" / "a.md" / f).write_text(page_html(body), encoding="utf-8")
         reg.upsert_page({"url": f"https://a.md/p{i}", "site": "a.md", "status": 200, "html_file": f,
                          "fetched_at": now(), "title": "t", "lang": "ro"})
-        rows.append(reg.conn.execute("SELECT * FROM pages WHERE url = ?", (f"https://a.md/p{i}",)).fetchone())
+    rows = reg.site_pages("a.md")
     out = tmp_path / "parsed" / "pages"
 
     def texts(context):
@@ -38,4 +37,3 @@ def test_one_new_page_still_loses_the_site_menu(tmp_path: Path):
     assert "newsletterul" in texts(None)  # alone, one page can't tell what repeats on every page
     assert "newsletterul" not in texts(reg.site_pages("a.md"))  # with the site's pages as context it can
     assert "serviciul municipal 0" in texts(reg.site_pages("a.md"))
-    reg.close()

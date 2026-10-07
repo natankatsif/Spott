@@ -4,17 +4,16 @@ from spott.ingest.common.registry import Registry
 
 
 def add_file(reg: Registry, sha: str, status: str) -> None:
-    with reg.conn:
-        reg.conn.execute("INSERT INTO files (sha256, path, size, extension, downloaded_at, parse_status) "
-                         "VALUES (?, ?, 1, '.pdf', '2026-09-27T00:00:00', ?)", (sha, f"raw/{sha}.pdf", status))
+    reg.conn.execute("INSERT INTO registry_files (sha256, path, size, extension, downloaded_at, parse_status) "
+                     "VALUES (%s, %s, 1, '.pdf', '2026-09-27T00:00:00Z', %s)", (sha, f"raw/{sha}.pdf", status))
 
 
 def status(reg: Registry, sha: str) -> tuple[str, str | None]:
-    return reg.conn.execute("SELECT parse_status, parse_error FROM files WHERE sha256 = ?", (sha,)).fetchone()
+    return reg.conn.execute("SELECT parse_status, parse_error FROM registry_files WHERE sha256 = %s", (sha,)).fetchone()
 
 
-def test_the_file_a_killed_run_was_on_is_failed_and_the_rest_left_alone(tmp_path):
-    reg = Registry(tmp_path / "registry.sqlite")
+def test_the_file_a_killed_run_was_on_is_failed_and_the_rest_left_alone(registry: Registry):
+    reg = registry
     add_file(reg, "killed", "parsing")
     add_file(reg, "next", "pending")
     add_file(reg, "done", "parsed")

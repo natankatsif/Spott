@@ -2,6 +2,8 @@
 # the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
 # Python 3.14 as in the Docker image; on Linux also 3.12, the oldest requires-python allows (for Intel Macs, see
 # backend/pyproject.toml), so that code which only works on 3.14 fails here and not on a tester's Mac.
+# On Linux the tests that need Postgres (the registry, each test in a schema of its own) run against a container;
+# Windows runners can't run it, there those tests are skipped.
 # The frontend job checks its API types and mocks against backend/openapi.json, lints, type-checks and builds the app.
 #
 # A push to main with green tests updates the server: it pulls and restarts what changed (docker/deploy.sh).
@@ -46,7 +48,14 @@ jobs:
         run: uv run lint-imports
       - name: API contract (openapi.json matches the code)
         run: uv run python scripts/export_openapi.py --check
-      - name: Unit tests (no database)
+      - name: Postgres for the registry tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=qwerty -e POSTGRES_PASSWORD=qwerty_secret \
+            -e POSTGRES_DB=qwerty pgvector/pgvector:pg17
+          timeout 90 sh -c 'until docker exec pg pg_isready -h 127.0.0.1 -U qwerty -d qwerty; do sleep 1; done'
+          echo "SPOTT_TEST_PG=require" >> "$GITHUB_ENV"
+      - name: Unit tests (no index)
         run: uv run pytest -q -m "not db"
       - name: Doctor (CI mode)
         run: uv run python -m spott.ingest.tools.doctor --ci

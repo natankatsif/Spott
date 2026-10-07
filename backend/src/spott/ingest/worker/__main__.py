@@ -9,7 +9,6 @@ Heavy stages never run in parallel: one job at a time per worker, and one worker
 import argparse
 import json
 import logging
-import sqlite3
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +17,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from spott.core.db import get_connection, init_app_db
-from spott.core.paths import REGISTRY
+from spott.core.paths import DATA_DIR
 from spott.ingest.tools.common import utf8_console
 from spott.ingest.tools.pipeline import EXCLUDED_SITES
 
@@ -33,10 +32,10 @@ JSON_FIELDS = {"stats", "log_tail"}
 
 
 class PgJobStore:
-    def __init__(self, registry: Path = REGISTRY):
+    def __init__(self, crawl_dir: Path = DATA_DIR / "crawl"):
         self.conn = get_connection(autocommit=True)
         init_app_db(self.conn)
-        self.registry = registry
+        self.crawl_dir = crawl_dir
 
     def claim(self) -> dict | None:
         with self.conn.cursor(row_factory=dict_row) as cur:
@@ -98,7 +97,16 @@ class PgJobStore:
         autopilot must not spin on it while other sources wait."""
         with self.conn.cursor(row_factory=dict_row) as cur:
             cur.execute("""
-                SELECT s.id, s.site_id FROM sources s
+                SELECT s.id, s.site_id, COALESCE(d.undownloaded, 0) AS undownloaded,
+                       COALESCE(d.files_pending, 0) AS files_pending, COALESCE(p.pages_pending, 0) AS pages_pending
+                FROM sources s
+                LEFT JOIN (SELECT d.site, COUNT(*) FILTER (WHERE d.status = 'discovered') AS undownloaded,
+                                  COUNT(DISTINCT f.sha256) FILTER (WHERE f.parse_status = 'pending') AS files_pending
+                           FROM registry_documents d LEFT JOIN registry_files f ON f.sha256 = d.sha256
+                           WHERE d.status IN ('discovered', 'downloaded') GROUP BY d.site) d ON d.site = s.site_id
+                LEFT JOIN (SELECT site, COUNT(*) AS pages_pending FROM registry_pages
+                           WHERE parse_status = 'pending' AND status < 400 AND html_file IS NOT NULL
+                           GROUP BY site) p ON p.site = s.site_id
                 WHERE s.kind = 'site' AND s.enabled AND s.robots = 'allowed' AND s.auto_update
                   AND NOT EXISTS (SELECT 1 FROM jobs j
                                   WHERE j.source_id = s.id AND j.status IN ('queued', 'running'))
@@ -107,28 +115,11 @@ class PgJobStore:
                                     AND j.finished_at > NOW() - INTERVAL '1 hour')
                 ORDER BY s.id""")
             rows = [r for r in cur.fetchall() if r["site_id"] not in EXCLUDED_SITES]
-        if not rows or not self.registry.exists():
-            return []
-        with sqlite3.connect(f"file:{self.registry}?mode=ro", uri=True) as db:
-            docs = {site: (undownloaded, pending) for site, undownloaded, pending in db.execute("""
-                SELECT d.site, COALESCE(SUM(d.status = 'discovered'), 0),
-                       COUNT(DISTINCT CASE WHEN f.parse_status = 'pending' THEN f.sha256 END)
-                FROM documents d LEFT JOIN files f ON f.sha256 = d.sha256
-                WHERE d.status IN ('discovered', 'downloaded') GROUP BY d.site""")}
-            pages = dict(db.execute("SELECT site, COUNT(*) FROM pages WHERE parse_status = 'pending' "
-                                    "AND status < 400 AND html_file IS NOT NULL GROUP BY site").fetchall())
-        works = []
-        for row in rows:
-            undownloaded, files_pending = docs.get(row["site_id"], (0, 0))
-            works.append(schedule.SiteWork(
-                id=row["id"], site_id=row["site_id"], queue_left=self.crawl_queue_left(row["site_id"]),
-                undownloaded=undownloaded, files_pending=files_pending,
-                pages_pending=pages.get(row["site_id"], 0)))
-        return works
+        return [schedule.SiteWork(**r, queue_left=self.crawl_queue_left(r["site_id"])) for r in rows]
 
     def crawl_queue_left(self, site_id: str) -> int:
         """Pages the last crawl of this site saved and never got to; 0 when it finished or never ran."""
-        state = self.registry.parent / "crawl" / site_id / "state.json"
+        state = self.crawl_dir / site_id / "state.json"
         try:
             return len(json.loads(state.read_text(encoding="utf-8")).get("queue") or [])
         except (OSError, ValueError):
@@ -161,22 +152,19 @@ class PgJobStore:
 
     def site_stats(self, site_id: str) -> dict[str, int]:
         """What the site has after the job: registry counts (pages, documents) and the index (chunks, lines)."""
-        stats: dict[str, int] = {}
-        if self.registry.exists():
-            with sqlite3.connect(f"file:{self.registry}?mode=ro", uri=True) as db:
-                stats["pages"] = db.execute("SELECT COUNT(*) FROM pages WHERE site = ?", (site_id,)).fetchone()[0]
-                found, downloaded = db.execute(
-                    "SELECT COUNT(*), COALESCE(SUM(status = 'downloaded'), 0) FROM documents WHERE site = ?",
-                    (site_id,)).fetchone()
-                parsed = db.execute(
-                    "SELECT COUNT(DISTINCT f.sha256) FROM files f JOIN documents d ON d.sha256 = f.sha256 "
-                    "WHERE d.site = ? AND f.parse_status = 'parsed'", (site_id,)).fetchone()[0]
-                stats |= {"documents_found": found, "documents_downloaded": downloaded, "files_parsed": parsed}
-        chunks, lines = self.conn.execute(
-            "SELECT (SELECT COUNT(*) FROM chunks WHERE site = %s), "
-            "(SELECT COUNT(*) FROM lines l JOIN chunks c ON c.chunk_id = l.chunk_id WHERE c.site = %s)",
-            (site_id, site_id)).fetchone()
-        return stats | {"chunks": chunks, "lines": lines}
+        with self.conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                SELECT (SELECT COUNT(*) FROM registry_pages WHERE site = %(site)s) AS pages,
+                       COUNT(*) AS documents_found,
+                       COUNT(*) FILTER (WHERE d.status = 'downloaded') AS documents_downloaded,
+                       (SELECT COUNT(DISTINCT f.sha256) FROM registry_files f
+                        JOIN registry_documents fd ON fd.sha256 = f.sha256
+                        WHERE fd.site = %(site)s AND f.parse_status = 'parsed') AS files_parsed,
+                       (SELECT COUNT(*) FROM chunks WHERE site = %(site)s) AS chunks,
+                       (SELECT COUNT(*) FROM lines l JOIN chunks c ON c.chunk_id = l.chunk_id
+                        WHERE c.site = %(site)s) AS lines
+                FROM registry_documents d WHERE d.site = %(site)s""", {"site": site_id})
+            return cur.fetchone()
 
 
 def main() -> None:

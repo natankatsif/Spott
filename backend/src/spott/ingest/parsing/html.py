@@ -1,6 +1,6 @@
 """HTML page parsing with trafilatura, structural extraction, and boilerplate filtering.
 
-Input: rows from registry `pages` table with status < 400 and html_file.
+Input: rows of the registry's `registry_pages` with status < 400 and html_file.
 Output: data/parsed/pages/<url_hash>.json
 """
 
@@ -272,11 +272,7 @@ def parse_site_pages(
         body_text = "\n".join(b["text"] for b in blocks)
         lang = normalize_lang(row["lang"], fallback_text=body_text)
 
-        # Determine alternates
-        try:
-            alternates = json.loads(row["alternates"] or "{}")
-        except Exception:
-            alternates = {}
+        alternates = row["alternates"] or {}
 
         ukey = url_key(url)
         page_doc = {

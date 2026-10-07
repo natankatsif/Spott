@@ -4,9 +4,7 @@
 """
 
 import argparse
-from pathlib import Path
 
-from spott.core.paths import REGISTRY
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
 from spott.ingest.common.urls import extension, url_key
@@ -18,14 +16,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--url", required=True)
     p.add_argument("--site", required=True)
     p.add_argument("--category", default="document")
-    p.add_argument("--db", type=Path, default=REGISTRY)
     return p.parse_args(argv)
 
 
 def main() -> None:
     args = parse_args()
     progress = Progress(total=1)
-    registry = Registry(args.db)
+    registry = Registry.open()
     try:
         new = registry.add_document(key=url_key(args.url), url=args.url, site=args.site, category=args.category,
                                     extension=extension(args.url), external=False,

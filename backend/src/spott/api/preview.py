@@ -12,12 +12,12 @@ cross-origin). So the backend serves its own page:
 Unknown doc_id → 404; everything else → 200 with the best view there is, never an empty frame.
 """
 
+import asyncio
 import html
 import json
 import logging
 import re
 import secrets
-import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,6 +26,8 @@ from urllib.parse import quote as url_quote
 from urllib.parse import urlsplit
 
 import httpx
+import psycopg
+from psycopg_pool import ConnectionPool
 from selectolax.parser import HTMLParser
 
 from .files import DATA_DIR
@@ -136,32 +138,32 @@ def fmt_date(value: str | None) -> str:
 
 
 class PageSource:
-    """The crawled copy of a page (registry pages.html_file under data/crawl/<site>/), else a live fetch."""
+    """The crawled copy of a page (registry_pages.html_file under data/crawl/<site>/), else a live fetch."""
 
-    def __init__(self, client: httpx.AsyncClient | None, data_dir: Path = DATA_DIR):
+    def __init__(self, client: httpx.AsyncClient | None, pool: ConnectionPool | None, data_dir: Path = DATA_DIR):
         self.client = client
+        self.pool = pool
         self.data_dir = data_dir
         self.cache: dict[str, tuple[float, str]] = {}
 
     def crawled(self, url: str) -> tuple[str, str] | None:
         """(html, fetched_at) of the crawled copy."""
-        registry = self.data_dir / "registry.sqlite"
-        if not registry.is_file():
+        if self.pool is None:
             return None
         variants = list(dict.fromkeys([url, url.rstrip("/"), url.rstrip("/") + "/"]))
         try:
-            with sqlite3.connect(f"file:{registry}?mode=ro", uri=True) as db:
-                row = db.execute(
-                    f"SELECT site, html_file, fetched_at FROM pages WHERE url IN ({','.join('?' * len(variants))}) "
-                    "AND html_file IS NOT NULL ORDER BY fetched_at DESC LIMIT 1", variants).fetchone()
-        except sqlite3.Error:
+            with self.pool.connection() as conn:
+                row = conn.execute(
+                    "SELECT site, html_file, fetched_at FROM registry_pages WHERE url = ANY(%s) "
+                    "AND html_file IS NOT NULL ORDER BY fetched_at DESC LIMIT 1", (variants,)).fetchone()
+        except psycopg.Error:
             return None
         if not row:
             return None
         path = self.data_dir / "crawl" / row[0] / row[1]
         if not path.is_file():
             return None
-        return path.read_bytes().decode("utf-8", errors="replace"), row[2]
+        return path.read_bytes().decode("utf-8", errors="replace"), row[2].astimezone(UTC).isoformat()
 
     async def live(self, url: str) -> str | None:
         hit = self.cache.get(url)
@@ -181,7 +183,7 @@ class PageSource:
 
     async def get(self, url: str) -> tuple[str, str, str] | None:
         """(html, how: crawl | live, date) or None."""
-        if found := self.crawled(url):
+        if found := await asyncio.to_thread(self.crawled, url):
             return found[0], "crawl", found[1]
         if (text := await self.live(url)) is not None:
             return text, "live", datetime.now(UTC).isoformat()

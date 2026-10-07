@@ -17,7 +17,7 @@ x-app: &app
     db:
       condition: service_healthy
   volumes:
-    - oidata:/app/data  # registry, downloaded and parsed files, logs: shared by api and worker (SPOTT_DATA_DIR)
+    - oidata:/app/data  # crawled pages, downloaded and parsed files, logs: shared by api and worker (SPOTT_DATA_DIR)
 
 services:
   db:

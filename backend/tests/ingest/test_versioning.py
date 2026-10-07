@@ -1,6 +1,6 @@
 """Tests for Task 06: document versioning, replacement, and removal.
 
-Fixtures use SQLite (registry) and mock PostgreSQL (indexer) to verify:
+Fixtures use the registry in a throwaway Postgres schema to verify:
 - v1 → v2: only v2 chunks/lines in index, doc_id unchanged, 2 versions in history
 - unchanged text: 0 recomputed embeddings
 - document missing once: stays; missing twice: removed, chunks gone
@@ -9,6 +9,7 @@ Fixtures use SQLite (registry) and mock PostgreSQL (indexer) to verify:
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -43,17 +44,15 @@ def write_parsed_json(data_dir: Path, sha256: str, doc: dict) -> None:
     )
 
 
-def setup_registry_with_file(data_dir: Path, *, key: str, url: str, site: str,
+def setup_registry_with_file(reg: Registry, *, key: str, url: str, site: str,
                               sha256: str, category: str = "decizii", ext: str = ".pdf") -> Registry:
-    """Creates a registry and adds a fully-downloaded, parsed file."""
-    reg = Registry(data_dir / "registry.sqlite")
+    """Adds a fully-downloaded, parsed file to the registry."""
     reg.add_document(key=key, url=url, site=site, category=category,
                      extension=ext, external=False, source={"found_on": url, "site": site})
     reg.record_download(key, sha256=sha256, path=f"raw/{sha256[:2]}/{sha256}.pdf",
                         size=1000, content_type="application/pdf", extension=".pdf",
                         http_status=200, etag=None, last_modified=None)
-    reg.conn.execute("UPDATE files SET parse_status = 'parsed' WHERE sha256 = ?", (sha256,))
-    reg.conn.commit()
+    reg.conn.execute("UPDATE registry_files SET parse_status = 'parsed' WHERE sha256 = %s", (sha256,))
     return reg
 
 
@@ -61,7 +60,7 @@ def setup_registry_with_file(data_dir: Path, *, key: str, url: str, site: str,
 # Test 1: v1 → v2 of one PDF at the same URL
 # ---------------------------------------------------------------------------
 class TestVersionReplacement:
-    def test_v1_to_v2_chunks_only_v2(self, tmp_data: Path):
+    def test_v1_to_v2_chunks_only_v2(self, tmp_data: Path, registry: Registry):
         """After updating to v2, only v2 text appears in chunks; doc_id unchanged; 2 versions in history."""
         url = "https://chisinau.md/decisions/dec1.pdf"
         key = "chisinau.md/decisions/dec1.pdf"
@@ -75,10 +74,10 @@ class TestVersionReplacement:
                                              "text": "Versiunea 1 a documentului conține reguli inițiale pentru cetățeni.",
                                              "section": [], "lang": "ro"}])
         write_parsed_json(tmp_data, sha_v1, doc_v1)
-        reg = setup_registry_with_file(tmp_data, key=key, url=url, site=site, sha256=sha_v1)
+        reg = setup_registry_with_file(registry, key=key, url=url, site=site, sha256=sha_v1)
 
         # Verify v1 loads correctly
-        docs_v1 = load_active_documents(tmp_data)
+        docs_v1 = load_active_documents(tmp_data, registry=registry)
         assert len(docs_v1) == 1
         assert docs_v1[0]["doc_id"] == f"file:{key}"
         chunks_v1 = chunk_document(docs_v1[0])
@@ -94,17 +93,16 @@ class TestVersionReplacement:
         # Record new download (simulates downloader finding new sha)
         # Need to insert the new file first
         reg.conn.execute(
-            "INSERT INTO files (sha256, path, size, content_type, extension, downloaded_at, parse_status) "
-            "VALUES (?, ?, ?, ?, ?, datetime('now'), 'parsed')",
+            "INSERT INTO registry_files (sha256, path, size, content_type, extension, downloaded_at, parse_status) "
+            "VALUES (%s, %s, %s, %s, %s, NOW(), 'parsed')",
             (sha_v2, f"raw/{sha_v2[:2]}/{sha_v2}.pdf", 1200, "application/pdf", ".pdf")
         )
-        reg.conn.commit()
         reg.record_download(key, sha256=sha_v2, path=None, size=1200,
                             content_type="application/pdf", extension=".pdf",
                             http_status=200, etag=None, last_modified=None)
 
         # Verify v2 is active now, same doc_id
-        docs_v2 = load_active_documents(tmp_data)
+        docs_v2 = load_active_documents(tmp_data, registry=registry)
         assert len(docs_v2) == 1
         assert docs_v2[0]["doc_id"] == f"file:{key}"  # doc_id unchanged
 
@@ -116,19 +114,17 @@ class TestVersionReplacement:
 
         # Verify version history: 2 versions exist
         versions = reg.conn.execute(
-            "SELECT * FROM document_versions WHERE document_key = ? ORDER BY version", (key,)
+            "SELECT sha256, version FROM registry_document_versions WHERE document_key = %s ORDER BY version", (key,)
         ).fetchall()
-        assert len(versions) == 2
+        assert versions == [(sha_v1, 1), (sha_v2, 2)]
 
         # Doc record shows version=2, previous_sha256=sha_v1
-        doc_rec = reg.conn.execute("SELECT * FROM documents WHERE key = ?", (key,)).fetchone()
-        assert doc_rec["version"] == 2
-        assert doc_rec["previous_sha256"] == sha_v1
-        assert doc_rec["sha256"] == sha_v2
+        doc_rec = reg.conn.execute("SELECT version, previous_sha256, sha256 FROM registry_documents WHERE key = %s",
+                                   (key,)).fetchone()
+        assert doc_rec == (2, sha_v1, sha_v2)
 
-        reg.close()
 
-    def test_unchanged_text_zero_recompute(self, tmp_data: Path):
+    def test_unchanged_text_zero_recompute(self, tmp_data: Path, registry: Registry):
         """Re-indexing the same text reuses content_hash; 0 new embeddings needed."""
         url = "https://chisinau.md/doc-stable.pdf"
         key = "chisinau.md/doc-stable.pdf"
@@ -139,13 +135,13 @@ class TestVersionReplacement:
                                           "text": "Textul documentului rămâne complet neschimbat între versiuni.",
                                           "section": [], "lang": "ro"}])
         write_parsed_json(tmp_data, sha, doc)
-        setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        setup_registry_with_file(registry, key=key, url=url, site="chisinau.md", sha256=sha)
 
         # Load + chunk twice — content_hash should be identical
-        docs1 = load_active_documents(tmp_data)
+        docs1 = load_active_documents(tmp_data, registry=registry)
         chunks1 = chunk_document(docs1[0])
 
-        docs2 = load_active_documents(tmp_data)
+        docs2 = load_active_documents(tmp_data, registry=registry)
         chunks2 = chunk_document(docs2[0])
 
         assert len(chunks1) == len(chunks2)
@@ -158,15 +154,12 @@ class TestVersionReplacement:
         hashes2 = {c["content_hash"] for c in chunks2}
         assert hashes1 == hashes2  # every hash is reusable
 
-        reg = Registry(tmp_data / "registry.sqlite")
-        reg.close()
-
 
 # ---------------------------------------------------------------------------
 # Test 2: Document missing once → stays; twice → removed, no chunks
 # ---------------------------------------------------------------------------
 class TestDocumentRemoval:
-    def test_missing_once_stays(self, tmp_data: Path):
+    def test_missing_once_stays(self, tmp_data: Path, registry: Registry):
         """A document that goes missing 1 time still has status != 'removed'."""
         url = "https://chisinau.md/temp.pdf"
         key = "chisinau.md/temp.pdf"
@@ -177,20 +170,19 @@ class TestDocumentRemoval:
                                           "text": "Document temporar care ar putea dispărea de pe server.",
                                           "section": [], "lang": "ro"}])
         write_parsed_json(tmp_data, sha, doc)
-        reg = setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        reg = setup_registry_with_file(registry, key=key, url=url, site="chisinau.md", sha256=sha)
 
         # Simulate one missing (404)
         removed = reg.record_download_missing(key, 404)
         assert not removed
 
-        row = reg.conn.execute("SELECT status, consecutive_missing FROM documents WHERE key = ?", (key,)).fetchone()
-        assert row["status"] == "downloaded"  # still in the index: one 404 can be a hiccup
-        assert row["consecutive_missing"] == 1
-        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data))
+        row = reg.conn.execute("SELECT status, consecutive_missing FROM registry_documents WHERE key = %s",
+                               (key,)).fetchone()
+        assert row == ("downloaded", 1)  # still in the index: one 404 can be a hiccup
+        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data, registry=registry))
 
-        reg.close()
 
-    def test_missing_twice_removed(self, tmp_data: Path):
+    def test_missing_twice_removed(self, tmp_data: Path, registry: Registry):
         """A document missing 2 times in a row becomes 'removed'."""
         url = "https://chisinau.md/gone.pdf"
         key = "chisinau.md/gone.pdf"
@@ -201,7 +193,7 @@ class TestDocumentRemoval:
                                           "text": "Document care va fi eliminat după două verificări consecutive.",
                                           "section": [], "lang": "ro"}])
         write_parsed_json(tmp_data, sha, doc)
-        reg = setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        reg = setup_registry_with_file(registry, key=key, url=url, site="chisinau.md", sha256=sha)
 
         # First missing
         removed = reg.record_download_missing(key, 404)
@@ -211,51 +203,48 @@ class TestDocumentRemoval:
         removed = reg.record_download_missing(key, 404)
         assert removed
 
-        row = reg.conn.execute("SELECT status, consecutive_missing, removed_at FROM documents WHERE key = ?", (key,)).fetchone()
-        assert row["status"] == "removed"
-        assert row["consecutive_missing"] == 2
-        assert row["removed_at"] is not None
+        status, missing, removed_at = reg.conn.execute(
+            "SELECT status, consecutive_missing, removed_at FROM registry_documents WHERE key = %s", (key,)).fetchone()
+        assert (status, missing) == ("removed", 2)
+        assert removed_at is not None
 
         # load_active_documents should NOT include this doc
-        docs = load_active_documents(tmp_data)
+        docs = load_active_documents(tmp_data, registry=registry)
         for d in docs:
             assert d.get("doc_id") != f"file:{key}"
 
-        reg.close()
 
-    def test_crawl_missing_tracks_per_site(self, tmp_data: Path):
+    def test_crawl_missing_tracks_per_site(self, registry: Registry):
         """record_crawl_missing increments consecutive_missing for unseen docs in a site."""
-        reg = Registry(tmp_data / "registry.sqlite")
         site = "test.md"
 
         # Add two docs
         for i in range(2):
             k = f"test.md/doc{i}.pdf"
             url = f"https://test.md/doc{i}.pdf"
-            reg.add_document(key=k, url=url, site=site, category="test",
+            registry.add_document(key=k, url=url, site=site, category="test",
                              extension=".pdf", external=False, source={"found_on": url, "site": site})
 
         # Crawl sees only doc0, not doc1
-        missing, removed = reg.record_crawl_missing(site, {"test.md/doc0.pdf"})
+        missing, removed = registry.record_crawl_missing(site, {"test.md/doc0.pdf"})
         assert missing == 1  # doc1 is missing once
         assert removed == 0
 
         # Second crawl — still no doc1
-        missing, removed = reg.record_crawl_missing(site, {"test.md/doc0.pdf"})
+        missing, removed = registry.record_crawl_missing(site, {"test.md/doc0.pdf"})
         assert missing == 0
         assert removed == 1  # doc1 now removed
 
-        row = reg.conn.execute("SELECT status FROM documents WHERE key = 'test.md/doc1.pdf'").fetchone()
-        assert row["status"] == "removed"
+        row = registry.conn.execute("SELECT status FROM registry_documents WHERE key = 'test.md/doc1.pdf'").fetchone()
+        assert row == ("removed",)
 
-        reg.close()
 
 
 # ---------------------------------------------------------------------------
 # Test 3: Page changed → old chunk_ids removed
 # ---------------------------------------------------------------------------
 class TestPageUpdate:
-    def test_page_changed_old_chunks_gone(self, tmp_data: Path):
+    def test_page_changed_old_chunks_gone(self):
         """When a page's HTML changes, re-chunking produces new chunk_ids; old ones should be detected as stale."""
         from spott.ingest.common.urls import url_key as ukey
 
@@ -316,7 +305,7 @@ class TestPageUpdate:
 # Test 4: Stable doc_id uses url_key, not sha256
 # ---------------------------------------------------------------------------
 class TestStableDocId:
-    def test_file_doc_id_uses_url_key(self, tmp_data: Path):
+    def test_file_doc_id_uses_url_key(self, tmp_data: Path, registry: Registry):
         """File doc_id is file:<url_key>, not file:<sha256>."""
         url = "https://chisinau.md/files/report.pdf"
         key = "chisinau.md/files/report.pdf"
@@ -327,14 +316,13 @@ class TestStableDocId:
                                           "text": "Raport complet privind activitățile municipale din anul curent.",
                                           "section": [], "lang": "ro"}])
         write_parsed_json(tmp_data, sha, doc)
-        reg = setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        setup_registry_with_file(registry, key=key, url=url, site="chisinau.md", sha256=sha)
 
-        docs = load_active_documents(tmp_data)
+        docs = load_active_documents(tmp_data, registry=registry)
         assert len(docs) == 1
         assert docs[0]["doc_id"] == f"file:{key}"
         assert sha not in docs[0]["doc_id"]  # doc_id is NOT based on sha256
 
-        reg.close()
 
     def test_page_doc_id_uses_url_key(self):
         """Page doc_id is page:<url_key>."""
@@ -360,29 +348,26 @@ class TestStableDocId:
 
 
 class TestTransientFailures:
-    def test_failure_keeps_a_downloaded_document(self, tmp_data: Path):
+    def test_failure_keeps_a_downloaded_document(self, tmp_data: Path, registry: Registry):
         """A timeout / 5xx on refresh must not take a good document out of the index."""
         url, key = "https://chisinau.md/ok.pdf", "chisinau.md/ok.pdf"
         sha = hashlib.sha256(b"ok").hexdigest()
         write_parsed_json(tmp_data, sha, make_file_doc(sha256=sha, title="Ok", url=url, text_blocks=[
             {"id": 0, "type": "paragraph", "text": "Un document bun, care se descarcă de obicei.", "section": [],
              "lang": "ro"}]))
-        reg = setup_registry_with_file(tmp_data, key=key, url=url, site="chisinau.md", sha256=sha)
+        reg = setup_registry_with_file(registry, key=key, url=url, site="chisinau.md", sha256=sha)
         reg.mark_checked(key, "failed", http_status=503)
-        row = reg.conn.execute("SELECT status, http_status FROM documents WHERE key = ?", (key,)).fetchone()
-        assert (row["status"], row["http_status"]) == ("downloaded", 503)
-        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data))
+        row = reg.conn.execute("SELECT status, http_status FROM registry_documents WHERE key = %s", (key,)).fetchone()
+        assert row == ("downloaded", 503)
+        assert any(d.get("doc_id") == f"file:{key}" for d in load_active_documents(tmp_data, registry=registry))
         reg.mark_checked(key, "not_a_file", http_status=200)  # now a page: that one is real
-        assert reg.conn.execute("SELECT status FROM documents WHERE key = ?", (key,)).fetchone()[0] == "not_a_file"
-        reg.close()
+        assert reg.conn.execute("SELECT status FROM registry_documents WHERE key = %s", (key,)).fetchone()[0] == "not_a_file"
 
-    def test_failure_of_a_new_document_is_failed(self, tmp_data: Path):
-        reg = Registry(tmp_data / "registry.sqlite")
-        reg.add_document(key="a.md/x.pdf", url="https://a.md/x.pdf", site="a.md", category="c", extension=".pdf",
+    def test_failure_of_a_new_document_is_failed(self, registry: Registry):
+        registry.add_document(key="a.md/x.pdf", url="https://a.md/x.pdf", site="a.md", category="c", extension=".pdf",
                          external=False, source={"found_on": "https://a.md/"})
-        reg.mark_checked("a.md/x.pdf", "failed", http_status=500)
-        assert reg.conn.execute("SELECT status FROM documents").fetchone()[0] == "failed"
-        reg.close()
+        registry.mark_checked("a.md/x.pdf", "failed", http_status=500)
+        assert registry.conn.execute("SELECT status FROM registry_documents").fetchone()[0] == "failed"
 
 
 class TestPagesOnRecrawl:
@@ -390,48 +375,48 @@ class TestPagesOnRecrawl:
         reg.upsert_page({"url": url, "site": "a.md", "status": status, "html_file": html, "fetched_at": now(),
                          "title": "t", "lang": "ro"})
 
-    def test_a_failed_fetch_keeps_the_last_good_copy(self, tmp_data: Path):
-        reg = Registry(tmp_data / "registry.sqlite")
-        self.page(reg, "https://a.md/x")
-        reg.page_fetch_failed({"url": "https://a.md/x", "site": "a.md", "status": 503, "fetched_at": now()})
-        row = reg.conn.execute("SELECT status, html_file, error FROM pages").fetchone()
-        assert (row["status"], row["html_file"], row["error"]) == (200, "html/a.html", "HTTP 503")
-        reg.page_fetch_failed({"url": "https://a.md/new", "site": "a.md", "error": "ConnectTimeout", "fetched_at": now()})
-        assert reg.conn.execute("SELECT html_file FROM pages WHERE url = 'https://a.md/new'").fetchone()[0] is None
-        reg.close()
+    def test_a_failed_fetch_keeps_the_last_good_copy(self, registry: Registry):
+        self.page(registry, "https://a.md/x")
+        registry.page_fetch_failed({"url": "https://a.md/x", "site": "a.md", "status": 503, "fetched_at": now()})
+        row = registry.conn.execute("SELECT status, html_file, error FROM registry_pages").fetchone()
+        assert row == (200, "html/a.html", "HTTP 503")
+        registry.page_fetch_failed({"url": "https://a.md/new", "site": "a.md", "error": "ConnectTimeout", "fetched_at": now()})
+        assert registry.conn.execute("SELECT html_file FROM registry_pages WHERE url = 'https://a.md/new'").fetchone()[0] is None
 
-    def test_pages_a_complete_crawl_did_not_reach_are_dropped(self, tmp_data: Path):
-        reg = Registry(tmp_data / "registry.sqlite")
-        reg.upsert_page({"url": "https://a.md/old", "site": "a.md", "status": 200, "html_file": "html/o.html",
-                         "fetched_at": "2026-01-01T00:00:00+00:00"})
-        self.page(reg, "https://a.md/now")
-        assert reg.drop_unseen_pages("a.md", "2026-06-01T00:00:00+00:00") == 1
-        statuses = dict(reg.conn.execute("SELECT url, status FROM pages").fetchall())
+    def test_pages_a_complete_crawl_did_not_reach_are_dropped(self, registry: Registry):
+        registry.upsert_page({"url": "https://a.md/old", "site": "a.md", "status": 200, "html_file": "html/o.html",
+                         "fetched_at": datetime(2026, 1, 1, tzinfo=UTC)})
+        self.page(registry, "https://a.md/now")
+        assert registry.drop_unseen_pages("a.md", datetime(2026, 6, 1, tzinfo=UTC)) == 1
+        statuses = dict(registry.conn.execute("SELECT url, status FROM registry_pages").fetchall())
         assert statuses == {"https://a.md/old": 410, "https://a.md/now": 200}
-        reg.close()
+
+    def test_a_page_fetched_again_is_parsed_again(self, registry: Registry):
+        self.page(registry, "https://a.md/x")
+        registry.mark_page_parsed("https://a.md/x", "parsed", html_hash="h1")
+        assert registry.pages_to_parse() == []
+        self.page(registry, "https://a.md/x")
+        [page] = registry.pages_to_parse()
+        assert (page["url"], page["parse_status"], page["html_hash"]) == ("https://a.md/x", "pending", None)
 
 
-def test_files_of_documents_are_only_theirs(tmp_data: Path):
-    reg = Registry(tmp_data / "registry.sqlite")
+def test_files_of_documents_are_only_theirs(registry: Registry):
     for key, sha in (("a.md/1.pdf", "a" * 64), ("a.md/2.pdf", "b" * 64)):
-        reg.add_document(key=key, url=f"https://{key}", site="a.md", category="c", extension=".pdf", external=False,
+        registry.add_document(key=key, url=f"https://{key}", site="a.md", category="c", extension=".pdf", external=False,
                          source={"found_on": "https://a.md/"})
-        reg.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
+        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
                             extension=".pdf", http_status=200, etag=None, last_modified=None)
-    assert [r["sha256"] for r in reg.files_of_documents(["a.md/2.pdf"], ["pending"])] == ["b" * 64]
-    assert reg.files_of_documents([], ["pending"]) == []
-    reg.close()
+    assert [r["sha256"] for r in registry.files_of_documents(["a.md/2.pdf"], ["pending"])] == ["b" * 64]
+    assert registry.files_of_documents([], ["pending"]) == []
 
 
-def test_files_to_parse_of_some_sites_only(tmp_data: Path):
+def test_files_to_parse_of_some_sites_only(registry: Registry):
     """A job for one site parses that site's files, not every pending file of every site."""
-    reg = Registry(tmp_data / "registry.sqlite")
     for key, site, sha in (("a.md/1.pdf", "a.md", "a" * 64), ("b.md/1.pdf", "b.md", "b" * 64)):
-        reg.add_document(key=key, url=f"https://{key}", site=site, category="c", extension=".pdf", external=False,
+        registry.add_document(key=key, url=f"https://{key}", site=site, category="c", extension=".pdf", external=False,
                          source={"found_on": f"https://{site}/"})
-        reg.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
+        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
                             extension=".pdf", http_status=200, etag=None, last_modified=None)
-    assert [r["sha256"] for r in reg.files_to_parse(["pending"], None, sites=["b.md"])] == ["b" * 64]
-    assert reg.files_to_parse(["pending"], None, sites=["none.md"]) == []
-    assert len(reg.files_to_parse(["pending"], None)) == 2  # no filter: the whole corpus, as `tools.pipeline` wants
-    reg.close()
+    assert [r["sha256"] for r in registry.files_to_parse(["pending"], None, sites=["b.md"])] == ["b" * 64]
+    assert registry.files_to_parse(["pending"], None, sites=["none.md"]) == []
+    assert len(registry.files_to_parse(["pending"], None)) == 2  # no filter: the whole corpus, as `tools.pipeline` wants

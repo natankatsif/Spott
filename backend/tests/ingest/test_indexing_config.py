@@ -25,7 +25,7 @@ def test_parse_args_no_clean_orphans():
     assert args2.clean_orphans is True
 
 
-def test_chunk_all_removes_stale_jsonl(tmp_path):
+def test_chunk_all_removes_stale_jsonl(tmp_path, registry):
     parsed_dir = tmp_path / "parsed"
     parsed_dir.mkdir()
     chunks_dir = tmp_path / "chunks"
@@ -39,14 +39,20 @@ def test_chunk_all_removes_stale_jsonl(tmp_path):
             {"id": 0, "type": "paragraph", "text": "Acesta este un document activ pentru verificare.", "section": [], "lang": "ro"}
         ],
     }
-    (parsed_dir / "doc1.json").write_text(json.dumps(doc1), encoding="utf-8")
+    (parsed_dir / "doc1_active.json").write_text(json.dumps(doc1), encoding="utf-8")
+    registry.add_document(key="doc1_active", url="https://a.md/doc1.pdf", site="a.md", category="c",
+                          extension=".pdf", external=False, source={"found_on": "https://a.md/"})
+    registry.record_download("doc1_active", sha256="doc1_active", path="raw/doc1.pdf", size=1,
+                             content_type="application/pdf", extension=".pdf", http_status=200, etag=None,
+                             last_modified=None)
+    registry.mark_parsed("doc1_active", "parsed")
 
     # Create a stale .jsonl in chunks_dir from a deleted document
     stale_file = chunks_dir / "file_deleted_doc.jsonl"
     stale_file.write_text('{"doc_id": "file:deleted_doc"}\n', encoding="utf-8")
     assert stale_file.exists()
 
-    by_doc = chunk_all(parsed_dir, chunks_dir)
+    by_doc = chunk_all(parsed_dir, chunks_dir, registry=registry)
     assert "file:doc1_active" in by_doc
 
     # Stale file must be unlinked

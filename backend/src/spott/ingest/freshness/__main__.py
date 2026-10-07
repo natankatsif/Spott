@@ -21,13 +21,12 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from spott.core.db import get_connection, init_app_db
-from spott.core.paths import REGISTRY
 from spott.ingest.common.http import make_clients
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
 from spott.ingest.common.urls import bare_host, extension, url_key
 
-from .detect import MAX_KEY_PAGES, detect, parse_time
+from .detect import MAX_KEY_PAGES, detect
 
 log = logging.getLogger("freshness")
 
@@ -43,8 +42,7 @@ def since_of(source: dict, site_pages: list) -> datetime | None:
     """Changes after the last check; a site never checked: after its last crawl."""
     if source.get("last_checked_at"):
         return source["last_checked_at"]
-    fetched = [t for p in site_pages if (t := parse_time(p["fetched_at"]))]
-    return max(fetched) if fetched else None
+    return max((p["fetched_at"] for p in site_pages), default=None)
 
 
 def register_documents(registry: Registry, site: dict, urls: set[str]) -> list[str]:
@@ -60,7 +58,7 @@ def register_documents(registry: Registry, site: dict, urls: set[str]) -> list[s
     return keys
 
 
-def run(site_id: str, out: Path, registry_path: Path) -> dict:
+def run(site_id: str, out: Path) -> dict:
     progress = Progress(total=1)
     conn = get_connection(autocommit=True)
     init_app_db(conn)
@@ -69,7 +67,7 @@ def run(site_id: str, out: Path, registry_path: Path) -> dict:
         source = cur.fetchone()
     if source is None:
         raise SystemExit(f"No site source {site_id}")
-    registry = Registry(registry_path)
+    registry = Registry.open()
     try:
         pages = registry.site_pages(site_id)
         known = {url_key(p["url"]) for p in pages}
@@ -109,7 +107,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--site", required=True, help="site id of the source")
     p.add_argument("--out", type=Path, required=True, help="where to write the changes (JSON)")
-    p.add_argument("--db", type=Path, default=REGISTRY)
     return p.parse_args(argv)
 
 
@@ -117,7 +114,7 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    r = run(args.site, args.out, args.db)
+    r = run(args.site, args.out)
     if not r["reachable"]:
         print(f"{args.site}: the site didn't answer; nothing checked")
     elif r["full_crawl"]:

@@ -59,21 +59,18 @@ class PgStore:
         return by_chunk
 
     def documents(self, doc_ids: list[str]) -> dict[str, dict]:
-        # to_jsonb: indexes restored from older dumps have no sha256 column.
-        rows = self._rows("SELECT doc_id, page_sizes, to_jsonb(d)->>'sha256' AS sha256 FROM documents d "
-                          "WHERE doc_id = ANY(%s)", (doc_ids,))
+        rows = self._rows("SELECT doc_id, page_sizes, sha256 FROM documents WHERE doc_id = ANY(%s)", (doc_ids,))
         return {r["doc_id"]: r | {"has_file": raw_pdf(r["doc_id"], r.get("sha256")) is not None} for r in rows}
 
     def document(self, doc_id: str) -> dict | None:
-        rows = self._rows("SELECT doc_id, kind, to_jsonb(d)->>'sha256' AS sha256, url FROM documents d "
-                          "WHERE doc_id = %s", (doc_id,))
+        rows = self._rows("SELECT doc_id, kind, sha256, url FROM documents WHERE doc_id = %s", (doc_id,))
         return rows[0] if rows else None
 
     def preview_document(self, doc_id: str) -> dict | None:
         """What the source preview needs of a document (GET /api/preview/{doc_id})."""
         rows = self._rows(
-            "SELECT doc_id, kind, url, title, site, found_on, page_sizes, to_jsonb(d)->>'sha256' AS sha256, "
-            "COALESCE(updated_at, indexed_at)::text AS indexed_at FROM documents d WHERE doc_id = %s", (doc_id,))
+            "SELECT doc_id, kind, url, title, site, found_on, page_sizes, sha256, "
+            "COALESCE(updated_at, indexed_at)::text AS indexed_at FROM documents WHERE doc_id = %s", (doc_id,))
         if not rows:
             return None
         return rows[0] | {"has_file": raw_pdf(doc_id, rows[0].get("sha256")) is not None}

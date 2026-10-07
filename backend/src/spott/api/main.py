@@ -127,7 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     http_clients = make_clients()
     app.state.http = http_clients[0]
     app.state.pdf_source = PdfSource(*http_clients)
-    app.state.pages = preview.PageSource(http_clients[0])
+    app.state.pages = preview.PageSource(http_clients[0], app.state.pool)
 
     log.info("Loading embedding model on %s...", device)
     await run_in_threadpool(get_embedding_model, device)

@@ -11,7 +11,6 @@ import hashlib
 import logging
 import mimetypes
 import re
-import sqlite3
 import uuid
 from collections import Counter
 from pathlib import Path, PurePosixPath
@@ -87,7 +86,7 @@ class Downloader:
         self.stats: Counter[str] = Counter()
         self.progress = Progress()
 
-    async def download_host(self, host: str, docs: list[sqlite3.Row]) -> None:
+    async def download_host(self, host: str, docs: list[dict]) -> None:
         """Documents of one host, sequentially with a pause — same politeness as the crawler."""
         for i, doc in enumerate(docs, 1):
             if self.progress.cancelled():
@@ -97,7 +96,7 @@ class Downloader:
             self.progress.advance(error=outcome == "failed")
             log.info("%s [%d/%d] %s %s", host, i, len(docs), outcome, doc["url"])
 
-    async def download(self, doc: sqlite3.Row) -> str:
+    async def download(self, doc: dict) -> str:
         url = download_url(doc["url"])
         host = bare_host(urlsplit(url).hostname or "")
         headers = {}
@@ -130,7 +129,7 @@ class Downloader:
             attempt += 1
             await asyncio.sleep(2**attempt)
 
-    async def _request(self, client: httpx.AsyncClient, doc: sqlite3.Row, url: str, headers: dict) -> str:
+    async def _request(self, client: httpx.AsyncClient, doc: dict, url: str, headers: dict) -> str:
         key = doc["key"]
         tmp = self.tmp_dir / f"{uuid.uuid4().hex}.part"
         try:
