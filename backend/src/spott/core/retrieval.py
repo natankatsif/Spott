@@ -1,4 +1,5 @@
-"""Unified retrieval pipeline combining chunk vector, line vector, FTS and weighted RRF."""
+"""retrieve(): the corpus search everything uses (the API, qsearch, the eval scripts) — chunk and line vector search
+and full-text search, fused with weighted RRF, matched lines kept per chunk."""
 
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ from .search import (
     weighted_rrf_fuse,
 )
 
-log = logging.getLogger("retrieval.pipeline")
+log = logging.getLogger("retrieval.retrieve")
 
 
 @dataclass

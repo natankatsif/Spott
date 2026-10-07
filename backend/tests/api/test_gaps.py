@@ -12,7 +12,7 @@ from spott.api.admin.gaps import gaps, group
 from spott.api.answering import answer_question, pipeline
 from spott.api.masking import mask
 from spott.api.schemas import AskRequest, AskResponse, GapList
-from spott.core.pipeline import RetrievalResult
+from spott.core.retrieval import RetrievalResult
 
 T0 = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 TOPICS = {"garaj": [1.0, 0.0, 0.0], "гараж": [0.96, 0.28, 0.0], "piscin": [0.0, 0.0, 1.0]}

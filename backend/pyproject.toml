@@ -38,7 +38,7 @@ ingest = [
 ]
 
 [project.scripts]
-qsearch = "spott.core.cli:main"
+qsearch = "spott.qsearch.cli:main"
 
 [dependency-groups]
 dev = [
@@ -83,15 +83,15 @@ known-first-party = ["spott"]
 root_package = "spott"
 
 [[tool.importlinter.contracts]]
-name = "core depends on neither the API nor the ingest pipeline"
+name = "core depends on none of the apps built on it"
 type = "forbidden"
 source_modules = ["spott.core"]
-forbidden_modules = ["spott.api", "spott.ingest"]
+forbidden_modules = ["spott.api", "spott.ingest", "spott.qsearch"]
 
 [[tool.importlinter.contracts]]
-name = "the API and the ingest pipeline don't import each other"
+name = "the API, the ingest pipeline and qsearch don't import each other"
 type = "independence"
-modules = ["spott.api", "spott.ingest"]
+modules = ["spott.api", "spott.ingest", "spott.qsearch"]
 
 [[tool.importlinter.contracts]]
 name = "the API: the app on top, then its public routes and the admin panel (independent), then the answer pipeline"

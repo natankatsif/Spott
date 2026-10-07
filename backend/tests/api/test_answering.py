@@ -8,7 +8,7 @@ from spott.api.answering.claims import numbers_backed
 from spott.api.languages import detect_lang
 from spott.api.preview import to_top_left
 from spott.api.schemas import AskRequest, AskResponse
-from spott.core.pipeline import RetrievalResult
+from spott.core.retrieval import RetrievalResult
 
 
 def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, rewrite=False,

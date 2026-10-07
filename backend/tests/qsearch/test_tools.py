@@ -3,7 +3,7 @@
 import pytest
 
 from spott.core.search import ilike_contains
-from spott.core.tools import (
+from spott.qsearch.tools import (
     build_toc_nodes,
     enforce_char_limit,
     grep_tool,

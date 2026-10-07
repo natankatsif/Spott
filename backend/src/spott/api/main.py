@@ -20,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 from spott.core.db import get_pool, init_app_db
 from spott.core.embeddings import get_device, get_embedding_model
 from spott.core.paths import SITES_TOML
-from spott.core.pipeline import retrieve
+from spott.core.retrieval import retrieve
 from spott.core.sources import seed_sources
 
 from . import admin, errors, preview, usage

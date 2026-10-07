@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from spott.core.paths import DATA_DIR
-from spott.core.pipeline import retrieve
+from spott.core.retrieval import retrieve
 
 from ..languages import LANGUAGE_NAMES, detect_lang
 from ..llm import DEEP, LLM, LLMResult

@@ -20,7 +20,7 @@ from spott.api.store import PgStore
 from spott.core.config import TOP_CANDIDATES
 from spott.core.db import get_pool
 from spott.core.paths import EVAL_DIR
-from spott.core.pipeline import retrieve
+from spott.core.retrieval import retrieve
 
 EVAL = EVAL_DIR / "lines.yaml"
 WEIGHTS = [1.0, 0.5, 0.25]

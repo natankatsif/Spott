@@ -1,6 +1,6 @@
 """qsearch: command parsing, log round-trip and the tester report."""
 
-from spott.core.cli import append_log, parse_args, parse_command, read_logs, resolve_doc, result_summary, summarize
+from spott.qsearch.cli import append_log, parse_args, parse_command, read_logs, resolve_doc, result_summary, summarize
 
 
 def test_parse_command():

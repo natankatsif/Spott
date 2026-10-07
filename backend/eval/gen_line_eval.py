@@ -22,7 +22,7 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 from spott.core.db import get_connection
-from spott.core.tools import grep_tool
+from spott.qsearch.tools import grep_tool
 
 load_dotenv(find_dotenv())
 

@@ -4,23 +4,24 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from .config import (
-    MAX_TOOL_GREP_CHARS,
-    MAX_TOOL_OPEN_CHARS,
-    MAX_TOOL_SEARCH_CHARS,
-    MAX_TOOL_TOC_CHARS,
-)
-from .links import make_deep_link
-from .pipeline import acquire_conn, retrieve
-from .search import ilike_contains
+from spott.core.links import make_deep_link
+from spott.core.retrieval import acquire_conn, retrieve
+from spott.core.search import ilike_contains
 
-log = logging.getLogger("retrieval.tools")
+log = logging.getLogger("qsearch.tools")
+
+# What each tool returns at most, in characters of JSON (a tester reads it, an agent would get it as context).
+MAX_TOOL_SEARCH_CHARS = int(os.getenv("MAX_TOOL_SEARCH_CHARS", "12000"))
+MAX_TOOL_GREP_CHARS = int(os.getenv("MAX_TOOL_GREP_CHARS", "8000"))
+MAX_TOOL_TOC_CHARS = int(os.getenv("MAX_TOOL_TOC_CHARS", "10000"))
+MAX_TOOL_OPEN_CHARS = int(os.getenv("MAX_TOOL_OPEN_CHARS", "10000"))
 
 # Position of a chunk in its document: its first block.
 ORD = "COALESCE((c.block_ids->>0)::int, 0)"

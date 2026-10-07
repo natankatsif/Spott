@@ -13,7 +13,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 
 from spott.core.config import TOP_CANDIDATES
-from spott.core.pipeline import RetrievalResult
+from spott.core.retrieval import RetrievalResult
 
 from ..llm import FAST, LLM, LLMResult, LLMUnavailable
 from ..schemas import AskRequest
