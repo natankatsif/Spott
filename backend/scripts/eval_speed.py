@@ -1,7 +1,7 @@
-"""Speed and quality eval (docs/tasks/10): eval/freshness.yaml + 15 RO and 15 RU questions from eval/lines.yaml.
+"""Speed and quality eval (docs/history/tasks/10): eval/freshness.yaml + 15 RO and 15 RU questions from eval/lines.yaml.
 
     cd backend && uv run python scripts/eval_speed.py --model gpt-6-luna --label luna
-    cd backend && uv run python scripts/eval_speed.py --app-dir <checkout>/backend --label before   # older code
+    cd <older checkout>/backend && uv run python <this checkout>/backend/scripts/eval_speed.py --label before
 
 Every question goes through answer_events() as /api/ask/stream serves it, one at a time. Measured:
 - TTFT: from the request to the first answer word (delta event); total: to the done event;
@@ -19,16 +19,16 @@ import argparse
 import importlib
 import json
 import statistics
-import sys
 import time
 from collections import deque
 from pathlib import Path
 
 import yaml
-from retrieval import get_pool
 
-ROOT = Path(__file__).resolve().parents[2]
-EVAL = ROOT / "offline_indexation" / "eval"
+from spott.core import get_pool
+from spott.core.paths import DATA_DIR, EVAL_DIR
+
+EVAL = EVAL_DIR
 # USD per 1M tokens (input, output), standard tier, https://developers.openai.com/api/docs/pricing (2026-09-26).
 PRICES = {"gpt-6-luna": (0.10, 0.50), "gpt-6-sol": (2.00, 10.00), "gpt-4o-mini": (0.15, 0.60), "gpt-4o": (2.50, 10.00),
           "gpt-4.1-mini": (0.40, 1.60), "gpt-5.4-mini": (0.75, 4.50), "gpt-5.4-nano": (0.20, 1.25)}
@@ -82,29 +82,27 @@ def percentile(values: list[float], p: float) -> float:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", help="answer model (default: OPENAI_MODEL)")
-    ap.add_argument("--app-dir", type=Path, default=Path(__file__).resolve().parents[1],
-                    help="backend directory whose app package to evaluate (an older checkout for 'before')")
     ap.add_argument("--label", default="after")
     ap.add_argument("--per-lang", type=int, default=15)
     ap.add_argument("--only", choices=["freshness", "lines"])
     ap.add_argument("--ids", nargs="*", help="only these case ids")
-    ap.add_argument("--out", type=Path, help="JSONL of per-question rows (default: data/eval/<label>.jsonl)")
+    ap.add_argument("--out", type=Path, help="JSONL of per-question rows (default: <data>/eval/<label>.jsonl)")
     ap.add_argument("--tpm", type=int, default=30_000, help="OpenAI tokens-per-minute limit to stay under")
     ap.add_argument("--resume", action="store_true", help="skip the questions already in --out, append the rest")
     args = ap.parse_args()
 
-    sys.path.insert(0, str(args.app_dir.resolve()))
-    answering = importlib.import_module("app.answering")
-    llm_module = importlib.import_module("app.llm")
-    schemas = importlib.import_module("app.schemas")
-    store_module = importlib.import_module("app.store")
+    # the spott installed in the environment this runs in: run it from an older checkout's backend/ for "before"
+    answering = importlib.import_module("spott.api.answering")
+    llm_module = importlib.import_module("spott.api.llm")
+    schemas = importlib.import_module("spott.api.schemas")
+    store_module = importlib.import_module("spott.api.store")
     records: list[dict] = []
     answering.log_query = records.append  # the per-question log record: tokens, calls, path
 
     pool = get_pool(min_size=1, max_size=10)
     store, llm = store_module.PgStore(pool), llm_module.OpenAILLM(model=args.model)
     todo = [c for c in cases(args.per_lang) if args.only in (None, c["set"]) and (not args.ids or c["id"] in args.ids)]
-    out = args.out or ROOT / "data" / "eval" / f"{args.label}.jsonl"
+    out = args.out or DATA_DIR / "eval" / f"{args.label}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()] \
         if args.resume and out.exists() else []

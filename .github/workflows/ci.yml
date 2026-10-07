@@ -1,5 +1,7 @@
 # Lint + unit tests on Linux and Windows. Windows runs without PYTHONUTF8 on purpose:
 # the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
+# Python 3.14 as in the Docker image (requires-python allows 3.12 for Intel Macs, see backend/pyproject.toml).
+# The frontend job checks its API types and mocks against backend/openapi.json, lints, type-checks and builds the app.
 #
 # A push to main with green tests updates the server: it pulls and restarts what changed (docker/deploy.sh).
 # The frontend is deployed by Vercel itself (project Root Directory = frontend).
@@ -22,27 +24,56 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          python-version: "3.14"
       - name: Install (lockfile must be up to date)
-        run: uv sync --all-packages --all-groups --frozen
+        run: uv sync --all-extras --all-groups --frozen
       - name: Ruff
         run: uv run ruff check .
+      - name: Import layers (core <- api, core <- ingest; api and ingest independent)
+        run: uv run lint-imports
+      - name: API contract (openapi.json matches the code)
+        run: uv run python scripts/export_openapi.py --check
       - name: Unit tests (no database)
         run: uv run pytest -q -m "not db"
       - name: Doctor (CI mode)
-        working-directory: offline_indexation
-        run: uv run python -m tools.doctor --ci
+        run: uv run python -m spott.ingest.tools.doctor --ci
       - name: Commands start
         run: |
           uv run qsearch --help
           uv run qsearch --report
-          cd offline_indexation
-          uv run python -m tools.pipeline update --dry-run
-          uv run python -m tools.index_io --help
+          uv run python -m spott.ingest.tools.pipeline update --dry-run
+          uv run python -m spott.ingest.tools.index_io --help
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install (lockfile must be up to date)
+        run: npm ci
+      - name: API types match backend/openapi.json
+        run: npm run api:check
+      - name: Mocks match backend/openapi.json
+        run: npm run check:mocks
+      - name: ESLint
+        run: npm run lint
+      - name: Type check + production build
+        run: npm run build
 
   deploy:
     needs: test
