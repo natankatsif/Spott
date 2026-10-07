@@ -13,7 +13,7 @@ import re
 import time
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 import httpx
 from openai import BadRequestError, OpenAI
@@ -23,9 +23,6 @@ TIMEOUT_S = 40.0
 # Role tokens: callers ask for a role, the configuration says which provider and model plays it.
 FAST = "@fast"  # the short calls (routing, query rewrite, translations, gap groups): the cheapest fast model
 DEEP = "@deep"  # mode=deep: a stronger model if one is set, else the answer model
-# Kept for the callers that import them by these names.
-REWRITE_MODEL = FAST
-DEEP_MODEL = DEEP
 # For reasoning models; models without reasoning ignore it (the option is dropped on their first call).
 REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT") or "low"
 ROLES = ("answer", "fast", "deep")
@@ -383,6 +380,13 @@ def make_client(provider: str, model: str, cfg: dict[str, str], timeout: float =
     return OpenAILLM(model, api_key=key or None, base_url=base_url, timeout=timeout)
 
 
+class Route(NamedTuple):
+    client: Any
+    model: str
+    provider: str
+    role: str  # the role that plays it: "answer" when the asked one isn't set or its provider has no key
+
+
 class RoutedLLM:
     """The LLM the answering code talks to: `model=None` is the answer role, FAST and DEEP the other roles; any
     other model name runs on the answer role's provider."""
@@ -394,7 +398,7 @@ class RoutedLLM:
         if "answer" not in config.roles:
             raise LLMUnavailable("no answer model configured")
         self.clients: dict[str, Any] = {}
-        self.role("answer")  # fails now (503 on the question) when the answer provider has no key
+        self.route("answer")  # fails now (503 on the question) when the answer provider has no key
 
     def client(self, provider: str):
         if provider not in self.clients:
@@ -402,34 +406,25 @@ class RoutedLLM:
             self.clients[provider] = make_client(provider, model, self.config.providers.get(provider, {}))
         return self.clients[provider]
 
-    def role(self, name: str) -> tuple[Any, str]:
-        client, model, _, _ = self.route(name)
-        return client, model
-
-    def route(self, name: str) -> tuple[Any, str, str, str]:
-        """(client, model, provider, the role that actually plays it)."""
-        r = self.config.roles.get(name) or self.config.roles["answer"]
-        played = name if self.config.roles.get(name) else "answer"
+    def route(self, role: str) -> Route:
+        """The client and model of a role; a role that isn't set, or whose provider has no key, is the answer role's."""
+        r = self.config.roles.get(role) or self.config.roles["answer"]
+        played = role if self.config.roles.get(role) else "answer"
         try:
-            return self.client(r["provider"]), r["model"], r["provider"], played
+            return Route(self.client(r["provider"]), r["model"], r["provider"], played)
         except LLMUnavailable:
-            if name == "answer":
+            if role == "answer":
                 raise
             return self.route("answer")  # e.g. the fast model's provider has no key: the answer model does it
 
-    def resolve(self, model: str | None) -> tuple[Any, str]:
-        client, name, _, _ = self.resolve_route(model)
-        return client, name
-
-    def resolve_route(self, model: str | None) -> tuple[Any, str, str, str]:
+    def resolve(self, model: str | None) -> Route:
+        """What a call's `model` asks for: None the answer role, FAST / DEEP theirs, another name that model on the
+        answer role's provider."""
         if model in (None, "", "@answer"):
             return self.route("answer")
-        if model == FAST:
-            return self.route("fast")
-        if model == DEEP:
-            return self.route("deep")
-        client, _, provider, _ = self.route("answer")
-        return client, model, provider, "answer"
+        if model in (FAST, DEEP):
+            return self.route(model.removeprefix("@"))
+        return self.route("answer")._replace(model=model, role="answer")
 
     def _used(self, provider: str, role: str, kind: str, result: "LLMResult", started: float) -> None:
         if self.on_usage is None:
@@ -437,13 +432,9 @@ class RoutedLLM:
         with contextlib.suppress(Exception):  # counting tokens must never break an answer
             self.on_usage(provider, result.model, role, kind, result, int((time.monotonic() - started) * 1000))
 
-    @property
-    def model(self) -> str:
-        return self.config.roles["answer"]["model"]
-
     def complete_json(self, system: str, user: str, schema_name: str, schema: dict, *, model: str | None = None,
                       effort: str | None = None, max_tokens: int | None = None) -> LLMResult:
-        client, name, provider, role = self.resolve_route(model)
+        client, name, provider, role = self.resolve(model)
         started = time.monotonic()
         result = client.complete_json(system, user, schema_name, schema, model=name, effort=effort,
                                       max_tokens=max_tokens)
@@ -452,7 +443,7 @@ class RoutedLLM:
 
     def stream_json(self, system: str, user: str, schema_name: str, schema: dict, *,
                     model: str | None = None) -> Generator[str, None, LLMResult]:
-        client, name, provider, role = self.resolve_route(model)
+        client, name, provider, role = self.resolve(model)
         started = time.monotonic()
         result = yield from client.stream_json(system, user, schema_name, schema, model=name)
         self._used(provider, role, schema_name, result, started)

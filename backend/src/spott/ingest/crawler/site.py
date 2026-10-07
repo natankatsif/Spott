@@ -20,7 +20,8 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from selectolax.parser import HTMLParser
 
-from spott.ingest.common.http import HTML_TYPES, RETRY_STATUSES, USER_AGENT, content_type, tls_failed
+from spott.core.sources import USER_AGENT
+from spott.ingest.common.http import HTML_TYPES, RETRY_STATUSES, content_type, tls_failed
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry, iso, now
 from spott.ingest.common.urls import (

@@ -11,12 +11,16 @@ import argparse
 
 import yaml
 
-from spott.api import answering
+from spott.api.answering import corpus, search
+from spott.api.answering.chunks import distinct
+from spott.api.languages import detect_lang
 from spott.api.llm import OpenAILLM
 from spott.api.schemas import AskRequest
 from spott.api.store import PgStore
-from spott.core import TOP_CANDIDATES, get_pool, retrieve
+from spott.core.config import TOP_CANDIDATES
+from spott.core.db import get_pool
 from spott.core.paths import EVAL_DIR
+from spott.core.retrieval import retrieve
 
 EVAL = EVAL_DIR / "lines.yaml"
 WEIGHTS = [1.0, 0.5, 0.25]
@@ -37,25 +41,25 @@ def main() -> None:
     pool = get_pool(min_size=1, max_size=10)
     store, llm = PgStore(pool), OpenAILLM()
     rewrites: dict[str, object] = {}
-    original = answering.rewrite_query
+    original = search.rewrite_query
 
     def cached(llm_, req):
         if req.question not in rewrites:
             rewrites[req.question] = original(llm_, req)
         return rewrites[req.question]
 
-    answering.rewrite_query = cached
+    search.rewrite_query = cached
     table: dict[str, list[tuple[bool, bool]]] = {"before": []} | {f"after w={w}": [] for w in WEIGHTS}
     try:
         for case in cases:
             q = case["query"]
-            lang = answering.detect_lang(q)
+            lang = detect_lang(q)
             result = retrieve(pool, q, k=TOP_CANDIDATES)
-            table["before"].append(hits(answering.distinct(answering.complete(result.items, store)),
-                                        answering.matched_lines(result.items), case))
+            table["before"].append(hits(distinct(corpus.complete(result.items, store)),
+                                        search.matched_lines(result.items), case))
             for w in WEIGHTS:
-                answering.CROSS_LANG_WEIGHT = w
-                g = answering.gather(store, llm, pool, retrieve, AskRequest(question=q), q, lang, fresh=False,
+                search.CROSS_LANG_WEIGHT = w
+                g = search.gather(store, llm, pool, retrieve, AskRequest(question=q), q, lang, fresh=False,
                                      rewrite=True)
                 table[f"after w={w}"].append(hits(g.candidates, g.focus, case))
             print(case["id"], case["query_lang"], "→", case["line_lang"], {k: v[-1] for k, v in table.items()},

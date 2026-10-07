@@ -1,5 +1,6 @@
-"""The admin panel's sources (Postgres `sources`): seed from sites.toml, category rules. Shared by the backend
-(seeds at startup, adds sources by URL) and the offline tools (tools.sources, tools.index_io import).
+"""The admin panel's sources (Postgres `sources`): what may be crawled and how the crawler introduces itself, what a
+document source is, category rules, the seed from sites.toml. Shared by the API (seeds at startup, adds sources by
+URL, checks robots.txt) and the ingest stages and tools.
 
 No LLM anywhere here: the category of a new source comes from its domain, else from keywords in its <title> and
 meta description, else "other".
@@ -10,12 +11,25 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
 # robots.txt "Disallow: /" (checked by hand): never crawled without the mentor's permission.
 EXCLUDED_SITES = {"chisinau.md", "actelocale.gov.md"}
 DEFAULTS = {"max_depth": 4, "max_pages": 2000, "delay": 0.5}
+# Every request to a city hall site, robots.txt checks included.
+USER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
+# A source that is a single document (anything else is a website): by its content type or its link's extension.
+DOCUMENT_TYPES = {
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+}
+
+
+def is_document_link(url: str) -> bool:
+    return urlsplit(url).path.lower().endswith(tuple(DOCUMENT_TYPES.values()))
 
 # The categories sites.toml uses. First match wins, against the full host.
 DOMAIN_RULES: list[tuple[str, re.Pattern]] = [
@@ -40,11 +54,6 @@ KEYWORDS: list[tuple[str, re.Pattern]] = [
     ("transparency", re.compile(r"primări|primari|consiliul municipal|decizi|dispoziți|transparen|примэри|мэри|"
                                 r"решени|распоряжени", re.I)),
 ]
-
-
-def bare_host(url_or_host: str) -> str:
-    host = re.sub(r"^[a-z]+://", "", url_or_host.lower()).split("/")[0].split(":")[0]
-    return host.removeprefix("www.")
 
 
 def categorize(host: str, text: str = "") -> tuple[str, str]:

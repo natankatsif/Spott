@@ -4,30 +4,27 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from .config import (
-    MAX_TOOL_GREP_CHARS,
-    MAX_TOOL_OPEN_CHARS,
-    MAX_TOOL_SEARCH_CHARS,
-    MAX_TOOL_TOC_CHARS,
-)
-from .links import make_deep_link
-from .pipeline import acquire_conn, retrieve
+from spott.core.links import make_deep_link
+from spott.core.retrieval import acquire_conn, retrieve
+from spott.core.search import ilike_contains
 
-log = logging.getLogger("retrieval.tools")
+log = logging.getLogger("qsearch.tools")
+
+# What each tool returns at most, in characters of JSON (a tester reads it, an agent would get it as context).
+MAX_TOOL_SEARCH_CHARS = int(os.getenv("MAX_TOOL_SEARCH_CHARS", "12000"))
+MAX_TOOL_GREP_CHARS = int(os.getenv("MAX_TOOL_GREP_CHARS", "8000"))
+MAX_TOOL_TOC_CHARS = int(os.getenv("MAX_TOOL_TOC_CHARS", "10000"))
+MAX_TOOL_OPEN_CHARS = int(os.getenv("MAX_TOOL_OPEN_CHARS", "10000"))
 
 # Position of a chunk in its document: its first block.
 ORD = "COALESCE((c.block_ids->>0)::int, 0)"
-
-def escape_like_pattern(pattern: str) -> str:
-    """Escapes SQL LIKE / ILIKE special wildcard characters (%, _, and backslash)."""
-    return pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
 
 def enforce_char_limit(data: dict[str, Any], max_chars: int, list_key: str) -> dict[str, Any]:
     """Ensures JSON-serialized dict does not exceed max_chars by trimming list_key items."""
@@ -111,8 +108,7 @@ def grep_tool(
     limit: int = 20,
 ) -> dict[str, Any]:
     """Tool: exact text substring match in lines table via PostgreSQL trigram ILIKE."""
-    escaped = escape_like_pattern(pattern)
-    sql_pattern = f"%{escaped}%"
+    sql_pattern = ilike_contains(pattern)
 
     with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

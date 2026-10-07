@@ -1,8 +1,7 @@
-"""Pure helpers of indexing.indexer and indexing.search (no database, no models)."""
+"""Pure helpers of the indexer and the chunker's grouping (no database, no models)."""
 
 import json
 
-from spott.core.search import rrf_fuse
 from spott.ingest.chunking.chunker import starts_new_group
 from spott.ingest.indexing.indexer import CHUNK_COLUMNS, UPSERT_CHUNK, UPSERT_DOCUMENT, document_record, row_values
 
@@ -28,16 +27,6 @@ def test_row_values_encodes_json_and_bools():
 def test_document_record_takes_metadata_from_first_chunk():
     record = document_record("file:abc", {"title": "Decizia", "site": "dgaurf.md", "text": "ignored"})
     assert record == {"kind": "file", "title": "Decizia", "site": "dgaurf.md", "doc_id": "file:abc"}
-
-
-def test_rrf_fuse_rewards_agreement_between_rankings():
-    vec = [{"chunk_id": "a"}, {"chunk_id": "b"}]
-    fts = [{"chunk_id": "b"}, {"chunk_id": "c"}]
-    fused = rrf_fuse(vec, fts)
-    assert [r["chunk_id"] for r in fused][0] == "b"
-    b = fused[0]
-    assert (b["vec_rank"], b["fts_rank"]) == (2, 1)
-    assert {r["chunk_id"]: r["fts_rank"] for r in fused}["a"] is None
 
 
 def test_heading_attaches_to_following_content():

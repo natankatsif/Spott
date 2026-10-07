@@ -46,7 +46,7 @@ def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tupl
     deep = preview.deep_link_for(doc, lines, selected, kind)
     common = {"doc": doc, "lines": lines, "selected": selected, "lang": lang, "embed": True, "allowed": ALLOWED}
     if kind == "pdf":
-        pdf = raw_pdf(doc["doc_id"], doc["sha256"])
+        pdf = raw_pdf(doc["sha256"])
         (OUT / "files").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(pdf, OUT / "files" / pdf.name)
         view = preview.pdf_view(**common, file_url=f"files/{pdf.name}", deep_link=deep, static_prefix="static")

@@ -4,6 +4,9 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from spott.core.embeddings import embed_texts
+from spott.core.search import ilike_contains
+
 from .files import raw_pdf
 
 CHUNK_COLUMNS = (
@@ -12,10 +15,6 @@ CHUNK_COLUMNS = (
 )
 # Position of a chunk in its document: its first block.
 POSITION = "(c.block_ids->>0)::int"
-
-
-def like_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class PgStore:
@@ -60,7 +59,7 @@ class PgStore:
 
     def documents(self, doc_ids: list[str]) -> dict[str, dict]:
         rows = self._rows("SELECT doc_id, page_sizes, sha256 FROM documents WHERE doc_id = ANY(%s)", (doc_ids,))
-        return {r["doc_id"]: r | {"has_file": raw_pdf(r["doc_id"], r.get("sha256")) is not None} for r in rows}
+        return {r["doc_id"]: r | {"has_file": raw_pdf(r.get("sha256")) is not None} for r in rows}
 
     def document(self, doc_id: str) -> dict | None:
         rows = self._rows("SELECT doc_id, kind, sha256, url FROM documents WHERE doc_id = %s", (doc_id,))
@@ -73,7 +72,7 @@ class PgStore:
             "COALESCE(updated_at, indexed_at)::text AS indexed_at FROM documents WHERE doc_id = %s", (doc_id,))
         if not rows:
             return None
-        return rows[0] | {"has_file": raw_pdf(doc_id, rows[0].get("sha256")) is not None}
+        return rows[0] | {"has_file": raw_pdf(rows[0].get("sha256")) is not None}
 
     def doc_lines(self, doc_id: str) -> list[dict]:
         """Every line of a document in reading order, with its chunk's boxes (a line without its own boxes is
@@ -89,14 +88,14 @@ class PgStore:
         return self._rows(
             "SELECT DISTINCT ON (l.chunk_id) l.chunk_id, l.line_id FROM lines l "
             "WHERE l.text ILIKE ANY(%s) AND NOT (l.doc_id = ANY(%s)) ORDER BY l.chunk_id, l.idx LIMIT %s",
-            ([f"%{like_escape(p)}%" for p in patterns], exclude_doc_ids, limit),
+            ([ilike_contains(p) for p in patterns], exclude_doc_ids, limit),
         )
 
     def grep_lines(self, keywords: list[str], limit: int = 200) -> list[dict]:
         """Lines containing any of the keywords verbatim (act numbers, names): {chunk_id, line_id, text}."""
         return self._rows(
             "SELECT chunk_id, line_id, text FROM lines WHERE text ILIKE ANY(%s) LIMIT %s",
-            ([f"%{like_escape(k)}%" for k in keywords], limit),
+            ([ilike_contains(k) for k in keywords], limit),
         )
 
     def dated_lines(self, doc_ids: list[str]) -> dict[str, list[str]]:
@@ -110,9 +109,7 @@ class PgStore:
     def contacts_near(self, question: str, limit: int = 8) -> tuple[list[dict], dict | None]:
         """Contact cards nearest to the question (cosine similarity of bge-m3 embeddings), and the City Hall's
         general card; each card with the texts of its lines. ([], None) before `python -m spott.ingest.contacts` has run."""
-        from spott.core.embeddings import get_device, get_embedding_model
-
-        vec = get_embedding_model(get_device()).encode([question], normalize_embeddings=True)[0]
+        vec = embed_texts([question])[0]
         columns = "contact_id, name, area, phone, email, address, hours, url, site, line_ids, is_general"
         try:
             near = self._rows(f"SELECT {columns}, 1 - (embedding <=> %s) AS similarity FROM contacts "

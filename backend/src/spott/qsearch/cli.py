@@ -172,7 +172,7 @@ def fetch_context(pool: Any, chunk_id: str, idx: int) -> list[dict[str, Any]]:
     """Line before and after the matched one, from the same chunk."""
     from psycopg.rows import dict_row
 
-    from .pipeline import acquire_conn
+    from spott.core.retrieval import acquire_conn
 
     with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
@@ -225,7 +225,7 @@ class Session:
         self.results: list[dict[str, Any]] = []
 
     def search(self, query: str) -> None:
-        from .pipeline import retrieve
+        from spott.core.retrieval import retrieve
 
         t0 = time.perf_counter()
         res = retrieve(self.pool, query, lang=self.lang, k=self.k)
@@ -368,7 +368,7 @@ def print_report() -> None:
 
 
 def one_shot(pool: Any, query: str, *, lang: str | None, k: int, as_json: bool) -> None:
-    from .pipeline import retrieve
+    from spott.core.retrieval import retrieve
 
     res = retrieve(pool, query, lang=lang, k=k)
     if as_json:
@@ -413,8 +413,8 @@ def main(argv: list[str] | None = None) -> None:
         print_report()
         return
 
-    from .db import get_pool
-    from .embeddings import get_device, get_embedding_model
+    from spott.core.db import get_pool
+    from spott.core.embeddings import get_device, get_embedding_model
 
     lang = None if args.lang == "all" else args.lang
     try:

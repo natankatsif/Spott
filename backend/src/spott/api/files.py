@@ -6,14 +6,12 @@ from pathlib import Path
 
 from spott.core.paths import DATA_DIR
 
-SHA_DOC_ID = re.compile(r"^file:([0-9a-f]{64})$")  # doc_id format before documents were keyed by URL
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-def raw_pdf(doc_id: str, sha256: str | None) -> Path | None:
-    """The stored PDF of a document, or None (web page, other format, or not on this machine)."""
-    sha = sha256 or (m.group(1) if (m := SHA_DOC_ID.match(doc_id)) else None)
-    if not sha or not SHA.match(sha):
+def raw_pdf(sha256: str | None) -> Path | None:
+    """The stored PDF with this content, or None (web page, other format, or not on this machine)."""
+    if not sha256 or not SHA.match(sha256):
         return None
-    path = DATA_DIR / "raw" / sha[:2] / f"{sha}.pdf"
+    path = DATA_DIR / "raw" / sha256[:2] / f"{sha256}.pdf"
     return path if path.is_file() else None

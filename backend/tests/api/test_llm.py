@@ -5,9 +5,10 @@ import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.api.fakes import SCHEMA, CompatServer
+from tests.api.fakes import SCHEMA, CompatServer, MemorySettings
 
 from spott.api import llm, llm_settings, main
+from spott.api.admin import model_settings
 from spott.api.llm import AnthropicLLM, LLMConfig, LLMUnavailable, OpenAILLM, RoutedLLM
 
 
@@ -161,18 +162,17 @@ def test_roles_route_to_their_providers(clean_env):
                        roles={"answer": {"provider": "anthropic", "model": "claude-sonnet-5"},
                               "fast": {"provider": "openai", "model": "gpt-6-luna"}})
     routed = RoutedLLM(config)
-    client, model = routed.resolve(None)
-    assert isinstance(client, AnthropicLLM) and model == "claude-sonnet-5"
-    client, model = routed.resolve(llm.FAST)
-    assert isinstance(client, OpenAILLM) and model == "gpt-6-luna"
-    assert routed.resolve(llm.DEEP)[1] == "claude-sonnet-5"  # no deep model: the answer model
+    answer, fast = routed.resolve(None), routed.resolve(llm.FAST)
+    assert isinstance(answer.client, AnthropicLLM) and answer.model == "claude-sonnet-5"
+    assert isinstance(fast.client, OpenAILLM) and fast.model == "gpt-6-luna"
+    assert routed.resolve(llm.DEEP).model == "claude-sonnet-5"  # no deep model: the answer model
 
 
 def test_fast_role_without_key_uses_the_answer_model(clean_env):
     config = LLMConfig(providers={"anthropic": {"api_key": "sk-ant"}},
                        roles={"answer": {"provider": "anthropic", "model": "claude-sonnet-5"},
                               "fast": {"provider": "openai", "model": "gpt-6-luna"}})
-    assert RoutedLLM(config).resolve(llm.FAST)[1] == "claude-sonnet-5"
+    assert RoutedLLM(config).resolve(llm.FAST).model == "claude-sonnet-5"
 
 
 def test_no_answer_key_is_unavailable(clean_env):
@@ -200,7 +200,7 @@ def api(clean_env):
     clean_env.setenv("ADMIN_PASSWORD", "secret-pass")
     clean_env.delenv("ADMIN_SECRET", raising=False)
     clean_env.setenv("OPENAI_API_KEY", "sk-env-123456789")
-    store = llm_settings.MemorySettings()
+    store = MemorySettings()
     main.app.state.llm_holder = llm_settings.LLMHolder(store)
     c = TestClient(main.app)
     AUTH["Authorization"] = "Bearer " + c.post("/api/admin/login", json={"login": "admin",
@@ -230,7 +230,7 @@ def test_save_keys_and_roles(api):
     assert view["roles"]["answer"] == {"provider": "anthropic", "model": "claude-sonnet-5", "source": "admin"}
     assert store.data["llm"]["providers"]["anthropic"]["api_key"] == "sk-ant-abcdefgh1234"
     routed = main.app.state.llm_holder.get()
-    assert isinstance(routed.resolve(None)[0], AnthropicLLM)
+    assert isinstance(routed.resolve(None).client, AnthropicLLM)
     # back to the environment's model
     view = c.put("/api/admin/llm", headers=AUTH, json={"roles": {"answer": None}}).json()
     assert view["roles"]["answer"]["source"] == "env" and view["roles"]["answer"]["provider"] == "openai"
@@ -264,7 +264,7 @@ def test_model_test_and_list(api, monkeypatch):
         seen.update(provider=provider, model=model, cfg=cfg)
         return llm.LLMResult(data={"reply": "ok"}, model=model, prompt_tokens=1, completion_tokens=1)
 
-    monkeypatch.setattr(llm_settings, "probe", fake_probe)
+    monkeypatch.setattr(model_settings, "probe", fake_probe)
     r = c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "openai", "model": "gpt-4o"}).json()
     assert r["ok"] and r["model"] == "gpt-4o" and seen["cfg"]["api_key"] == "sk-env-123456789"
     c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "gemini", "model": "g", "api_key": "typed"})
@@ -273,9 +273,9 @@ def test_model_test_and_list(api, monkeypatch):
     def failing_probe(provider, model, cfg):
         raise LLMUnavailable("no API key for Google (Gemini)")
 
-    monkeypatch.setattr(llm_settings, "probe", failing_probe)
+    monkeypatch.setattr(model_settings, "probe", failing_probe)
     r = c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "gemini", "model": "g"}).json()
     assert not r["ok"] and "Gemini" in r["error"]
 
-    monkeypatch.setattr(llm_settings, "list_models", lambda provider, cfg: ["a", "b"])
+    monkeypatch.setattr(model_settings, "list_models", lambda provider, cfg: ["a", "b"])
     assert c.post("/api/admin/llm/models", headers=AUTH, json={"provider": "openai"}).json() == {"models": ["a", "b"]}

@@ -106,15 +106,16 @@ Two independent projects that talk only over HTTP: the Python backend and the Ne
 
 | Directory | Stack | Purpose |
 |---|---|---|
-| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`), in three layers: |
-| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the database schema, embeddings, hybrid search, corpus tools, the `qsearch` console |
+| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`): a library, `core`, and three apps on it: |
+| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the library the rest builds on: the database schema, embeddings, the corpus search (`retrieve`), sources and crawl rules |
 | [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Docling | corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, the admin `worker`, `tools` (doctor, pipeline, index export/import) |
-| [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the question answering and admin API |
+| [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the API: `main` builds the app, `routes` are the public endpoints, `answering/` the answer pipeline, `admin/` the admin panel by section |
+| [`backend/src/spott/qsearch/`](backend/src/spott/qsearch) | rich | the `qsearch` console for testers: search, grep, toc, open |
 | [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | | eval sets, benchmarks and one-off scripts |
 | [`frontend/`](frontend) | Node, Next.js 16 | Chat UI, admin panel, site widget |
 | [`data/`](data) | | everything generated (crawl, files, dumps, logs; `SPOTT_DATA_DIR`), only `data/sources/sites.toml` is versioned |
 
-`api` and `ingest` both build on `core` and never import each other; CI checks it (`uv run lint-imports`, rules in `backend/pyproject.toml`). The API needs only the `api` extra, the pipeline the `ingest` extra (Docling, OCR); `uv sync --all-extras` installs both.
+`api`, `ingest` and `qsearch` build on `core` and never import each other; CI checks it, and the layers inside `api`, with `uv run lint-imports` (rules in `backend/pyproject.toml`). The API needs only the `api` extra, the pipeline the `ingest` extra (Docling, OCR); `uv sync --all-extras` installs both.
 
 ## Run the backend in Docker (one command)
 

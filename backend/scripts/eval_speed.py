@@ -25,7 +25,7 @@ from pathlib import Path
 
 import yaml
 
-from spott.core import get_pool
+from spott.core.db import get_pool
 from spott.core.paths import DATA_DIR, EVAL_DIR
 
 EVAL = EVAL_DIR
@@ -93,11 +93,13 @@ def main() -> None:
 
     # the spott installed in the environment this runs in: run it from an older checkout's backend/ for "before"
     answering = importlib.import_module("spott.api.answering")
+    # answering is a package since its split; an older checkout has one module
+    logged = importlib.import_module("spott.api.answering.pipeline") if hasattr(answering, "__path__") else answering
     llm_module = importlib.import_module("spott.api.llm")
     schemas = importlib.import_module("spott.api.schemas")
     store_module = importlib.import_module("spott.api.store")
     records: list[dict] = []
-    answering.log_query = records.append  # the per-question log record: tokens, calls, path
+    logged.log_query = records.append  # the per-question log record: tokens, calls, path
 
     pool = get_pool(min_size=1, max_size=10)
     store, llm = store_module.PgStore(pool), llm_module.OpenAILLM(model=args.model)

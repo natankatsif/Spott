@@ -21,8 +21,7 @@ import psycopg
 
 from spott.core.db import get_connection, init_app_db, init_db
 from spott.core.paths import BACKEND_DIR
-
-from .common import utf8_console
+from spott.ingest.common.console import utf8_console
 
 
 def wait_for_db(timeout: float = 120) -> None:

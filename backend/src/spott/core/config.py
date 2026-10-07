@@ -14,9 +14,3 @@ W_VECTOR: float = float(os.getenv("RRF_W_VECTOR", "1.0"))
 W_FTS: float = float(os.getenv("RRF_W_FTS", "0.1"))
 W_LINE: float = float(os.getenv("RRF_W_LINE", "1.0"))
 
-# Character limits of what the corpus tools return (qsearch)
-MAX_TOOL_SEARCH_CHARS: int = int(os.getenv("MAX_TOOL_SEARCH_CHARS", "12000"))
-MAX_TOOL_GREP_CHARS: int = int(os.getenv("MAX_TOOL_GREP_CHARS", "8000"))
-MAX_TOOL_TOC_CHARS: int = int(os.getenv("MAX_TOOL_TOC_CHARS", "10000"))
-MAX_TOOL_OPEN_CHARS: int = int(os.getenv("MAX_TOOL_OPEN_CHARS", "10000"))
-

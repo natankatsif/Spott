@@ -88,7 +88,7 @@ docker compose up -d
 uv run python -m spott.ingest.crawler --list                          # Список поддерживаемых сайтов
 uv run python -m spott.ingest.crawler --max-depth 2 --max-pages 200   # Обход сайтов: страницы и документы
 uv run python -m spott.ingest.crawler --resume                        # Докачка прерванного обхода
-uv run python -m spott.ingest.crawler --site chisinau_decizii         # Обход конкретного источника
+uv run python -m spott.ingest.crawler --sites dgaurf.md               # Обход конкретных сайтов
 
 # 2. Скачивание файлов (downloader)
 uv run python -m spott.ingest.downloader                              # Скачать новые документы в data/raw/
@@ -99,7 +99,7 @@ uv run python -m spott.ingest.downloader --limit 50                   # Скач
 uv run python -m spott.ingest.parsing                                 # Полный парсинг документов из data/raw/
 uv run python -m spott.ingest.parsing --rebuild                       # Быстрая пересборка JSON/MD из кэша без повторного OCR
 uv run python -m spott.ingest.parsing --limit 10                      # Ограничить N документами
-uv run python -m spott.ingest.parsing --file data/raw/sample.pdf      # Разобрать один файл
+uv run python -m spott.ingest.parsing --sha 5c0d7f                    # Разобрать файлы по началу sha256
 
 # 4. Парсинг HTML-страниц (pages_parsing)
 uv run python -m spott.ingest.pages_parsing                           # Парсинг сохранённых HTML в data/parsed/pages/
@@ -111,10 +111,9 @@ uv run python -m spott.ingest.indexing --recreate                     # Полн
 uv run python -m spott.ingest.indexing --batch-size 32                # Размер батча эмбеддингов
 uv run python -m spott.ingest.indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
 
-# 6. Проверка поиска (search)
-uv run python -m spott.core.search --query "bugetul municipal 2026"
-uv run python -m spott.core.search --query "компенсация за отопление" --lang ru --top-k 5
-uv run python -m spott.core.search --query "plan urbanistic" --doc-type decizie
+# 6. Проверка поиска (qsearch, тот же retrieve(), что у API)
+uv run qsearch "bugetul municipal 2026"
+uv run qsearch "компенсация за отопление" --json
 ```
 
 **Backend** (http://localhost:8000, документация OpenAPI/Swagger — `/docs`):
@@ -156,4 +155,4 @@ npm run dev
 
 - `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
 - `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
-Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts).
+Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api/types.ts`](../frontend/src/lib/api/types.ts).

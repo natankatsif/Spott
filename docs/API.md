@@ -11,7 +11,7 @@
 | `GET /health` | works |
 | `POST /api/ask` | works: fast path (one retrieval + answer); `mode=deep` also runs the fast path for now |
 | `POST /api/ask/stream` | works: real token streaming; each sentence is checked when the model closes it |
-| `POST /api/feedback` | works: 1–5 stars + reason tags, stored in Postgres `feedback` with the answer (without a DB: `data/feedback/<date>.jsonl`) |
+| `POST /api/feedback` | works: 1–5 stars + reason tags, stored in Postgres `feedback` with the answer |
 | `GET /api/suggestions` | works: quick questions from real questions, re-checked by their answers (seed list while the log is empty) |
 | `/api/admin/*` | works: login (credentials from env) → session token; sources (add by URL, one-call list), crawl jobs with progress (worker `python -m spott.ingest.worker`), questions without an answer (gaps), low ratings, quick questions |
 | `GET /api/preview/{doc_id}` | works: the cited page/PDF scrolled to the quote and highlighted, for an iframe (`citation.preview_url`) |

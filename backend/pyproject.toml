@@ -38,7 +38,7 @@ ingest = [
 ]
 
 [project.scripts]
-qsearch = "spott.core.cli:main"
+qsearch = "spott.qsearch.cli:main"
 
 [dependency-groups]
 dev = [
@@ -83,12 +83,37 @@ known-first-party = ["spott"]
 root_package = "spott"
 
 [[tool.importlinter.contracts]]
-name = "core depends on neither the API nor the ingest pipeline"
+name = "core depends on none of the apps built on it"
 type = "forbidden"
 source_modules = ["spott.core"]
-forbidden_modules = ["spott.api", "spott.ingest"]
+forbidden_modules = ["spott.api", "spott.ingest", "spott.qsearch"]
 
 [[tool.importlinter.contracts]]
-name = "the API and the ingest pipeline don't import each other"
+name = "the API, the ingest pipeline and qsearch don't import each other"
 type = "independence"
-modules = ["spott.api", "spott.ingest"]
+modules = ["spott.api", "spott.ingest", "spott.qsearch"]
+
+[[tool.importlinter.contracts]]
+name = "the API: the app on top, then its public routes and the admin panel (independent), then the answer pipeline"
+type = "layers"
+containers = ["spott.api"]
+layers = ["main", "routes | admin", "answering"]
+
+[[tool.importlinter.contracts]]
+name = "the answer pipeline: each module imports only the ones below it"
+type = "layers"
+containers = ["spott.api.answering"]
+layers = [
+    "pipeline",
+    "streaming",
+    "response",
+    "search | sources | contacts | routing | translation",
+    "corpus",
+    "chunks | claims | prompts | texts",
+]
+
+[[tool.importlinter.contracts]]
+name = "chunking: the chunker on top of the merges, both on the leaf modules"
+type = "layers"
+containers = ["spott.ingest.chunking"]
+layers = ["chunker", "merge", "labels | legal | limits | lines"]

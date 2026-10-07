@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS answers (
     missing JSONB,
     retrieved_sites JSONB,
     gap_hidden BOOLEAN NOT NULL DEFAULT FALSE,
-    topic TEXT,                      -- of an unanswered question, set once by a small model (spott/api/gaps.py)
+    topic TEXT,                      -- of an unanswered question, set once by a small model (spott/api/admin/gaps.py)
     gap_group TEXT,                  -- the group a wording group was sorted into
     gap_title JSONB,                 -- {"ro", "ru"} on a group's first answer
     recheck JSONB
@@ -306,14 +306,15 @@ CREATE TABLE IF NOT EXISTS suggestions (
     UNIQUE (lang, question)
 );
 
--- Admin settings (backend/src/spott/api/llm_settings.py: API keys and the model of each role), one JSON value per key.
+-- Admin settings (spott/api/admin/model_settings.py: API keys and the model of each role; spending.py: prices), one JSON
+-- value per key.
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Admin → Spending (backend/src/spott/api/usage.py): one row per model call, its tokens; money comes from the admin's prices.
+-- Admin → Spending (spott/api/usage.py): one row per model call, its tokens; money comes from the admin's prices.
 CREATE TABLE IF NOT EXISTS llm_usage (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

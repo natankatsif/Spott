@@ -30,14 +30,17 @@ import psycopg
 from psycopg_pool import ConnectionPool
 from selectolax.parser import HTMLParser
 
-from .files import DATA_DIR
+from spott.core.links import make_deep_link
+from spott.core.paths import DATA_DIR
+from spott.core.sources import USER_AGENT
+
 from .pdf_source import is_pdf_url
+from .schemas import BBox
 
 log = logging.getLogger("backend.preview")
 
 STATIC = Path(__file__).resolve().parent / "static"
 STATIC_PREFIX = "/api/preview-static"
-CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
 LIVE_TIMEOUT_S = 5.0
 LIVE_CACHE_S = 3600
 MAX_LINES = 5
@@ -121,6 +124,27 @@ def preview_url(doc_id: str, line_ids: list[str], lang: str) -> str:
     return f"/api/preview/{url_quote(doc_id, safe='')}?lang={lang}{lines}"
 
 
+def to_top_left(boxes: list[dict], page_sizes: list[dict]) -> list[BBox]:
+    """Docling boxes (origin bottom-left) → contract boxes (origin top-left, with the page size)."""
+    sizes = {p.get("n"): p for p in page_sizes or []}
+    out = []
+    for b in boxes or []:
+        size = sizes.get(b.get("page"))
+        if not size:
+            continue
+        height = size["height"]
+        top, bottom = (height - b["t"], height - b["b"]) if b.get("origin", "BOTTOMLEFT") == "BOTTOMLEFT" \
+            else (b["t"], b["b"])
+        out.append(BBox(page=b["page"], l=round(b["l"], 1), t=round(min(top, bottom), 1), r=round(b["r"], 1),
+                        b=round(max(top, bottom), 1), page_width=size["width"], page_height=height))
+    return out
+
+
+def file_url(doc_id: str) -> str:
+    """The PDF of a document for the viewer: /api/documents/{doc_id}/file."""
+    return f"/api/documents/{url_quote(doc_id, safe='')}/file"
+
+
 def preview_kind(doc_kind: str, url: str, has_file: bool = False) -> str:
     if doc_kind != "file":
         return "page"
@@ -136,8 +160,6 @@ def fmt_date(value: str | None) -> str:
 
 def preview_line(row: dict, page_sizes: list[dict]) -> dict:
     """A line of PgStore.doc_lines as the views take it: its page and boxes in top-left PDF points."""
-    from .answering import to_top_left  # answering imports this module
-
     boxes = row.get("bboxes") or [b for b in row.get("chunk_bboxes") or [] if b.get("page") == row.get("page")]
     return {"line_id": row["line_id"], "text": row["text"], "page": row.get("page") or (row.get("pages") or [None])[0],
             "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
@@ -181,7 +203,7 @@ class PageSource:
         if self.client is None:
             return None
         try:
-            resp = await self.client.get(url, timeout=LIVE_TIMEOUT_S, headers={"User-Agent": CRAWLER_AGENT})
+            resp = await self.client.get(url, timeout=LIVE_TIMEOUT_S, headers={"User-Agent": USER_AGENT})
         except httpx.HTTPError as e:
             log.info("live fetch of %s failed: %s", url, e)
             return None
@@ -388,9 +410,24 @@ def headers(view: View, frame_ancestors: list[str]) -> dict[str, str]:
             "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
 
 
-def deep_link_for(doc: dict, lines: list[dict], selected: list[str], kind: str) -> str:
-    from spott.core.links import make_deep_link
+async def source_view(doc: dict, rows: list[dict], line_ids: list[str] | None, lang: str, embed: bool,
+                      allowed: list[str], pages: PageSource) -> View:
+    """The cited source for the chat's iframe: the page (our sanitized copy) or the PDF (pdf.js), scrolled to the
+    quoted lines and highlighted; DOCX and pages we can't show as our text view. rows: PgStore.doc_lines."""
+    lines = [preview_line(r, doc.get("page_sizes") or []) for r in rows]
+    known = {ln["line_id"] for ln in lines}
+    selected = [lid for lid in dict.fromkeys(line_ids or []) if lid in known][:MAX_LINES]
+    kind = preview_kind(doc["kind"], doc["url"], doc["has_file"])
+    deep = deep_link_for(doc, lines, selected, kind)
+    common = {"doc": doc, "lines": lines, "selected": selected, "lang": lang, "embed": embed, "allowed": allowed}
+    if kind == "pdf":
+        return pdf_view(**common, file_url=file_url(doc["doc_id"]), deep_link=deep)
+    if kind == "page" and (got := await pages.get(doc["url"])):
+        return page_view(**common, page_html=got[0], how=got[1], date=got[2], deep_link=deep)
+    return text_view(**common, deep_link=deep, unavailable=kind == "page")
 
+
+def deep_link_for(doc: dict, lines: list[dict], selected: list[str], kind: str) -> str:
     first = next((ln for ln in lines if ln["line_id"] in set(selected)), None)
     if not first:
         return doc["url"]

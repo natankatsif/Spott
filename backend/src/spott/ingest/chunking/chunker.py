@@ -8,15 +8,15 @@ and length constraints.
 import hashlib
 import re
 
+from spott.ingest.common.normalize import normalize_lang
 from spott.ingest.common.text import check_contacts, format_table_markdown
 from spott.ingest.common.urls import url_key
-from spott.ingest.parsing.normalize import normalize_lang
 
+from .labels import chunk_id, make_citation_label
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
-
-MAX_MERGE_CHARS = 1500
-MAX_BLOCK_CHARS = 2500
-OVERLAP_CHARS = 200
+from .limits import MAX_BLOCK_CHARS, MAX_MERGE_CHARS, OVERLAP_CHARS
+from .lines import extract_chunk_lines
+from .merge import postprocess_chunks
 
 
 def split_long_text(text: str, target_size: int = 1500, max_size: int = 2500, overlap: int = 200) -> list[str]:
@@ -103,174 +103,6 @@ def chunk_table_block(table_block: dict, target_size: int = 1500) -> list[str]:
     return chunks or [full_text]
 
 
-def make_citation_label(meta: dict, kind: str, legal_path: list[str], section: list[str]) -> str:
-    """Builds human-readable citation label according to the specification."""
-    title = meta.get("title") or ""
-    if kind == "page":
-        if section:
-            return f"{title} › {' › '.join(section)}"
-        return title
-
-    # For files: "Decizia nr. 12/3 din 2023-03-14 › Anexa nr. 1 › pct. 12"
-    doc_type = meta.get("doc_type")
-    number = meta.get("number")
-    date = meta.get("date")
-
-    if doc_type and (number or date):
-        t = doc_type.capitalize()
-        if number:
-            t += f" nr. {number}"
-        if date:
-            t += f" din {date}"
-        base_label = t
-    elif title:
-        base_label = title[:80]
-    else:
-        base_label = "Document"
-
-    parts = [base_label]
-    if legal_path:
-        parts.extend(legal_path)
-    elif section:
-        parts.extend(section)
-
-    return " › ".join(parts)
-
-
-def extract_chunk_lines(chunk: dict, blocks: list[dict] | None = None) -> list[dict]:
-    """Extracts search & citation lines from a chunk.
-
-    Rules:
-    - Split by newline
-    - Line > 400 chars: split by sentences
-    - Line < 25 chars: merge with next line
-    - Table: row by row with column headers in embed_text
-    - Text of lines is verbatim (preserves all tokens)
-    - Returns list of line dicts with idx, line_id, text, embed_text, etc.
-    """
-    text = chunk.get("text", "").strip()
-    if not text:
-        return []
-
-    chunk_id = chunk.get("chunk_id", "")
-    doc_id = chunk.get("doc_id", "")
-    title = chunk.get("title") or ""
-    citation_label = chunk.get("citation_label") or ""
-    prefix = f"{title} › {citation_label}".strip(" ›").strip()
-
-    is_table = chunk.get("is_table", False)
-    raw_blocks = blocks if blocks is not None else chunk.get("blocks", [])
-    pages = chunk.get("pages", [])
-    default_page = pages[0] if (pages and isinstance(pages, list)) else None
-    default_bboxes = chunk.get("bboxes", [])
-    lang = chunk.get("lang")
-
-    lines_data: list[tuple[str, str, int | None, list]] = []
-
-    if is_table:
-        raw_rows = [r.strip() for r in text.split("\n") if r.strip()]
-        header_cols: list[str] = []
-        data_rows: list[str] = []
-        for r in raw_rows:
-            if re.match(r"^\|[\s\-:|]+\|$", r):
-                continue
-            if not header_cols and r.startswith("|"):
-                header_cols = [c.strip() for c in r.split("|")[1:-1]]
-            else:
-                data_rows.append(r)
-
-        if not data_rows:
-            data_rows = raw_rows
-
-        for r in data_rows:
-            row_cols = [c.strip() for c in r.split("|")[1:-1]] if r.startswith("|") else []
-            if header_cols and row_cols and len(header_cols) == len(row_cols):
-                desc_parts = [f"{h}: {c}" for h, c in zip(header_cols, row_cols, strict=False) if c]
-                row_desc = " | ".join(desc_parts) if desc_parts else r
-            else:
-                row_desc = r
-            embed_text = f"{prefix}\n{row_desc}" if prefix else row_desc
-            lines_data.append((r, embed_text, default_page, default_bboxes))
-    else:
-        raw_lines = [l.strip() for l in text.split("\n") if l.strip()]
-        sentences: list[str] = []
-        for l in raw_lines:
-            if len(l) > 400:
-                parts = re.split(r"(?<=[.!?])\s+", l)
-                for p in parts:
-                    p = p.strip()
-                    if not p:
-                        continue
-                    if len(p) > 400:
-                        words = p.split()
-                        cur_w: list[str] = []
-                        cur_l = 0
-                        for w in words:
-                            if cur_w and cur_l + len(w) + 1 > 350:
-                                sentences.append(" ".join(cur_w))
-                                cur_w = [w]
-                                cur_l = len(w)
-                            else:
-                                cur_w.append(w)
-                                cur_l += len(w) + 1
-                        if cur_w:
-                            sentences.append(" ".join(cur_w))
-                    else:
-                        sentences.append(p)
-            else:
-                sentences.append(l)
-
-        merged_lines: list[str] = []
-        buf = ""
-        for s in sentences:
-            if buf:
-                buf = f"{buf} {s}"
-                if len(buf) >= 25:
-                    merged_lines.append(buf)
-                    buf = ""
-            elif len(s) < 25:
-                buf = s
-            else:
-                merged_lines.append(s)
-        if buf:
-            if merged_lines:
-                merged_lines[-1] = f"{merged_lines[-1]} {buf}"
-            else:
-                merged_lines.append(buf)
-
-        for line_str in merged_lines:
-            m_page = default_page
-            m_bboxes = default_bboxes
-            for b in raw_blocks:
-                b_txt = b.get("text", "")
-                if line_str in b_txt or (b_txt and b_txt in line_str):
-                    m_page = b.get("page", default_page)
-                    m_bboxes = b.get("bboxes", default_bboxes)
-                    break
-
-            embed_text = f"{prefix}\n{line_str}" if prefix else line_str
-            lines_data.append((line_str, embed_text, m_page, m_bboxes))
-
-    result = []
-    for idx, (l_text, l_embed, pg, bbox) in enumerate(lines_data):
-        line_id = hashlib.sha1(f"{chunk_id}:{idx}".encode()).hexdigest()
-        c_hash = hashlib.sha1(l_text.encode("utf-8")).hexdigest()
-        result.append({
-            "line_id": line_id,
-            "chunk_id": chunk_id,
-            "doc_id": doc_id,
-            "idx": idx,
-            "text": l_text,
-            "embed_text": l_embed,
-            "lang": lang,
-            "page": pg,
-            "bboxes": bbox or [],
-            "content_hash": c_hash,
-        })
-
-    return result
-
-
 def build_chunk(
     *,
     doc_id: str,
@@ -278,7 +110,6 @@ def build_chunk(
     text: str,
     blocks: list[dict],
     meta: dict,
-    parser_version: str,
     part_idx: int = 0,
     is_table: bool = False,
     override_legal_path: list[str] | None = None,
@@ -287,9 +118,7 @@ def build_chunk(
 ) -> dict:
     first_block_id = blocks[0]["id"] if blocks and "id" in blocks[0] else 0
     last_block_id = blocks[-1]["id"] if blocks and "id" in blocks[-1] else 0
-
-    chunk_id_raw = f"{doc_id}:{first_block_id}:{last_block_id}:{part_idx}:{parser_version}"
-    chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
+    new_id = chunk_id(doc_id, first_block_id, last_block_id, part_idx)
 
     if override_section is not None:
         section = override_section
@@ -333,7 +162,7 @@ def build_chunk(
     has_contacts = any(b.get("has_contacts", False) for b in blocks) or check_contacts(text)
 
     chunk_dict = {
-        "chunk_id": chunk_id,
+        "chunk_id": new_id,
         "doc_id": doc_id,
         "kind": kind,
         "text": text,
@@ -361,254 +190,6 @@ def build_chunk(
     }
     chunk_dict["lines"] = extract_chunk_lines(chunk_dict, blocks=blocks)
     return chunk_dict
-
-
-
-def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
-    """Merges two adjacent chunks from the same document and section."""
-    merged_text = (a["text"] + "\n\n" + b["text"]).strip()
-    block_ids = list(dict.fromkeys(a.get("block_ids", []) + b.get("block_ids", [])))
-    pages = sorted(set(a.get("pages", []) + b.get("pages", [])))
-    bboxes = a.get("bboxes", []) + b.get("bboxes", [])
-    has_contacts = a.get("has_contacts", False) or b.get("has_contacts", False)
-
-    first_block_id = block_ids[0] if block_ids else 0
-    last_block_id = block_ids[-1] if block_ids else 0
-    doc_id = a["doc_id"]
-    part_idx = 0
-    chunk_id_raw = f"{doc_id}:{first_block_id}:{last_block_id}:{part_idx}:{parser_version}"
-    chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
-
-    citation_label = a.get("citation_label") or b.get("citation_label") or ""
-    title = a.get("title") or b.get("title") or ""
-    embed_text = f"{title}\n{citation_label}\n{merged_text}"
-
-    merged = dict(a)
-    merged.update({
-        "chunk_id": chunk_id,
-        "text": merged_text,
-        "embed_text": embed_text,
-        "citation_label": citation_label,
-        "page_sizes": a.get("page_sizes", []),
-        "block_ids": block_ids,
-        "pages": pages,
-        "bboxes": bboxes,
-        "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
-        "has_contacts": has_contacts,
-    })
-    merged["lines"] = extract_chunk_lines(merged)
-    return merged
-
-
-SUB_ARTICLE_PAT = re.compile(
-    r"^(?:pct\.|п\.|alin\.|ч\.|lit\.|подп\.)(?:\s|$)",
-    re.IGNORECASE,
-)
-LEGAL_ITEM_PAT = re.compile(
-    r"^(.*?\b(?:pct\.|п\.|alin\.|ч\.|lit\.|подп\.)\s*)([\d]+(?:\.[\d]+)*|[a-zA-Zа-яА-Я])(\)?)",
-    re.IGNORECASE,
-)
-
-
-def make_range_label(first: str, last: str) -> str:
-    """Creates a range label from first and last legal item labels (e.g. 'pct. 2' and 'pct. 4' -> 'pct. 2–4')."""
-    m1 = LEGAL_ITEM_PAT.match(first)
-    m2 = LEGAL_ITEM_PAT.match(last)
-    if m1 and m2:
-        prefix1, val1, s1 = m1.group(1), m1.group(2), m1.group(3)
-        val2, s2 = m2.group(2), m2.group(3)
-        if s1 == ")" and s2 == ")":
-            return f"{prefix1}{val1})–{val2})"
-        return f"{prefix1}{val1}–{val2}{s2}"
-    return f"{first}–{last}"
-
-
-def are_compatible_legal_items(a_last: str, b_last: str) -> bool:
-    """Checks if two legal item identifiers belong to the same level/type (e.g. both are pct.)."""
-    if not (SUB_ARTICLE_PAT.match(a_last) and SUB_ARTICLE_PAT.match(b_last)):
-        return False
-    m1 = LEGAL_ITEM_PAT.match(a_last)
-    m2 = LEGAL_ITEM_PAT.match(b_last)
-    if not (m1 and m2):
-        return False
-    return m1.group(1).strip().lower() == m2.group(1).strip().lower()
-
-
-def merge_legal_group(group: list[dict], parser_version: str = "2") -> dict:
-    """Merges a sequence of short legal item chunks with the same parent."""
-    first = group[0]
-    last = group[-1]
-    merged_text = "\n".join(c["text"] for c in group)
-    parent = first.get("legal_path", [])[:-1]
-    first_last = first["legal_path"][-1]
-    final_last = last["legal_path"][-1]
-    range_last = make_range_label(first_last, final_last)
-    merged_legal_path = parent + [range_last]
-
-    meta = {
-        "title": first.get("title"),
-        "doc_type": first.get("doc_type"),
-        "number": first.get("number"),
-        "date": first.get("date"),
-        "site": first.get("site"),
-        "url": first.get("url"),
-        "found_on": first.get("found_on"),
-    }
-    kind = first.get("kind", "file")
-    section = first.get("section", [])
-    citation_label = make_citation_label(meta, kind, merged_legal_path, section)
-    title = meta.get("title") or ""
-    embed_text = f"{title}\n{citation_label}\n{merged_text}"
-
-    block_ids = list(dict.fromkeys(b_id for c in group for b_id in c.get("block_ids", [])))
-    pages = sorted(set(p for c in group for p in c.get("pages", [])))
-    bboxes = [b for c in group for b in c.get("bboxes", [])]
-
-    first_b_id = block_ids[0] if block_ids else 0
-    last_b_id = block_ids[-1] if block_ids else 0
-    doc_id = first["doc_id"]
-    chunk_id_raw = f"{doc_id}:{first_b_id}:{last_b_id}:0:{parser_version}"
-    chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
-
-    merged = dict(first)
-    merged.update({
-        "chunk_id": chunk_id,
-        "text": merged_text,
-        "embed_text": embed_text,
-        "citation_label": citation_label,
-        "legal_path": merged_legal_path,
-        "page_sizes": first.get("page_sizes", []),
-        "block_ids": block_ids,
-        "pages": pages,
-        "bboxes": bboxes,
-        "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
-        "has_contacts": any(c.get("has_contacts", False) for c in group) or check_contacts(merged_text),
-    })
-    merged["lines"] = extract_chunk_lines(merged)
-    return merged
-
-
-def merge_short_legal_items(chunks: list[dict], parser_version: str = "2") -> list[dict]:
-    """Merges consecutive short legal items (< 300 chars) with same parent in legal_path."""
-    if not chunks:
-        return []
-
-    result = []
-    i = 0
-    while i < len(chunks):
-        c = chunks[i]
-        c_lp = c.get("legal_path") or []
-        if (
-            not c.get("is_table")
-            and len(c.get("text", "")) < 300
-            and bool(c_lp)
-            and SUB_ARTICLE_PAT.match(c_lp[-1])
-        ):
-            group = [c]
-            cur_len = len(c.get("text", ""))
-            parent = c_lp[:-1]
-            last_elem = c_lp[-1]
-
-            j = i + 1
-            while j < len(chunks):
-                nxt = chunks[j]
-                nxt_lp = nxt.get("legal_path") or []
-                if (
-                    not nxt.get("is_table")
-                    and nxt.get("doc_id") == c.get("doc_id")
-                    and len(nxt.get("text", "")) < 300
-                    and bool(nxt_lp)
-                    and nxt_lp[:-1] == parent
-                    and are_compatible_legal_items(last_elem, nxt_lp[-1])
-                    and nxt.get("section") == c.get("section")
-                    and nxt.get("lang") == c.get("lang")
-                    and cur_len + 1 + len(nxt.get("text", "")) <= MAX_MERGE_CHARS
-                ):
-                    group.append(nxt)
-                    cur_len += 1 + len(nxt.get("text", ""))
-                    j += 1
-                else:
-                    break
-
-            if len(group) > 1:
-                result.append(merge_legal_group(group, parser_version))
-                i = j
-            else:
-                result.append(c)
-                i += 1
-        else:
-            result.append(c)
-            i += 1
-
-    return result
-
-
-def postprocess_chunks(chunks: list[dict], parser_version: str = "2") -> list[dict]:
-    """1. Merges adjacent short legal items (< 300 chars, same parent in legal_path).
-    2. Merges chunks < 150 chars with neighbors in same section/article.
-    3. Drops isolated tails < 30 chars.
-    """
-    if not chunks:
-        return []
-
-    # 1. Merge adjacent short legal items (< 300 chars, same parent in legal_path)
-    chunks = merge_short_legal_items(chunks, parser_version=parser_version)
-
-    # 1. Merge chunks < 150 chars with neighbor in same section / legal_path / lang
-    changed = True
-    while changed:
-        changed = False
-        i = 0
-        while i < len(chunks):
-            c = chunks[i]
-            if not c.get("is_table") and len(c.get("text", "")) < 150:
-                merged = False
-                # Try previous neighbor first
-                if i > 0:
-                    prev = chunks[i - 1]
-                    if (
-                        not prev.get("is_table")
-                        and prev.get("doc_id") == c.get("doc_id")
-                        and prev.get("section") == c.get("section")
-                        and prev.get("legal_path") == c.get("legal_path")
-                        and prev.get("lang") == c.get("lang")
-                        and len(prev.get("text", "")) + len(c.get("text", "")) + 2 <= MAX_MERGE_CHARS
-                    ):
-                        chunks[i - 1] = merge_two_chunks(prev, c, parser_version)
-                        chunks.pop(i)
-                        changed = True
-                        merged = True
-                # If not merged with previous, try next neighbor
-                if not merged and i + 1 < len(chunks):
-                    nxt = chunks[i + 1]
-                    if (
-                        not nxt.get("is_table")
-                        and nxt.get("doc_id") == c.get("doc_id")
-                        and nxt.get("section") == c.get("section")
-                        and nxt.get("legal_path") == c.get("legal_path")
-                        and nxt.get("lang") == c.get("lang")
-                        and len(nxt.get("text", "")) + len(c.get("text", "")) + 2 <= MAX_MERGE_CHARS
-                    ):
-                        chunks[i] = merge_two_chunks(c, nxt, parser_version)
-                        chunks.pop(i + 1)
-                        changed = True
-                        merged = True
-                if not merged:
-                    i += 1
-            else:
-                i += 1
-
-    # 2. Discard isolated tails < 30 chars
-    filtered = []
-    for c in chunks:
-        text = c.get("text", "").strip()
-        if len(text) < 30 and not c.get("is_table"):
-            continue
-        filtered.append(c)
-
-    return filtered
-
-
 
 
 HEADING_TYPES = ("heading", "title", "section_header")
@@ -647,7 +228,7 @@ def starts_new_group(group: list[dict], group_len: int, block: dict) -> bool:
             or tuple(prev.get("section", [])) != tuple(block.get("section", [])))
 
 
-def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
+def chunk_document(doc: dict) -> list[dict]:
     """Chunks either a parsed file document or a parsed page document."""
     kind = doc.get("kind", "file")
     raw_blocks = doc.get("blocks", [])
@@ -740,7 +321,6 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                     text=part,
                     blocks=cur_group,
                     meta=meta,
-                    parser_version=parser_version,
                     part_idx=p_idx,
                     is_table=False,
                     page_sizes=page_sizes,
@@ -752,7 +332,6 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                 text=combined_text,
                 blocks=cur_group,
                 meta=meta,
-                parser_version=parser_version,
                 part_idx=0,
                 is_table=False,
                 page_sizes=page_sizes,
@@ -780,7 +359,6 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
                     text=tbl_text,
                     blocks=[block],
                     meta=meta,
-                    parser_version=parser_version,
                     part_idx=p_idx,
                     is_table=True,
                     page_sizes=page_sizes,
@@ -794,5 +372,4 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
         cur_len += len(b_text) + 2
 
     flush_group()
-    return postprocess_chunks(chunks, parser_version=parser_version)
-
+    return postprocess_chunks(chunks)

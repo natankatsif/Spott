@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from spott.api.preview import PageSource
-from spott.api.stats import registry_counts
-from spott.core.db import init_registry_db
+from spott.api.stats import corpus_totals, registry_counts
+from spott.core.db import APP_SQL, init_registry_db
 
 
 class OnePool:
@@ -47,6 +47,21 @@ def test_registry_counts(db, tmp_path: Path):
                               "documents_downloaded": 2, "documents_replaced": 1, "documents_removed": 1,
                               "documents_pending": 1, "files_pending": 1, "pages_pending": 1, "crawl_left": 2}
     assert counts["b.md"] == {"pages": 1, "last_crawled": "2026-09-30T00:00:00+00:00"}
+
+
+def test_corpus_totals_count_the_site_sources_only(db):
+    db.execute(APP_SQL)
+    db.execute("INSERT INTO sources (kind, url, site_id) VALUES ('site', 'https://a.md/', 'a.md'), "
+               "('site', 'https://c.md/', 'c.md'), ('document', 'https://x.md/d.pdf', 'x.md')")
+    db.execute("CREATE TABLE documents (doc_id TEXT, kind TEXT, site TEXT); CREATE TABLE chunks (chunk_id TEXT, site TEXT); "
+               "CREATE TABLE lines (line_id TEXT)")
+    db.execute("INSERT INTO documents VALUES ('page:c.md/', 'page', 'c.md'), ('file:c.md/d.pdf', 'file', 'c.md')")
+    db.execute("INSERT INTO chunks VALUES ('k1', 'a.md'), ('k2', 'c.md'), ('k3', 'b.md')")
+    db.execute("INSERT INTO lines VALUES ('l1'), ('l2')")
+    # a.md from the registry; c.md, restored from a dump and unknown to the registry, from the index; b.md isn't a source
+    assert corpus_totals(OnePool(db)).model_dump() == {
+        "sites_total": 2, "sites_indexed": 2, "pages": 2 + 1, "documents_found": 4 + 1, "documents_downloaded": 2 + 1,
+        "chunks": 2, "lines": 2, "documents_replaced": 1, "documents_removed": 1}
 
 
 def test_registry_counts_before_the_registry_exists(pg, tmp_path: Path):

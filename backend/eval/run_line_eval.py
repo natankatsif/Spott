@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 from spott.core.db import get_connection
-from spott.core.pipeline import retrieve
+from spott.core.retrieval import retrieve
 
 
 def load_dataset(path: Path) -> list[dict[str, Any]]:

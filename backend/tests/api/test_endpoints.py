@@ -2,7 +2,6 @@
 masking of personal data, rate limit, feedback."""
 
 import asyncio
-import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,8 +14,7 @@ from spott.api.schemas import AnswerMeta, AskResponse
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    monkeypatch.setattr(main, "FEEDBACK_DIR", tmp_path / "feedback")
+def client():
     main.app.state.rate_limiter = RateLimiter(limit=2)
     main.app.state.pool = None
     main.app.state.store = None
@@ -129,11 +127,9 @@ def test_the_checks_before_an_answer_keep_their_order(ready):
     assert ask("") == 422
 
 
-def test_feedback_is_stored(client, tmp_path):
+def test_feedback_without_a_database_is_503(client):
     r = client.post("/api/feedback", json={"answer_id": "a1", "vote": "down", "comment": "sursa e veche"})
-    assert r.json() == {"ok": True}
-    [log] = (tmp_path / "feedback").glob("*.jsonl")
-    assert json.loads(log.read_text(encoding="utf-8"))["vote"] == "down"
+    assert (r.status_code, r.json()["error"]) == (503, "unavailable")
 
 
 def test_feedback_rejects_unknown_vote(client):

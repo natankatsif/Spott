@@ -24,6 +24,10 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
+from spott.core.embeddings import embed_texts
+
+from .languages import LANGUAGE_NAMES
+from .llm import FAST
 from .masking import mask
 from .schemas import AskRequest, AskResponse, Suggestion
 
@@ -31,7 +35,6 @@ log = logging.getLogger("backend.suggestions")
 
 LANGS = ("ro", "ru")  # the languages questions are answered in: a row (and a checked answer) per language
 TEXT_LANGS = ("ro", "ru", "en")  # the languages a pinned question is shown in on the home screen
-LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian", "en": "English"}
 TRANSLATE_PROMPT = """\
 Translate a resident's question to the Chișinău City Hall assistant from {src} to {dst}. Keep it a short, natural \
 question a resident would type, with the same meaning; keep names of institutions, acts and places (in Russian the \
@@ -89,7 +92,7 @@ def choose(rows: list[dict], embed: Callable[[list[str]], np.ndarray]) -> list[d
 class PgSuggestions:
     def __init__(self, pool: ConnectionPool, embed: Callable[[list[str]], np.ndarray] | None = None):
         self.pool = pool
-        self.embed = embed or default_embed
+        self.embed = embed or embed_texts
 
     def _rows(self, sql: str, params: tuple = ()) -> list[dict]:
         with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -235,20 +238,12 @@ class PgSuggestions:
         return AskResponse.model_validate(rows[0]["cached"])
 
 
-def default_embed(texts: list[str]) -> np.ndarray:
-    from spott.core.embeddings import get_device, get_embedding_model
-
-    return np.asarray(get_embedding_model(get_device()).encode(texts, normalize_embeddings=True))
-
-
 def llm_translate(llm) -> Translate:
     """A pinned question in the other language, by the small model; None when it can't be reached."""
-    from .llm import REWRITE_MODEL
-
     def translate(question: str, src: str, dst: str) -> str | None:
         try:
             r = llm().complete_json(TRANSLATE_PROMPT.format(src=LANGUAGE_NAMES[src], dst=LANGUAGE_NAMES[dst]),
-                                    question, "translate", TRANSLATE_SCHEMA, model=REWRITE_MODEL, effort="none",
+                                    question, "translate", TRANSLATE_SCHEMA, model=FAST, effort="none",
                                     max_tokens=200)
             return (r.data.get("text") or "").strip() or None
         except Exception as e:  # noqa: BLE001 - no translation: the question stays pinned in its own language

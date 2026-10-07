@@ -7,11 +7,12 @@ import numpy as np
 from fastapi.testclient import TestClient
 from tests.api.fakes import DECISION, LOGIN, FakeLLM, FakeStore, model
 
-from spott.api import answering, main
-from spott.api.gaps import gaps, group
+from spott.api import main
+from spott.api.admin.gaps import gaps, group
+from spott.api.answering import answer_question, pipeline
 from spott.api.masking import mask
-from spott.api.schemas import AskRequest, GapList
-from spott.core.pipeline import RetrievalResult
+from spott.api.schemas import AskRequest, AskResponse, GapList
+from spott.core.retrieval import RetrievalResult
 
 T0 = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 TOPICS = {"garaj": [1.0, 0.0, 0.0], "гараж": [0.96, 0.28, 0.0], "piscin": [0.0, 0.0, 1.0]}
@@ -70,13 +71,13 @@ def test_hidden_and_solved_groups_are_left_out():
 
 def test_recheck_is_exactly_one_model_call(monkeypatch, tmp_path):
     """The admin's re-check runs the pipeline without the routing and rewrite calls and the second pass."""
-    monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "QUERY_LOG_DIR", tmp_path)
     llm = FakeLLM(model(sentences=[{"refs": ["S1.L1"], "text": "Taxa e 200 lei."}]),
                   rewrite={"ro": "x", "ru": "x", "keywords": []})
     calls = []
     original = llm.complete_json
     llm.complete_json = lambda *a, **kw: calls.append(a[2]) or original(*a, **kw)
-    r = answering.answer_question(FakeStore(), llm, AskRequest(question="Сколько стоит разрешение?"),
+    r = answer_question(FakeStore(), llm, AskRequest(question="Сколько стоит разрешение?"),
                                   retrieve_fn=lambda *a, **kw: RetrievalResult(items=[DECISION]),
                                   freshness=False, rewrite=False, routing=False,
                                   translate=False)
@@ -109,7 +110,7 @@ def test_gap_endpoints(monkeypatch):
 
     def ask_once(req):
         asked.append(req.question)
-        return answering.AskResponse.model_validate_json(
+        return AskResponse.model_validate_json(
             (Path(__file__).resolve().parent / "fixtures" / "answered-ro.json").read_text(encoding="utf-8"))
 
     main.app.state.ask_once = ask_once
@@ -155,7 +156,7 @@ def test_wording_groups_the_model_put_together_are_one_group():
 
 
 def test_question_embeddings_are_kept_between_lists():
-    from spott.api.gaps import CachedEmbed
+    from spott.api.admin.gaps import CachedEmbed
 
     calls = []
 

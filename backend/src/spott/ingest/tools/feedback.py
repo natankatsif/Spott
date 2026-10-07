@@ -17,8 +17,7 @@ from psycopg.rows import dict_row
 
 from spott.core.db import get_connection, init_app_db
 from spott.core.paths import EVAL_DIR
-
-from .common import utf8_console
+from spott.ingest.common.console import utf8_console
 
 OUT = EVAL_DIR / "from_feedback.yaml"
 

@@ -24,6 +24,8 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 from spott.core.paths import BACKEND_DIR
+from spott.core.sources import is_document_link
+from spott.ingest.common.console import child_env
 from spott.ingest.common.progress import read_progress
 
 WEIGHTS = {"crawl": 20.0, "download": 20.0, "parse": 40.0, "index": 20.0}
@@ -95,9 +97,6 @@ class JobStore(Protocol):
     def site_stats(self, site_id: str) -> dict[str, int]: ...
 
 
-DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx")
-
-
 def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> list[Step]:
     """The stages of a job. A site source is crawled; a document source is registered and fetched as a document;
     `refresh` crawls the site again from its start pages (new pages and documents are found, changed pages
@@ -112,8 +111,7 @@ def plan(job: dict, source: dict | None, all_sites: list[str] | None = None) -> 
     refresh = job["kind"] in ("refresh", "check")  # a check of a document source is a refresh of it
     url = job.get("url")
     sites = [source["site_id"]] if source is not None else list(all_sites or [])
-    document = source is not None and (source["kind"] == "document" or
-                                       (url is not None and urlsplit(url).path.lower().endswith(DOCUMENT_EXTENSIONS)))
+    document = source is not None and (source["kind"] == "document" or (url is not None and is_document_link(url)))
     if document:
         crawl = ["-m", "spott.ingest.worker.register", "--url", url or source["url"], "--site", source["site_id"]]
     elif url:
@@ -180,8 +178,7 @@ class JobRunner:
                     status = "cancelled"
                     break
                 progress_file.unlink(missing_ok=True)
-                env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
-                       "PROGRESS_FILE": str(progress_file), "CANCEL_FILE": str(cancel_file)}
+                env = child_env(PROGRESS_FILE=str(progress_file), CANCEL_FILE=str(cancel_file))
                 step = Step(step.stage, [a.replace("{tmp}", tmp) for a in step.args], step.weight,
                             step.stop_if_nothing.replace("{tmp}", tmp) if step.stop_if_nothing else None)
                 code = self._run_step(job_id, step, env, tail, progress_file, cancel_file, finished_weight, started,

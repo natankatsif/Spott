@@ -20,7 +20,7 @@ from tests.api.fakes import CONTACTS, DECISION, DGMU, NEWER, FakeLLM, FakeStore,
 
 from spott.api.answering import answer_events, replay_events
 from spott.api.schemas import AskRequest, AskResponse
-from spott.core.pipeline import RetrievalResult
+from spott.core.retrieval import RetrievalResult
 
 GOLDEN = Path(__file__).parent / "golden"
 ANSWER_ID = re.compile(r"a_[0-9a-f]{16}")

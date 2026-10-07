@@ -1,6 +1,6 @@
-"""Hybrid search combining Vector (BAAI/bge-m3) + FTS (ro/ru unaccent) with RRF."""
+"""The index searches retrieve() runs (vector and full text, over chunks and over lines), the full-text query
+builder, weighted reciprocal rank fusion and the dedup of copies."""
 
-import argparse
 import hashlib
 import logging
 import re
@@ -9,9 +9,7 @@ import numpy as np
 import psycopg
 from psycopg.rows import dict_row
 
-from .config import RRF_K, TOP_CANDIDATES
-from .db import get_connection
-from .embeddings import get_device, get_embedding_model
+from .config import RRF_K
 
 log = logging.getLogger("retrieval.search")
 
@@ -30,6 +28,11 @@ STOP_WORDS = {
 def clean_tsquery_term(term: str) -> str:
     """Removes tsquery operators and special characters: & | ! ( ) : * ' \\ "."""
     return re.sub(r"[&|!()\\:*\'\"]", "", term).strip()
+
+
+def ilike_contains(text: str) -> str:
+    """An ILIKE pattern finding the text anywhere, its % _ and \\ taken literally (ESCAPE is \\, the default)."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
 def build_fts_query(query: str) -> str:
@@ -125,13 +128,6 @@ def weighted_rrf_fuse(
     for entry in fused.values():
         entry["score"] = entry["rrf_score"]
     return sorted(fused.values(), key=lambda e: e["rrf_score"], reverse=True)
-
-
-def rrf_fuse(*rankings: list[dict], k: int = RRF_K) -> list[dict]:
-    """Reciprocal Rank Fusion with equal weights."""
-    modes = ("vec_rank", "fts_rank", "line_rank")
-    weighted = [(r, 1.0, modes[i % len(modes)]) for i, r in enumerate(rankings)]
-    return weighted_rrf_fuse(weighted, k=k)
 
 
 def execute_vector_query(
@@ -296,87 +292,3 @@ def get_chunks_by_ids(conn: psycopg.Connection, chunk_ids: list[str]) -> dict[st
         r["lang"] = r["lang"] or ""
         by_id[r["chunk_id"]] = r
     return by_id
-
-
-class HybridSearcher:
-    """Vector, full-text and hybrid (RRF) search over the chunks table."""
-
-    def __init__(self, conn: psycopg.Connection | None = None):
-        self._conn = conn
-        self.device = get_device()
-
-    @property
-    def conn(self) -> psycopg.Connection:
-        if self._conn is None:
-            self._conn = get_connection(autocommit=True)
-        return self._conn
-
-    @property
-    def model(self):
-        return get_embedding_model(self.device)
-
-    def embed_query(self, query: str) -> np.ndarray:
-        return np.asarray(self.model.encode([query], normalize_embeddings=True)[0], dtype=np.float32)
-
-    def search_vector(self, query: str, k: int = 5, lang: str | None = None, limit: int | None = None) -> list[dict]:
-        """bge-m3 cosine similarity."""
-        q_vec = self.embed_query(query)
-        rows = execute_vector_query(self.conn, q_vec, lang=lang, limit=limit or (k * 4))
-        return deduplicate_results(rows, k=k)
-
-    def search_fts(self, query: str, k: int = 5, lang: str | None = None, limit: int | None = None) -> list[dict]:
-        """Full-text search with Romanian and Russian stemming (ro_unaccent | ru_unaccent)."""
-        fts_query = build_fts_query(query)
-        rows = execute_fts_query(self.conn, fts_query, lang=lang, limit=limit or (k * 4))
-        return deduplicate_results(rows, k=k)
-
-    def search_hybrid(
-        self,
-        query: str,
-        k: int = 5,
-        lang: str | None = None,
-        top_candidates: int = TOP_CANDIDATES,
-    ) -> list[dict]:
-        """Vector + full-text, fused with RRF."""
-        vec = self.search_vector(query, k=top_candidates, lang=lang, limit=top_candidates)
-        fts = self.search_fts(query, k=top_candidates, lang=lang, limit=top_candidates)
-        return deduplicate_results(rrf_fuse(vec, fts), k=k)
-
-    def search(self, query: str, k: int = 5, lang: str | None = None) -> list[dict]:
-        return self.search_hybrid(query, k=k, lang=lang)
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="python -m spott.core.search", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("query", help="search query in Romanian or Russian")
-    p.add_argument("-k", type=int, default=5, help="number of top results to return (default: 5)")
-    p.add_argument("--lang", choices=["ro", "ru", "en", "uk"], help="filter by language")
-    return p.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    searcher = HybridSearcher()
-
-    results = searcher.search(args.query, k=args.k, lang=args.lang)
-    if not results:
-        print(f"No results found for query: '{args.query}'")
-        return
-
-    print(f"\nSearch results for: \"{args.query}\"" + (f" [lang={args.lang}]" if args.lang else ""))
-    print("=" * 80)
-    for i, r in enumerate(results, 1):
-        vec_str = f"#{r['vec_rank']}" if r.get("vec_rank") else "-"
-        fts_str = f"#{r['fts_rank']}" if r.get("fts_rank") else "-"
-        print(f"[{i}] RRF: {r['rrf_score']:.4f} | Vec: {vec_str:>3} | FTS: {fts_str:>3} | Lang: {r['lang']}")
-        print(f"    Citation: {r['citation_label']}")
-        if r["url"]:
-            print(f"    URL:      {r['url']}")
-        text_preview = r["text"].replace("\n", " ").strip()[:200]
-        print(f"    Passage:  {text_preview}...")
-        print("-" * 80)
-
-
-if __name__ == "__main__":
-    main()

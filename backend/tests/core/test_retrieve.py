@@ -13,10 +13,10 @@ import numpy as np
 import pytest
 from psycopg_pool import ConnectionPool
 
-from spott.core import pipeline
-from spott.core.pipeline import retrieve
+from spott.core import embeddings, retrieval
+from spott.core.retrieval import retrieve
 from spott.core.search import build_fts_query
-from spott.core.tools import search_tool
+from spott.qsearch.tools import search_tool
 
 QUERY = "autorizație de construire"
 WEIGHTS = {"w_vector": 1.0, "w_fts": 0.1, "w_line": 1.0}  # given, so RRF_W_* in the environment can't move them
@@ -151,11 +151,10 @@ class Pool(ConnectionPool):
 def index(monkeypatch):
     found = Index()
     for function, name in QUERIES.items():
-        monkeypatch.setattr(pipeline, function, found.query(name))
-    monkeypatch.setattr(pipeline, "get_chunks_by_ids", found.chunks_by_ids)
-    monkeypatch.setattr(pipeline, "get_embedding_model", lambda device: found.model)
-    monkeypatch.setattr(pipeline, "get_device", lambda: "test-device")
-    monkeypatch.setattr(pipeline, "time", found.clock)
+        monkeypatch.setattr(retrieval, function, found.query(name))
+    monkeypatch.setattr(retrieval, "get_chunks_by_ids", found.chunks_by_ids)
+    monkeypatch.setattr(embeddings, "get_embedding_model", lambda: found.model)
+    monkeypatch.setattr(retrieval, "time", found.clock)
     return found
 
 
@@ -248,8 +247,8 @@ def test_the_query_and_the_filters_reach_every_query(index, db):
 def test_weights_default_to_the_config(index, db, monkeypatch):
     index.results["chunk_vector"] = [hit("c1", 0.9)]
     index.results["chunk_fts"] = [hit("c2", 0.5)]
-    monkeypatch.setattr(pipeline, "W_VECTOR", 0.5)
-    monkeypatch.setattr(pipeline, "W_FTS", 2.0)
+    monkeypatch.setattr(retrieval, "W_VECTOR", 0.5)
+    monkeypatch.setattr(retrieval, "W_FTS", 2.0)
 
     result = retrieve(db, QUERY)
 
