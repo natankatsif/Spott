@@ -26,6 +26,7 @@ from psycopg_pool import ConnectionPool
 
 from spott.core.embeddings import embed_texts
 
+from .languages import LANGUAGE_NAMES
 from .llm import FAST
 from .masking import mask
 from .schemas import AskRequest, AskResponse, Suggestion
@@ -34,7 +35,6 @@ log = logging.getLogger("backend.suggestions")
 
 LANGS = ("ro", "ru")  # the languages questions are answered in: a row (and a checked answer) per language
 TEXT_LANGS = ("ro", "ru", "en")  # the languages a pinned question is shown in on the home screen
-LANGUAGE_NAMES = {"ro": "Romanian", "ru": "Russian", "en": "English"}
 TRANSLATE_PROMPT = """\
 Translate a resident's question to the Chișinău City Hall assistant from {src} to {dst}. Keep it a short, natural \
 question a resident would type, with the same meaning; keep names of institutions, acts and places (in Russian the \

@@ -3,7 +3,7 @@ then its last hop (the one our proxy added), since the client writes the rest.""
 
 from types import SimpleNamespace
 
-from spott.api.answering import copied_from
+from spott.api.answering.claims import copied_from
 from spott.api.errors import RateLimiter, client_address
 
 

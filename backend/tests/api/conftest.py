@@ -3,13 +3,14 @@ over from another test. Here and not in tests/conftest.py, so that the core and 
 
 import pytest
 
-from spott.api import admin, answering, main
+from spott.api import admin, main
+from spott.api.answering import pipeline
 
 
 @pytest.fixture(autouse=True)
 def log_dirs(monkeypatch, tmp_path):
     """Every answer, greetings included, is appended to a log under data/."""
-    monkeypatch.setattr(answering, "QUERY_LOG_DIR", tmp_path / "query_logs")
+    monkeypatch.setattr(pipeline, "QUERY_LOG_DIR", tmp_path / "query_logs")
 
 
 @pytest.fixture(autouse=True)

@@ -7,8 +7,7 @@ from datetime import datetime
 
 import httpx
 
-from spott.api import answering
-from spott.api.llm import LLMResult
+from spott.api.llm import LLMResult, LLMUnavailable
 from spott.api.usage import TZ, Call, Group
 
 LOGIN = {"login": "admin", "password": "correct horse battery"}
@@ -118,15 +117,15 @@ class FakeLLM:
     def complete_json(self, system, user, schema_name, schema, **kw):
         if schema_name == "quotes":
             if getattr(self, "quotes", None) is None:
-                raise answering.LLMUnavailable("no quote translation in this test")
+                raise LLMUnavailable("no quote translation in this test")
             return LLMResult(data={"translations": self.quotes}, model="fake-mini", prompt_tokens=20, completion_tokens=5)
         if schema_name == "route":
             if self.route is None:
-                raise answering.LLMUnavailable("no routing in this test")
+                raise LLMUnavailable("no routing in this test")
             return LLMResult(data=self.route, model="fake-mini", prompt_tokens=20, completion_tokens=5)
         if schema_name == "rewrite":
             if self.rewrite is None:
-                raise answering.LLMUnavailable("no rewrite in this test")
+                raise LLMUnavailable("no rewrite in this test")
             return LLMResult(data=self.rewrite, model="fake-mini", prompt_tokens=50, completion_tokens=10)
         return LLMResult(data=self.next_output(user), model="fake", prompt_tokens=100, completion_tokens=20)
 

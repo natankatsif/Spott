@@ -13,7 +13,6 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated
-from urllib.parse import quote as url_quote
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -360,7 +359,7 @@ async def source_preview(doc_id: str, line: Annotated[list[str] | None, Query()]
     common = {"doc": doc, "lines": lines, "selected": selected, "lang": lang, "embed": bool(embed),
               "allowed": CORS_ORIGINS}
     if kind == "pdf":
-        view = preview.pdf_view(**common, file_url=f"/api/documents/{url_quote(doc_id, safe='')}/file", deep_link=deep)
+        view = preview.pdf_view(**common, file_url=preview.file_url(doc_id), deep_link=deep)
     elif kind == "page" and (got := await app.state.pages.get(doc["url"])):
         view = preview.page_view(**common, page_html=got[0], how=got[1], date=got[2], deep_link=deep)
     else:

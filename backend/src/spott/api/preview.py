@@ -30,10 +30,12 @@ import psycopg
 from psycopg_pool import ConnectionPool
 from selectolax.parser import HTMLParser
 
+from spott.core.links import make_deep_link
 from spott.core.paths import DATA_DIR
 from spott.core.sources import USER_AGENT
 
 from .pdf_source import is_pdf_url
+from .schemas import BBox
 
 log = logging.getLogger("backend.preview")
 
@@ -122,6 +124,27 @@ def preview_url(doc_id: str, line_ids: list[str], lang: str) -> str:
     return f"/api/preview/{url_quote(doc_id, safe='')}?lang={lang}{lines}"
 
 
+def to_top_left(boxes: list[dict], page_sizes: list[dict]) -> list[BBox]:
+    """Docling boxes (origin bottom-left) → contract boxes (origin top-left, with the page size)."""
+    sizes = {p.get("n"): p for p in page_sizes or []}
+    out = []
+    for b in boxes or []:
+        size = sizes.get(b.get("page"))
+        if not size:
+            continue
+        height = size["height"]
+        top, bottom = (height - b["t"], height - b["b"]) if b.get("origin", "BOTTOMLEFT") == "BOTTOMLEFT" \
+            else (b["t"], b["b"])
+        out.append(BBox(page=b["page"], l=round(b["l"], 1), t=round(min(top, bottom), 1), r=round(b["r"], 1),
+                        b=round(max(top, bottom), 1), page_width=size["width"], page_height=height))
+    return out
+
+
+def file_url(doc_id: str) -> str:
+    """The PDF of a document for the viewer: /api/documents/{doc_id}/file."""
+    return f"/api/documents/{url_quote(doc_id, safe='')}/file"
+
+
 def preview_kind(doc_kind: str, url: str, has_file: bool = False) -> str:
     if doc_kind != "file":
         return "page"
@@ -137,8 +160,6 @@ def fmt_date(value: str | None) -> str:
 
 def preview_line(row: dict, page_sizes: list[dict]) -> dict:
     """A line of PgStore.doc_lines as the views take it: its page and boxes in top-left PDF points."""
-    from .answering import to_top_left  # answering imports this module
-
     boxes = row.get("bboxes") or [b for b in row.get("chunk_bboxes") or [] if b.get("page") == row.get("page")]
     return {"line_id": row["line_id"], "text": row["text"], "page": row.get("page") or (row.get("pages") or [None])[0],
             "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
@@ -390,8 +411,6 @@ def headers(view: View, frame_ancestors: list[str]) -> dict[str, str]:
 
 
 def deep_link_for(doc: dict, lines: list[dict], selected: list[str], kind: str) -> str:
-    from spott.core.links import make_deep_link
-
     first = next((ln for ln in lines if ln["line_id"] in set(selected)), None)
     if not first:
         return doc["url"]
