@@ -1,15 +1,5 @@
-// The frontend's side of the API. The contract is backend/openapi.json (generated from the backend's models): these
-// types are checked against it in ./api-contract.ts, so the build fails if they drift. Human-readable spec: docs/API.md.
-
-import { isMock } from "./mode";
-import answeredRo from "./mocks/ask/answered-ro.json";
-import checklistRo from "./mocks/ask/checklist-ro.json";
-import conflictRo from "./mocks/ask/conflict-ro.json";
-import crosslingualRu from "./mocks/ask/crosslingual-ru.json";
-import notFoundRu from "./mocks/ask/not-found-ru.json";
-import partialRo from "./mocks/ask/partial-ro.json";
-import refusedRo from "./mocks/ask/refused-ro.json";
-import suggestionsMock from "./mocks/suggestions.json";
+// The API's contract as TypeScript types: the requests and responses of docs/API.md (backend/openapi.json). They are
+// checked against the generated ../api-schema.d.ts in ../api-contract.ts, so the build fails if they drift.
 
 export type Lang = "ro" | "ru" | "en"; // answers follow the question; the documents are RO/RU
 export type SearchLang = "ro" | "ru" | "en" | "uk";
@@ -405,15 +395,6 @@ export type ApiError = {
   retry_after_s: number | null;
 };
 
-export class ApiRequestError extends Error {
-  constructor(
-    public status: number,
-    public body: ApiError,
-  ) {
-    super(`${status} ${body.error}: ${body.message}`);
-  }
-}
-
 // ─────────────── corpus totals (the admin's sources page) ───────────────
 
 export type CorpusTotals = {
@@ -440,169 +421,6 @@ export type HealthResponse = {
 // ─────────────── POST /api/visits ───────────────
 
 export type VisitorCount = { visitors: number }; // unique browsers so far, this one included
-
-// ─────────────── client ───────────────
-
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-// Mock vs live backend is decided per call by isMock() (./mode.ts): runtime toggle, default NEXT_PUBLIC_API_MOCK.
-export { isMock } from "./mode";
-
-/** Throws ApiRequestError with the parsed ApiError body on any non-2xx. */
-export async function checked(res: Response): Promise<Response> {
-  if (res.ok) return res;
-  let body: ApiError = { error: "internal", message: res.statusText, retry_after_s: null };
-  try {
-    body = (await res.json()) as ApiError;
-  } catch {
-    /* non-JSON error (proxy, network) — keep the default */
-  }
-  throw new ApiRequestError(res.status, body);
-}
-
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return (await checked(res)).json() as Promise<T>;
-}
-
-async function get<T>(path: string): Promise<T> {
-  return (await checked(await fetch(`${API_URL}${path}`))).json() as Promise<T>;
-}
-
-export const MOCKS = {
-  answered: answeredRo,
-  crosslingual: crosslingualRu,
-  not_found: notFoundRu,
-  conflict: conflictRo,
-  checklist: checklistRo,
-  refused: refusedRo,
-  partial: partialRo,
-} as unknown as Record<string, AskResponse>;
-
-/** Picks a mock by keywords so every UI state can be reached from the chat box. */
-export function mockAnswer(question: string): AskResponse {
-  const q = question.toLowerCase();
-  const pick =
-    /крокод|crocodil|рецепт|pizza/.test(q) ? "not_found"
-    : /ignor|prompt|игнорир|забудь/.test(q) ? "refused"
-    : /conflict|contradic|противореч|конфликт/.test(q) ? "conflict"
-    : /formular|școal|scoal|школ|шаг|pas/.test(q) ? "checklist"
-    : /când|cand|termen|когда|срок/.test(q) ? "partial"
-    : /[а-яё]/.test(q) ? "crosslingual"
-    : "answered";
-  return { ...MOCKS[pick], id: `${MOCKS[pick].id}-${Date.now()}` };
-}
-
-export async function ask(req: AskRequest): Promise<AskResponse> {
-  if (isMock()) {
-    await new Promise((r) => setTimeout(r, 700));
-    return mockAnswer(req.question);
-  }
-  return post<AskResponse>("/api/ask", req);
-}
-
-const signalled = new Set<string>();
-/** A cited passage the preview no longer finds on the live page: the backend checks that site sooner. Once per
- * document per visit, and it never gets in the way (errors are ignored). */
-export function signalOutdated(docId: string): void {
-  if (isMock() || signalled.has(docId)) return;
-  signalled.add(docId);
-  void post<{ ok: boolean }>("/api/signals/outdated", { doc_id: docId }).catch(() => {});
-}
-
-export async function sendFeedback(req: FeedbackRequest): Promise<void> {
-  if (isMock()) return;
-  await post<{ ok: boolean }>("/api/feedback", req);
-}
-
-/** The source preview URL for an iframe / new tab: backend paths get API_URL, mock paths (/mocks/preview/…) stay. */
-export function resolvePreviewUrl(c: Pick<Citation, "preview_url">): string {
-  return c.preview_url.startsWith("/api/") ? `${API_URL}${c.preview_url}` : c.preview_url;
-}
-
-export async function health(): Promise<HealthResponse> {
-  return get<HealthResponse>("/health");
-}
-
-/** `en`: the Romanian questions with their English text (answers are RO/RU only). */
-export async function suggestions(lang: Lang | "en", limit = 6): Promise<SuggestionList> {
-  if (isMock()) return { items: (suggestionsMock as unknown as SuggestionList).items.filter((s) => s.lang === lang) };
-  return get<SuggestionList>(`/api/suggestions?lang=${lang}&limit=${limit}`);
-}
-
-/** Counts this browser once (its anonymous session id) and returns the number of unique visitors. */
-export async function visit(visitorId: string): Promise<VisitorCount> {
-  if (isMock()) return { visitors: 1284 };
-  return post<VisitorCount>("/api/visits", { visitor_id: visitorId });
-}
-
-// ─────────────── admin client ───────────────
-// const session = await adminLogin({ login, password }); keep session.token (e.g. sessionStorage);
-// every call below takes it. ApiRequestError with status 401 = session over, log in again.
-
-async function adminCall<T>(token: string, method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}/api/admin${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  return (await checked(res)).json() as Promise<T>;
-}
-
-export const adminLogin = (req: AdminLogin) => post<AdminSession>("/api/admin/login", req);
-export const adminMe = (token: string) => adminCall<{ login: string }>(token, "GET", "/me");
-
-export const adminSources = (token: string) => adminCall<SourceList>(token, "GET", "/sources");
-export const adminAddSource = (token: string, req: SourceCreate) => adminCall<SourceAdded>(token, "POST", "/sources", req);
-export const adminPatchSource = (
-  token: string,
-  id: number,
-  patch: { enabled?: boolean; auto_update?: boolean; max_depth?: number; max_pages?: number; category?: string },
-) => adminCall<SourceRow>(token, "PATCH", `/sources/${id}`, patch);
-export const adminDeleteSource = (token: string, id: number, purge = false) =>
-  adminCall<{ ok: boolean }>(token, "DELETE", `/sources/${id}${purge ? "?purge=true" : ""}`);
-
-export const adminStartJob = (token: string, sourceId: number, kind: "crawl" | "refresh") =>
-  adminCall<Job>(token, "POST", `/sources/${sourceId}/jobs`, { kind });
-export const adminJobs = (token: string, status?: JobStatus) =>
-  adminCall<{ jobs: Job[] }>(token, "GET", `/jobs${status ? `?status=${status}` : ""}`);
-/** Poll every 1–2 s while status is queued or running. */
-export const adminJob = (token: string, id: number) => adminCall<Job>(token, "GET", `/jobs/${id}`);
-export const adminCancelJob = (token: string, id: number) => adminCall<Job>(token, "POST", `/jobs/${id}/cancel`);
-/** The same work again as a new job (only a finished one). */
-export const adminRetryJob = (token: string, id: number) => adminCall<Job>(token, "POST", `/jobs/${id}/retry`);
-/** Removes a finished job from the history. */
-export const adminDeleteJob = (token: string, id: number) => adminCall<{ ok: boolean }>(token, "DELETE", `/jobs/${id}`);
-/** Removes every finished job; queued and running ones stay. */
-export const adminClearJobs = (token: string) => adminCall<{ deleted: number }>(token, "DELETE", "/jobs");
-
-export const adminFeedback = (token: string, maxRating = 2, limit = 50) =>
-  adminCall<{ items: FeedbackItem[] }>(token, "GET", `/feedback?max_rating=${maxRating}&limit=${limit}`);
-export const adminFeedbackStats = (token: string) => adminCall<FeedbackStats>(token, "GET", "/feedback/stats");
-
-export const adminPinSuggestion = (token: string, question: string, lang: Lang, pinned = true) =>
-  adminCall<Suggestion>(token, "POST", "/suggestions", { question, lang, pinned });
-export const adminSuggestions = (token: string) => adminCall<SuggestionList>(token, "GET", "/suggestions");
-export const adminHideSuggestion = (token: string, id: number) =>
-  adminCall<{ ok: boolean }>(token, "DELETE", `/suggestions/${id}`);
-
-export type GapQuery = { status?: ("not_found" | "partial")[]; lang?: Lang; days?: number; limit?: number; hidden?: boolean };
-export const adminGaps = (token: string, q: GapQuery = {}) => {
-  const p = new URLSearchParams();
-  if (q.status?.length) p.set("status", q.status.join(","));
-  if (q.lang) p.set("lang", q.lang);
-  if (q.days) p.set("days", String(q.days));
-  if (q.limit) p.set("limit", String(q.limit));
-  if (q.hidden) p.set("hidden", "1");
-  return adminCall<GapList>(token, "GET", `/gaps${p.size ? `?${p}` : ""}`);
-};
-/** One model call: only on a click, never automatically. */
-export const adminRecheckGap = (token: string, id: string) => adminCall<GapRecheck>(token, "POST", `/gaps/${encodeURIComponent(id)}/recheck`);
-export const adminHideGap = (token: string, id: string, hide = true) =>
-  adminCall<{ ok: boolean }>(token, "POST", `/gaps/${encodeURIComponent(id)}/${hide ? "hide" : "unhide"}`);
 
 // ─────────────── /api/admin/llm: API keys and the model of each role ───────────────
 
@@ -632,15 +450,6 @@ export type LLMSettingsUpdate = {
 };
 export type LLMCheck = { provider: LLMProvider; api_key?: string; base_url?: string };
 export type LLMModelTest = { ok: boolean; model: string | null; latency_ms: number; error: string | null };
-
-export const adminLLM = (token: string) => adminCall<LLMSettings>(token, "GET", "/llm");
-export const adminSaveLLM = (token: string, update: LLMSettingsUpdate) => adminCall<LLMSettings>(token, "PUT", "/llm", update);
-/** The provider's chat models; also checks the key (typed or saved). */
-export const adminLLMModels = (token: string, check: LLMCheck) =>
-  adminCall<{ models: string[] }>(token, "POST", "/llm/models", check);
-/** One tiny structured call to the model: key, name and JSON output. */
-export const adminTestLLM = (token: string, check: LLMCheck & { model: string }) =>
-  adminCall<LLMModelTest>(token, "POST", "/llm/test", check);
 
 // ─────────────── /api/admin/usage: tokens and money spent on models ───────────────
 
@@ -680,6 +489,3 @@ export type UsageReport = {
   kinds: UsageKind[];
   known_models: string[];
 };
-
-export const adminUsage = (token: string, days: number) => adminCall<UsageReport>(token, "GET", `/usage?days=${days}`);
-export const adminSavePricing = (token: string, pricing: Pricing) => adminCall<Pricing>(token, "PUT", "/usage/pricing", pricing);
