@@ -160,14 +160,12 @@ def extract_chunk_lines(chunk: dict, blocks: list[dict] | None = None) -> list[d
 
     is_table = chunk.get("is_table", False)
     raw_blocks = blocks if blocks is not None else chunk.get("blocks", [])
-    block_ids = chunk.get("block_ids", [])
-    default_block_id = str(block_ids[0]) if block_ids else None
     pages = chunk.get("pages", [])
     default_page = pages[0] if (pages and isinstance(pages, list)) else None
     default_bboxes = chunk.get("bboxes", [])
     lang = chunk.get("lang")
 
-    lines_data: list[tuple[str, str, str | None, int | None, list]] = []
+    lines_data: list[tuple[str, str, int | None, list]] = []
 
     if is_table:
         raw_rows = [r.strip() for r in text.split("\n") if r.strip()]
@@ -192,7 +190,7 @@ def extract_chunk_lines(chunk: dict, blocks: list[dict] | None = None) -> list[d
             else:
                 row_desc = r
             embed_text = f"{prefix}\n{row_desc}" if prefix else row_desc
-            lines_data.append((r, embed_text, default_block_id, default_page, default_bboxes))
+            lines_data.append((r, embed_text, default_page, default_bboxes))
     else:
         raw_lines = [l.strip() for l in text.split("\n") if l.strip()]
         sentences: list[str] = []
@@ -241,22 +239,20 @@ def extract_chunk_lines(chunk: dict, blocks: list[dict] | None = None) -> list[d
                 merged_lines.append(buf)
 
         for line_str in merged_lines:
-            m_block_id = default_block_id
             m_page = default_page
             m_bboxes = default_bboxes
             for b in raw_blocks:
                 b_txt = b.get("text", "")
                 if line_str in b_txt or (b_txt and b_txt in line_str):
-                    m_block_id = str(b.get("id")) if b.get("id") is not None else default_block_id
                     m_page = b.get("page", default_page)
                     m_bboxes = b.get("bboxes", default_bboxes)
                     break
 
             embed_text = f"{prefix}\n{line_str}" if prefix else line_str
-            lines_data.append((line_str, embed_text, m_block_id, m_page, m_bboxes))
+            lines_data.append((line_str, embed_text, m_page, m_bboxes))
 
     result = []
-    for idx, (l_text, l_embed, b_id, pg, bbox) in enumerate(lines_data):
+    for idx, (l_text, l_embed, pg, bbox) in enumerate(lines_data):
         line_id = hashlib.sha1(f"{chunk_id}:{idx}".encode()).hexdigest()
         c_hash = hashlib.sha1(l_text.encode("utf-8")).hexdigest()
         result.append({
@@ -267,7 +263,6 @@ def extract_chunk_lines(chunk: dict, blocks: list[dict] | None = None) -> list[d
             "text": l_text,
             "embed_text": l_embed,
             "lang": lang,
-            "block_id": b_id,
             "page": pg,
             "bboxes": bbox or [],
             "content_hash": c_hash,
@@ -292,7 +287,6 @@ def build_chunk(
 ) -> dict:
     first_block_id = blocks[0]["id"] if blocks and "id" in blocks[0] else 0
     last_block_id = blocks[-1]["id"] if blocks and "id" in blocks[-1] else 0
-    ord_val = int(first_block_id) if isinstance(first_block_id, int) or (isinstance(first_block_id, str) and first_block_id.isdigit()) else 0
 
     chunk_id_raw = f"{doc_id}:{first_block_id}:{last_block_id}:{part_idx}:{parser_version}"
     chunk_id = hashlib.sha1(chunk_id_raw.encode("utf-8")).hexdigest()
@@ -321,8 +315,6 @@ def build_chunk(
         else:
             legal_path = []
 
-    parent_legal_path = legal_path[:-1] if legal_path else []
-
     citation_label = make_citation_label(meta, kind, legal_path, section)
     title = meta.get("title") or ""
     embed_text = f"{title}\n{citation_label}\n{text}"
@@ -349,13 +341,11 @@ def build_chunk(
         "citation_label": citation_label,
         "section": section,
         "legal_path": legal_path,
-        "parent_legal_path": parent_legal_path,
         "page_sizes": page_sizes or [],
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
         "lang": lang,
-        "char_count": len(text),
         "content_hash": hashlib.sha1(text.encode("utf-8")).hexdigest(),
         "has_contacts": has_contacts,
         "is_table": is_table,
@@ -363,14 +353,10 @@ def build_chunk(
         "doc_type": meta.get("doc_type"),
         "number": meta.get("number"),
         "date": meta.get("date"),
-        "category": meta.get("category"),
         "site": meta.get("site"),
         "url": meta.get("url"),
         "found_on": meta.get("found_on"),
-        "ord": ord_val,
         "sha256": meta.get("sha256"),
-        "previous_sha256": meta.get("previous_sha256"),
-        "version": meta.get("version", 1),
         "updated_at": meta.get("updated_at"),
     }
     chunk_dict["lines"] = extract_chunk_lines(chunk_dict, blocks=blocks)
@@ -403,15 +389,12 @@ def merge_two_chunks(a: dict, b: dict, parser_version: str = "2") -> dict:
         "text": merged_text,
         "embed_text": embed_text,
         "citation_label": citation_label,
-        "parent_legal_path": a.get("parent_legal_path", []),
         "page_sizes": a.get("page_sizes", []),
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
-        "char_count": len(merged_text),
         "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
         "has_contacts": has_contacts,
-        "ord": a.get("ord", 0),
     })
     merged["lines"] = extract_chunk_lines(merged)
     return merged
@@ -467,7 +450,6 @@ def merge_legal_group(group: list[dict], parser_version: str = "2") -> dict:
         "doc_type": first.get("doc_type"),
         "number": first.get("number"),
         "date": first.get("date"),
-        "category": first.get("category"),
         "site": first.get("site"),
         "url": first.get("url"),
         "found_on": first.get("found_on"),
@@ -495,15 +477,12 @@ def merge_legal_group(group: list[dict], parser_version: str = "2") -> dict:
         "embed_text": embed_text,
         "citation_label": citation_label,
         "legal_path": merged_legal_path,
-        "parent_legal_path": parent,
         "page_sizes": first.get("page_sizes", []),
         "block_ids": block_ids,
         "pages": pages,
         "bboxes": bboxes,
-        "char_count": len(merged_text),
         "content_hash": hashlib.sha1(merged_text.encode("utf-8")).hexdigest(),
         "has_contacts": any(c.get("has_contacts", False) for c in group) or check_contacts(merged_text),
-        "ord": first.get("ord", 0),
     })
     merged["lines"] = extract_chunk_lines(merged)
     return merged
@@ -683,14 +662,10 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "doc_type": "page",
             "number": None,
             "date": doc.get("date"),
-            "category": doc.get("category") or "",
             "site": doc.get("site") or "",
             "url": doc.get("url") or "",
             "found_on": doc.get("url") or "",
             "lang": normalize_lang(doc.get("lang")),
-            "sha256": doc.get("html_hash") or doc.get("sha256"),
-            "previous_sha256": doc.get("previous_sha256"),
-            "version": doc.get("version", 1),
             "updated_at": doc.get("updated_at"),
         }
         allow_sub = is_act_or_has_major_legal(meta, raw_blocks)
@@ -718,14 +693,11 @@ def chunk_document(doc: dict, parser_version: str = "2") -> list[dict]:
             "doc_type": doc_meta.get("doc_type"),
             "number": doc_meta.get("number"),
             "date": doc_meta.get("date"),
-            "category": src0.get("category") or "",
             "site": src0.get("site") or "",
             "url": primary_url or (src0.get("url") or ""),
             "found_on": src0.get("found_on") or "",
             "lang": normalize_lang(doc_meta.get("lang")),
             "sha256": sha256,
-            "previous_sha256": doc.get("previous_sha256"),
-            "version": doc.get("version", 1),
             "updated_at": doc.get("updated_at"),
         }
 

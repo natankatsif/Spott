@@ -140,7 +140,7 @@ How the backend streams (task 10):
 ## `POST /api/feedback`
 ```json
 { "answer_id": "a_…", "rating": 2, "tags": ["outdated", "wrong_source"], "comment": "sursa e veche",
-  "citation_id": "c2", "session_id": "anon-7f3a" }
+  "session_id": "anon-7f3a" }
 ```
 → `{ "ok": true }`
 - `rating` 1–5 (or the older `vote`: `up` = 5, `down` = 1; one of them is required).

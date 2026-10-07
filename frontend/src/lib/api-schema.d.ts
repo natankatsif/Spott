@@ -893,8 +893,6 @@ export interface components {
             tags: ("wrong" | "outdated" | "incomplete" | "wrong_source" | "not_understood" | "helpful")[];
             /** Comment */
             comment: string | null;
-            /** Citation Id */
-            citation_id: string | null;
             /** Question */
             question: string | null;
             /** Lang */
@@ -932,8 +930,6 @@ export interface components {
             tags?: ("wrong" | "outdated" | "incomplete" | "wrong_source" | "not_understood" | "helpful")[];
             /** Comment */
             comment?: string | null;
-            /** Citation Id */
-            citation_id?: string | null;
             /** Session Id */
             session_id?: string | null;
         };

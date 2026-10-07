@@ -90,22 +90,14 @@ CREATE TABLE IF NOT EXISTS documents (
     doc_id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
     title TEXT,
-    doc_type TEXT,
-    number TEXT,
-    date TEXT,
-    category TEXT,
     site TEXT,
     url TEXT,
     found_on TEXT,
-    lang TEXT,
     page_sizes JSONB,
     sha256 TEXT,
-    previous_sha256 TEXT,
-    version INTEGER DEFAULT 1,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
 CREATE INDEX IF NOT EXISTS idx_documents_site ON documents(site);
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -113,28 +105,22 @@ CREATE TABLE IF NOT EXISTS chunks (
     doc_id TEXT NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     text TEXT NOT NULL,
-    embed_text TEXT NOT NULL,
     citation_label TEXT NOT NULL,
     section JSONB,
     legal_path JSONB,
-    parent_legal_path JSONB,
     block_ids JSONB,
     pages JSONB,
     bboxes JSONB,
     lang TEXT,
-    char_count INTEGER NOT NULL,
     content_hash TEXT NOT NULL,
     has_contacts BOOLEAN NOT NULL DEFAULT FALSE,
-    is_table BOOLEAN NOT NULL DEFAULT FALSE,
     title TEXT,
     doc_type TEXT,
     number TEXT,
     date TEXT,
-    category TEXT,
     site TEXT,
     url TEXT,
     found_on TEXT,
-    ord INTEGER DEFAULT 0,
     embedding vector(1024),
     tsv tsvector GENERATED ALWAYS AS (
         to_tsvector(
@@ -151,7 +137,6 @@ CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
 CREATE INDEX IF NOT EXISTS idx_chunks_site ON chunks(site);
 CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON chunks USING GIN(tsv);
-CREATE INDEX IF NOT EXISTS idx_chunks_doc_ord ON chunks(doc_id, ord);
 
 CREATE TABLE IF NOT EXISTS lines (
     line_id TEXT PRIMARY KEY,
@@ -161,7 +146,6 @@ CREATE TABLE IF NOT EXISTS lines (
     text TEXT NOT NULL,
     embed_text TEXT NOT NULL,
     lang TEXT,
-    block_id TEXT,
     page INTEGER,
     bboxes JSONB,
     content_hash TEXT NOT NULL,
@@ -198,8 +182,6 @@ CREATE TABLE IF NOT EXISTS contacts (
     hours TEXT,
     url TEXT NOT NULL,
     site TEXT NOT NULL,
-    category TEXT,
-    doc_id TEXT NOT NULL,
     line_ids JSONB NOT NULL,         -- every phone, e-mail and address is in one of these lines
     is_general BOOLEAN NOT NULL DEFAULT FALSE,  -- the City Hall's general contact
     embedding vector(1024)
@@ -293,7 +275,6 @@ CREATE TABLE IF NOT EXISTS feedback (
     rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     tags JSONB NOT NULL DEFAULT '[]',
     comment TEXT,
-    citation_id TEXT,
     question TEXT,
     lang TEXT,
     status TEXT,
@@ -361,18 +342,13 @@ CREATE TABLE IF NOT EXISTS registry_pages (
     url           TEXT PRIMARY KEY,          -- final URL after redirects
     site          TEXT NOT NULL,
     status        INTEGER,                   -- HTTP status; 410 = not reached by the last complete crawl
-    depth         INTEGER,
-    parent        TEXT,
-    anchor_text   TEXT,
+    depth         INTEGER,                   -- links from a start page (freshness checks depth <= 1)
     title         TEXT,
     lang          TEXT,
-    alternates    JSONB NOT NULL DEFAULT '{}',  -- {hreflang: url}
     html_file     TEXT,                      -- relative to data/crawl/<site>/
-    content_type  TEXT,
     error         TEXT,
     fetched_at    TIMESTAMPTZ NOT NULL,
     parse_status  TEXT NOT NULL DEFAULT 'pending',  -- pending | parsed | empty | failed
-    html_hash     TEXT,
     parsed_at     TIMESTAMPTZ,
     parse_error   TEXT
 );
@@ -381,12 +357,9 @@ CREATE TABLE IF NOT EXISTS registry_pages (
 CREATE TABLE IF NOT EXISTS registry_files (
     sha256          TEXT PRIMARY KEY,
     path            TEXT NOT NULL,           -- relative to data/
-    size            BIGINT NOT NULL,
-    content_type    TEXT,
     extension       TEXT,
     downloaded_at   TIMESTAMPTZ NOT NULL,
     parse_status    TEXT NOT NULL DEFAULT 'pending',  -- pending | parsing | parsed | failed | unsupported
-    parser_version  TEXT,
     parsed_at       TIMESTAMPTZ,
     parse_error     TEXT
 );
@@ -396,9 +369,7 @@ CREATE TABLE IF NOT EXISTS registry_documents (
     key             TEXT PRIMARY KEY,        -- url_key(): ignores scheme, www., trailing slash
     url             TEXT NOT NULL,
     site            TEXT NOT NULL,           -- site where first discovered
-    category        TEXT,
     extension       TEXT,
-    external        BOOLEAN NOT NULL DEFAULT FALSE,
     status          TEXT NOT NULL DEFAULT 'discovered',  -- discovered, downloaded, not_a_file, failed, removed, missing
     sha256          TEXT REFERENCES registry_files(sha256),  -- current content
     etag            TEXT,
@@ -408,8 +379,7 @@ CREATE TABLE IF NOT EXISTS registry_documents (
     discovered_at   TIMESTAMPTZ NOT NULL,
     checked_at      TIMESTAMPTZ,             -- last download attempt
     version         INTEGER NOT NULL DEFAULT 1,
-    previous_sha256 TEXT,
-    updated_at      TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ,             -- when the current content replaced the previous one
     consecutive_missing INTEGER NOT NULL DEFAULT 0,
     removed_at      TIMESTAMPTZ
 );
@@ -418,23 +388,10 @@ CREATE TABLE IF NOT EXISTS registry_documents (
 CREATE TABLE IF NOT EXISTS registry_document_sources (
     document_key   TEXT NOT NULL REFERENCES registry_documents(key),
     found_on       TEXT NOT NULL DEFAULT '', -- page URL; '' when unknown
-    found_on_title TEXT,
     anchor_text    TEXT,
-    site           TEXT NOT NULL,
     depth          INTEGER,
-    via            TEXT,                     -- a | iframe | embed | object | content-type | wp-media | freshness
-    published      TEXT,                     -- upload date from WordPress media, as the site gives it
     discovered_at  TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (document_key, found_on)
-);
-
--- History of the contents seen at each document URL.
-CREATE TABLE IF NOT EXISTS registry_document_versions (
-    document_key  TEXT NOT NULL REFERENCES registry_documents(key),
-    sha256        TEXT NOT NULL REFERENCES registry_files(sha256),
-    fetched_at    TIMESTAMPTZ NOT NULL,
-    version       INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (document_key, sha256)
 );
 
 -- Indexes only when missing: CREATE INDEX IF NOT EXISTS waits for a stage that is writing, and every stage runs this.

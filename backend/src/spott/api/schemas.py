@@ -176,7 +176,6 @@ class FeedbackRequest(Strict):
     vote: Literal["up", "down"] | None = None  # older clients: up = 5 stars, down = 1
     tags: list[FeedbackTag] = Field(default=[], max_length=6)
     comment: str | None = Field(default=None, max_length=2000)
-    citation_id: str | None = Field(default=None, max_length=50)
     session_id: str | None = Field(default=None, max_length=100)  # the same session rating again overwrites
 
     @model_validator(mode="after")
@@ -205,7 +204,6 @@ class FeedbackItem(Strict):
     rating: int
     tags: list[FeedbackTag]
     comment: str | None
-    citation_id: str | None
     question: str | None
     lang: Lang | None
     status: AskStatus | None

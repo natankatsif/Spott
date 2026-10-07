@@ -32,7 +32,7 @@ class SeedDb:
         elif "to_regclass" in sql:
             self._result = [("chunks",)] if self.indexed else [(None,)]
         else:  # indexed sites without a source
-            self._result = [(s, "other") for s in self.indexed if s not in self.sites]
+            self._result = [(s,) for s in self.indexed if s not in self.sites]
 
     def fetchone(self):
         return self._result[0]
@@ -52,7 +52,7 @@ def test_empty_database_gets_40_sources_and_a_restart_adds_none():
 def test_indexed_site_missing_from_sites_toml_gets_a_source():
     db = SeedDb(indexed_sites=["dgaurf.md", "new-site.md"])
     assert seed_sources(db, SITES_TOML) == 41
-    assert db.sites["new-site.md"][0] == "https://new-site.md/"
+    assert db.sites["new-site.md"][:3] == ("https://new-site.md/", "new-site.md", "other")
 
 
 def test_category_rules():

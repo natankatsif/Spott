@@ -58,14 +58,13 @@ class PgAnswers:
                 return False
             cur.execute(
                 """
-                INSERT INTO feedback (answer_id, session_id, rating, tags, comment, citation_id, question, lang,
-                                      status, doc_ids, path, answer)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO feedback (answer_id, session_id, rating, tags, comment, question, lang, status, doc_ids,
+                                      path, answer)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (answer_id, session_id) DO UPDATE SET
-                    rating = EXCLUDED.rating, tags = EXCLUDED.tags, comment = EXCLUDED.comment,
-                    citation_id = EXCLUDED.citation_id, updated_at = NOW()
+                    rating = EXCLUDED.rating, tags = EXCLUDED.tags, comment = EXCLUDED.comment, updated_at = NOW()
                 """,
                 (req.answer_id, req.session_id or "", req.stars, Jsonb(list(dict.fromkeys(req.tags))), req.comment,
-                 req.citation_id, answer["question"], answer["lang"], answer["status"], Jsonb(answer["doc_ids"]),
+                 answer["question"], answer["lang"], answer["status"], Jsonb(answer["doc_ids"]),
                  answer["path"], answer["answer"]))
         return True

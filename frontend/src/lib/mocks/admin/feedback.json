@@ -8,7 +8,6 @@
         "wrong_source"
       ],
       "comment": "Se citează decizia din 2020, dar elaboratorul e altul acum",
-      "citation_id": "c1",
       "question": "Cine elaborează Planul urbanistic general?",
       "lang": "ro",
       "status": "conflict",
@@ -27,7 +26,6 @@
         "incomplete"
       ],
       "comment": null,
-      "citation_id": null,
       "question": "Когда проходят публичные консультации по генплану?",
       "lang": "ru",
       "status": "partial",

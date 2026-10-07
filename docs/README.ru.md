@@ -46,7 +46,7 @@ API-сервер: `cd backend && uv run uvicorn spott.api.main:app --port 8000` 
 
 ### Offline Indexation Pipeline
 
-Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр (таблицы `registry_*` в Postgres) и локальные директории хранения, поэтому Postgres нужен с первого этапа.
+Пайплайн сбора, оцифровки и индексации данных состоит из 7 последовательных этапов. Все этапы координируются через реестр (таблицы `registry_*` в Postgres) и локальные директории хранения, поэтому Postgres нужен с первого этапа.
 
 #### Порядок выполнения и зависимости этапов:
 
@@ -56,11 +56,10 @@ graph TD
     A -->|URLs & metadata| B[2. downloader]
     A -->|HTML pages| D[4. pages_parsing]
     B -->|PDF/DOCX files| C[3. parsing]
-    C -->|parsed files JSON| E[5. chunking]
-    D -->|parsed pages JSON| E
-    F -->|pgvector DB| G[6. indexing]
-    E -->|JSONL chunks| G
-    G -->|indexed DB| H[7. search]
+    C -->|parsed files JSON| G[5. indexing]
+    D -->|parsed pages JSON| G
+    F -->|pgvector DB| G
+    G -->|indexed DB| H[6. search]
 ```
 
 #### Сводная таблица этапов:
@@ -72,9 +71,8 @@ graph TD
 | **2** | `downloader` | реестр (Postgres) | `data/raw/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
 | **3** | `parsing` | `data/raw/` | `data/parsed/<sha>.json` | ⚡ **Тяжёлый** (CPU/RAM/OCR) | Оцифровка через Docling: текстовый слой, OCR сканов, bboxes, таблицы |
 | **4** | `pages_parsing` | `data/crawled/pages/` | `data/parsed/pages/*.json` | 🟢 Лёгкий (~секунды) | Парсинг текстовых страниц сайтов, очистка навигации, извлечение контактов |
-| **5** | `chunking` | `data/parsed/` | `data/chunks/*.jsonl` | 🟢 Лёгкий (~1-2 сек) | Семантическая нарезка: привязка заголовков, `legal_path`, слияние <150 симв. |
-| **6** | `indexing` | `data/chunks/` или `data/parsed/` | Таблицы `documents`, `chunks` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Загрузка мультиязычной модели `bge-m3` (~2.3 GB), генерация векторов (1024 dim) и FTS-индекса |
-| **7** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
+| **5** | `indexing` | `data/parsed/` | Таблицы `documents`, `chunks`, `lines` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Нарезка в памяти (привязка заголовков, `legal_path`, слияние <150 симв., секунды на корпус), затем модель `bge-m3` (~2.3 GB): векторы (1024 dim) и FTS-индекс |
+| **6** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
 
 ---
 
@@ -107,20 +105,13 @@ uv run python -m spott.ingest.parsing --file data/raw/sample.pdf      # Разо
 uv run python -m spott.ingest.pages_parsing                           # Парсинг сохранённых HTML в data/parsed/pages/
 uv run python -m spott.ingest.pages_parsing --limit 100               # Ограничение по числу страниц
 
-# 5. Чанкинг корпуса (chunking) — БЫСТРАЯ ОПЕРАЦИЯ (~0.5 сек)
-uv run python -m spott.ingest.chunking                                # Нарезка всех документов и страниц в data/chunks/
-uv run python -m spott.ingest.chunking --files-only                   # Только файлы (PDF/DOCX)
-uv run python -m spott.ingest.chunking --pages-only                   # Только веб-страницы
-uv run python -m spott.ingest.chunking --limit 50                     # Лимит обработки
-
-# 6. Индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
-uv run python -m spott.ingest.indexing                                # Генерация эмбеддингов BGE-M3 и загрузка в pgvector
-uv run python -m spott.ingest.indexing --from-jsonl                   # Загрузить чанки из готовых data/chunks/*.jsonl
+# 5. Нарезка и индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
+uv run python -m spott.ingest.indexing                                # Нарезка, эмбеддинги BGE-M3 и загрузка в pgvector
 uv run python -m spott.ingest.indexing --recreate                     # Полный пересоздание схемы БД
 uv run python -m spott.ingest.indexing --batch-size 32                # Размер батча эмбеддингов
 uv run python -m spott.ingest.indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
 
-# 7. Проверка поиска (search)
+# 6. Проверка поиска (search)
 uv run python -m spott.core.search --query "bugetul municipal 2026"
 uv run python -m spott.core.search --query "компенсация за отопление" --lang ru --top-k 5
 uv run python -m spott.core.search --query "plan urbanistic" --doc-type decizie

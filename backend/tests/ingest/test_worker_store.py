@@ -28,11 +28,11 @@ def store(registry: Registry, tmp_path: Path) -> Store:
 
 def document(registry: Registry, site: str, name: str, sha: str | None = None, parsed: bool = False) -> None:
     key = f"{site}/{name}"
-    registry.add_document(key=key, url=f"https://{key}", site=site, category="c", extension=".pdf", external=False,
+    registry.add_document(key=key, url=f"https://{key}", site=site, extension=".pdf",
                           source={"found_on": f"https://{site}/"})
     if sha:
-        registry.record_download(key, sha256=sha, path=f"raw/{sha}.pdf", size=1, content_type="application/pdf",
-                                 extension=".pdf", http_status=200, etag=None, last_modified=None)
+        registry.record_download(key, sha256=sha, path=f"raw/{sha}.pdf", extension=".pdf", http_status=200,
+                                 etag=None, last_modified=None)
         if parsed:
             registry.mark_parsed(sha, "parsed")
 

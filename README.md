@@ -47,7 +47,7 @@ Mapped one-to-one to the challenge brief.
 
 - **Scanned acts become searchable and citable.** Most official acts on the sites, such as council decisions and mayor's dispositions, are published as scans with no text at all. The pipeline OCRs them and recovers their structure (points, tables), so they can be cited down to the point. A plain text extractor would find nothing in them. ✅
 - **Every quote is traceable.** Each passage carries its full provenance: the file, the page of the PDF, the point of the act, the website page where the document was published, and the link text used there. ✅
-- **Newer acts first.** The registry keeps every version of a document, and act numbers and dates are extracted. Alongside the question's own search, the assistant looks for later acts that mention the found acts by number and for newer acts on the same sites. The model sees the newest first, and a partial or conflicting answer gets a second pass over what turned up, so an outdated rule isn't presented as current. ✅
+- **Newer acts first.** The registry counts the versions of each document, and act numbers and dates are extracted. Alongside the question's own search, the assistant looks for later acts that mention the found acts by number and for newer acts on the same sites. The model sees the newest first, and a partial or conflicting answer gets a second pass over what turned up, so an outdated rule isn't presented as current. ✅
 - **Publication quality report for the City Hall.** Cross-checking the site against the documents reveals inconsistencies. We already found a link labelled "Dispoziția nr. 23/1" whose document is actually a *Decizie*. Collected into a report, these checks help the City Hall fix its own publications. ⏳
 - **Anti-hallucination guard.** The model never writes quotes. It only points at numbered lines of the retrieved passages; the quotes are taken from the index, a sentence without a backing line is dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. ✅
 
@@ -86,7 +86,7 @@ Each stage is a separate command. The stages share one registry, the `registry_*
    - full-text search with Romanian and Russian stemming (unaccented), plus trigram `grep` for exact act numbers and street names;
    - results are fused with weighted RRF; each hit carries a deep link to the PDF page (`#page=N`) or the exact text on the web page (`#:~:text=`).
 
-   Documents are keyed by their source URL: a changed file **replaces** the old version in the index (history stays in the registry), and a document missing from the site on two crawls in a row is removed. Unchanged text reuses its embeddings.
+   Documents are keyed by their source URL: a changed file **replaces** the old version in the index (the registry keeps its version number and previous hash), and a document missing from the site on two crawls in a row is removed. Unchanged text reuses its embeddings.
 5. **Corpus tools.** `search`, `grep`, `toc` and `open` walk the corpus like a file tree and quote lines by their id; testers use them in the `qsearch` console (`:grep`, `:toc`, `:open`).
 
 ### Online

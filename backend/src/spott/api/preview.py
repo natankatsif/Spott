@@ -134,6 +134,15 @@ def fmt_date(value: str | None) -> str:
         return datetime.now(UTC).strftime("%d.%m.%Y")
 
 
+def preview_line(row: dict, page_sizes: list[dict]) -> dict:
+    """A line of PgStore.doc_lines as the views take it: its page and boxes in top-left PDF points."""
+    from .answering import to_top_left  # answering imports this module
+
+    boxes = row.get("bboxes") or [b for b in row.get("chunk_bboxes") or [] if b.get("page") == row.get("page")]
+    return {"line_id": row["line_id"], "text": row["text"], "page": row.get("page") or (row.get("pages") or [None])[0],
+            "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
+
+
 # ─────────────── where a page's HTML comes from ───────────────
 
 

@@ -4,8 +4,8 @@ from spott.ingest.common.registry import Registry
 
 
 def add_file(reg: Registry, sha: str, status: str) -> None:
-    reg.conn.execute("INSERT INTO registry_files (sha256, path, size, extension, downloaded_at, parse_status) "
-                     "VALUES (%s, %s, 1, '.pdf', '2026-09-27T00:00:00Z', %s)", (sha, f"raw/{sha}.pdf", status))
+    reg.conn.execute("INSERT INTO registry_files (sha256, path, extension, downloaded_at, parse_status) "
+                     "VALUES (%s, %s, '.pdf', '2026-09-27T00:00:00Z', %s)", (sha, f"raw/{sha}.pdf", status))
 
 
 def status(reg: Registry, sha: str) -> tuple[str, str | None]:

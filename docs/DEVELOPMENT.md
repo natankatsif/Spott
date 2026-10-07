@@ -77,7 +77,6 @@ Each document becomes `data/parsed/<sha256>.json`, shortened here:
   "sources": [{
     "url": "https://dgaurf.md/storage/decizie-1214-din-28.07.2020-(1).pdf",
     "found_on": "https://dgaurf.md/ro/documentatii-de-urbanism",
-    "found_on_title": "Documentații de urbanism",
     "anchor_text": "Decizia CMC privind elaborarea PUG"
   }],
   "pages":  [{ "n": 1, "text_layer": false }, "..."],

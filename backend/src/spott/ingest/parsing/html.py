@@ -172,7 +172,6 @@ def build_page_blocks(raw_blocks: list[dict], boilerplate_texts: set[str]) -> li
 def parse_site_pages(
     rows: list,
     data_dir: Path,
-    categories: dict[str, str],
     registry: Registry,
     out_dir: Path,
     context: list | None = None,
@@ -200,9 +199,7 @@ def parse_site_pages(
             continue
 
         try:
-            body_bytes = html_file.read_bytes()
-            html_hash = hashlib.sha1(body_bytes).hexdigest()
-            html_text = body_bytes.decode("utf-8", errors="replace")
+            html_text = html_file.read_bytes().decode("utf-8", errors="replace")
             h1_title, raw_blocks = extract_raw_blocks(html_text)
 
             # Record frequency of block texts across pages of this site
@@ -215,7 +212,6 @@ def parse_site_pages(
 
             page_data_list.append({
                 "row": row,
-                "html_hash": html_hash,
                 "h1_title": h1_title,
                 "raw_blocks": raw_blocks,
                 "published": publication_date(html_text),
@@ -249,7 +245,6 @@ def parse_site_pages(
         row = pdata["row"]
         url = row["url"]
         site = row["site"]
-        category = categories.get(site, "transparency")
         raw_blocks = pdata["raw_blocks"]
 
         # Count boilerplate dropped
@@ -262,7 +257,7 @@ def parse_site_pages(
         total_chars = sum(len(b["text"]) for b in blocks)
 
         if total_chars < MIN_PAGE_CHARS:
-            registry.mark_page_parsed(url, "empty", html_hash=pdata["html_hash"])
+            registry.mark_page_parsed(url, "empty")
             stats["empty"] += 1
             continue
 
@@ -272,8 +267,6 @@ def parse_site_pages(
         body_text = "\n".join(b["text"] for b in blocks)
         lang = normalize_lang(row["lang"], fallback_text=body_text)
 
-        alternates = row["alternates"] or {}
-
         ukey = url_key(url)
         page_doc = {
             "id": f"page:{ukey}",
@@ -281,12 +274,9 @@ def parse_site_pages(
             "kind": "page",
             "url": url,
             "site": site,
-            "category": category,
             "title": title,
             "lang": lang,
             "date": pdata["published"],  # the chunker copies it onto chunks: freshness of web pages
-            "effective_date": pdata["published"],
-            "alternates": alternates,
             "pages": [],
             "stats": {
                 "blocks": len(blocks),
@@ -299,7 +289,7 @@ def parse_site_pages(
         out_file = out_dir / f"{url_hash}.json"
         out_file.write_text(json.dumps(page_doc, ensure_ascii=False, indent=1), encoding="utf-8")
 
-        registry.mark_page_parsed(url, "parsed", html_hash=pdata["html_hash"])
+        registry.mark_page_parsed(url, "parsed")
         stats["parsed"] += 1
 
     return stats

@@ -30,7 +30,7 @@ def test_one_new_page_still_loses_the_site_menu(tmp_path: Path, registry: Regist
     out = tmp_path / "parsed" / "pages"
 
     def texts(context):
-        parse_site_pages([rows[0]], tmp_path, {"a.md": "other"}, reg, out, context=context)
+        parse_site_pages([rows[0]], tmp_path, reg, out, context=context)
         [f] = out.glob("*.json")
         return " ".join(b["text"] for b in json.loads(f.read_text(encoding="utf-8"))["blocks"])
 

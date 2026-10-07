@@ -22,8 +22,8 @@ from .extract import GENERAL, contact_from_chunk, dedupe
 
 log = logging.getLogger("contacts")
 
-COLUMNS = ("contact_id", "name", "area", "phone", "email", "address", "hours", "url", "site", "category", "doc_id",
-           "line_ids", "is_general", "embedding")
+COLUMNS = ("contact_id", "name", "area", "phone", "email", "address", "hours", "url", "site", "line_ids", "is_general",
+           "embedding")
 JSON = {"phone", "email", "line_ids"}
 
 
@@ -36,8 +36,10 @@ def embed_text(card: dict) -> str:
 
 def load(conn) -> list[dict]:
     with conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("SELECT chunk_id, doc_id, site, url, title, category FROM chunks "
-                    "WHERE has_contacts AND kind = 'page' ORDER BY doc_id, (block_ids->>0)::int")
+        # The site's category (sources) names a card whose lines say nothing of what it handles.
+        cur.execute("SELECT c.chunk_id, c.doc_id, c.site, c.url, c.title, s.category FROM chunks c "
+                    "LEFT JOIN sources s ON s.kind = 'site' AND s.site_id = c.site "
+                    "WHERE c.has_contacts AND c.kind = 'page' ORDER BY c.doc_id, (c.block_ids->>0)::int")
         chunks = cur.fetchall()
         cur.execute("SELECT line_id, chunk_id, doc_id, idx, text FROM lines WHERE doc_id = ANY(%s) ORDER BY chunk_id, idx",
                     (list({c["doc_id"] for c in chunks}),))

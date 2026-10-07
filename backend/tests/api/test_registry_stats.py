@@ -25,8 +25,8 @@ class OnePool:
 @pytest.fixture
 def db(pg):
     init_registry_db(pg)
-    pg.execute("INSERT INTO registry_files (sha256, path, size, downloaded_at, parse_status) VALUES "
-               "('f1', 'raw/f1', 1, NOW(), 'pending'), ('f2', 'raw/f2', 1, NOW(), 'parsed')")
+    pg.execute("INSERT INTO registry_files (sha256, path, downloaded_at, parse_status) VALUES "
+               "('f1', 'raw/f1', NOW(), 'pending'), ('f2', 'raw/f2', NOW(), 'parsed')")
     pg.execute("INSERT INTO registry_documents (key, url, site, status, sha256, version, discovered_at) VALUES "
                "('a.md/1', 'https://a.md/1', 'a.md', 'discovered', NULL, 1, NOW()), "
                "('a.md/2', 'https://a.md/2', 'a.md', 'downloaded', 'f1', 2, NOW()), "
