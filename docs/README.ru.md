@@ -155,4 +155,4 @@ npm run dev
 
 - `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
 - `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
-Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api.ts`](../frontend/src/lib/api.ts).
+Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api/types.ts`](../frontend/src/lib/api/types.ts).
