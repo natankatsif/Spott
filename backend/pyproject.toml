@@ -92,3 +92,22 @@ forbidden_modules = ["spott.api", "spott.ingest"]
 name = "the API and the ingest pipeline don't import each other"
 type = "independence"
 modules = ["spott.api", "spott.ingest"]
+
+[[tool.importlinter.contracts]]
+name = "the API: the app on top, then its public routes and the admin panel (independent), then the answer pipeline"
+type = "layers"
+containers = ["spott.api"]
+layers = ["main", "routes | admin", "answering"]
+
+[[tool.importlinter.contracts]]
+name = "the answer pipeline: each module imports only the ones below it"
+type = "layers"
+containers = ["spott.api.answering"]
+layers = [
+    "pipeline",
+    "streaming",
+    "response",
+    "search | sources | contacts | routing | translation",
+    "corpus",
+    "chunks | claims | prompts | texts",
+]
