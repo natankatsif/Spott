@@ -410,6 +410,23 @@ def headers(view: View, frame_ancestors: list[str]) -> dict[str, str]:
             "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
 
 
+async def source_view(doc: dict, rows: list[dict], line_ids: list[str] | None, lang: str, embed: bool,
+                      allowed: list[str], pages: PageSource) -> View:
+    """The cited source for the chat's iframe: the page (our sanitized copy) or the PDF (pdf.js), scrolled to the
+    quoted lines and highlighted; DOCX and pages we can't show as our text view. rows: PgStore.doc_lines."""
+    lines = [preview_line(r, doc.get("page_sizes") or []) for r in rows]
+    known = {ln["line_id"] for ln in lines}
+    selected = [lid for lid in dict.fromkeys(line_ids or []) if lid in known][:MAX_LINES]
+    kind = preview_kind(doc["kind"], doc["url"], doc["has_file"])
+    deep = deep_link_for(doc, lines, selected, kind)
+    common = {"doc": doc, "lines": lines, "selected": selected, "lang": lang, "embed": embed, "allowed": allowed}
+    if kind == "pdf":
+        return pdf_view(**common, file_url=file_url(doc["doc_id"]), deep_link=deep)
+    if kind == "page" and (got := await pages.get(doc["url"])):
+        return page_view(**common, page_html=got[0], how=got[1], date=got[2], deep_link=deep)
+    return text_view(**common, deep_link=deep, unavailable=kind == "page")
+
+
 def deep_link_for(doc: dict, lines: list[dict], selected: list[str], kind: str) -> str:
     first = next((ln for ln in lines if ln["line_id"] in set(selected)), None)
     if not first:
