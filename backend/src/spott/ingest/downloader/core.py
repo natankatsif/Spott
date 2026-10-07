@@ -177,13 +177,12 @@ class Downloader:
                 tmp.replace(self.data_dir / rel)
                 path = rel.as_posix()
             self.registry.record_download(
-                key, sha256=sha, path=path, size=size, content_type=ctype, extension=ext,
-                http_status=status, etag=etag, last_modified=last_modified,
+                key, sha256=sha, path=path, extension=ext, http_status=status, etag=etag, last_modified=last_modified,
             )
             if doc["sha256"] == sha:
                 return "unchanged"
             if doc["sha256"]:
-                return "updated"  # new content at a known URL; the old version stays in document_versions
+                return "updated"  # new content at a known URL: the document's next version
             return "new_file" if is_new_file else "duplicate"
         finally:
             tmp.unlink(missing_ok=True)

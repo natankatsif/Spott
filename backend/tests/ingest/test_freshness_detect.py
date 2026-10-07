@@ -233,3 +233,13 @@ def test_robots_rules_and_crawl_delay_are_respected():
     paths = {r.url.path for r in site.requests}
     assert "/wp-json/wp/v2/pages" not in paths and "/privat" not in paths
     assert ch.pages == {"https://a.md/x"} and ch.reachable
+
+
+def test_key_pages_are_the_start_pages_then_the_first_level_ones(registry):
+    from spott.ingest.common.registry import now
+    from spott.ingest.freshness.__main__ import key_pages
+
+    for url, depth in (("https://a.md/", 0), ("https://a.md/noutati", 1), ("https://a.md/noutati/1", 2)):
+        registry.upsert_page({"url": url, "site": "a.md", "status": 200, "depth": depth, "html_file": "html/x.html",
+                              "fetched_at": now()})
+    assert key_pages(["https://a.md/"], registry.site_pages("a.md")) == ["https://a.md/", "https://a.md/noutati"]

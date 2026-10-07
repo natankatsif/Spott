@@ -53,8 +53,8 @@ def test_a_check_visits_changed_pages_and_only_new_links(tmp_path: Path, registr
     reg = registry
     for u in ("https://a.md/", "https://a.md/a", "https://a.md/b"):
         reg.upsert_page({"url": u, "site": "a.md", "status": 200, "html_file": "html/x.html", "fetched_at": now()})
-    reg.add_document(key="a.md/doc.pdf", url="https://a.md/doc.pdf", site="a.md", category="c", extension=".pdf",
-                     external=False, source={"found_on": "https://a.md/"})
+    reg.add_document(key="a.md/doc.pdf", url="https://a.md/doc.pdf", site="a.md", extension=".pdf",
+                     source={"found_on": "https://a.md/"})
     visited, stats = crawl(tmp_path, reg, ["https://a.md/a"], partial=True, depth=1)
     assert [p for p in visited if p != "/robots.txt"] == ["/a", "/new"]  # not / or /b: known and unchanged
     assert "pages_dropped" not in stats and "missing_documents" not in stats
@@ -63,8 +63,8 @@ def test_a_check_visits_changed_pages_and_only_new_links(tmp_path: Path, registr
 
 def test_a_path_crawl_never_counts_the_rest_of_the_site_missing(tmp_path: Path, registry: Registry):
     reg = registry
-    reg.add_document(key="a.md/doc.pdf", url="https://a.md/doc.pdf", site="a.md", category="c", extension=".pdf",
-                     external=False, source={"found_on": "https://a.md/"})
+    reg.add_document(key="a.md/doc.pdf", url="https://a.md/doc.pdf", site="a.md", extension=".pdf",
+                     source={"found_on": "https://a.md/"})
     reg.upsert_page({"url": "https://a.md/old", "site": "a.md", "status": 200, "html_file": "html/o.html",
                      "fetched_at": datetime(2026, 1, 1, tzinfo=UTC)})
     for _ in range(2):  # twice: two misses would remove the document

@@ -100,11 +100,11 @@ def deduplicate_results(results: list[dict], k: int | None = None) -> list[dict]
 
 RESULT_COLUMNS = (
     "chunk_id, doc_id, site, kind, doc_type, lang, url, citation_label, "
-    "text, embed_text, content_hash, parent_legal_path, pages, found_on"
+    "text, content_hash, pages, found_on"
 )
 FTS_QUERY = "(to_tsquery('ro_unaccent', %(q)s) || to_tsquery('ru_unaccent', %(q)s))"
 # Qualified: line queries may join chunks, which has columns of the same names.
-LINE_RESULT_COLUMNS = "l.line_id, l.chunk_id, l.doc_id, l.idx, l.text, l.embed_text, l.lang, l.block_id, l.page, l.bboxes"
+LINE_RESULT_COLUMNS = "l.line_id, l.chunk_id, l.doc_id, l.idx, l.text, l.embed_text, l.lang, l.page, l.bboxes"
 
 
 def weighted_rrf_fuse(

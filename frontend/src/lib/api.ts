@@ -225,7 +225,6 @@ export type FeedbackRequest = {
   vote?: "up" | "down"; // older clients: up = 5, down = 1 (rating or vote is required)
   tags?: FeedbackTag[];
   comment?: string | null;
-  citation_id?: string | null;
   session_id?: string | null;
 };
 
@@ -380,7 +379,6 @@ export type FeedbackItem = {
   rating: number;
   tags: FeedbackTag[];
   comment: string | null;
-  citation_id: string | null;
   question: string | null;
   lang: Lang | null;
   status: AskStatus | null;

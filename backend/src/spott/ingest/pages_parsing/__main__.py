@@ -15,10 +15,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from spott.core.paths import DATA_DIR, SITES_TOML
+from spott.core.paths import DATA_DIR
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
-from spott.ingest.crawler.config import load_sites, load_sites_from_db
 from spott.ingest.parsing.html import parse_site_pages
 
 log = logging.getLogger("pages_parsing")
@@ -28,7 +27,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.pages_parsing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="reads <data>/crawl/, writes <data>/parsed/pages/")
-    p.add_argument("--config", type=Path, default=SITES_TOML)
     p.add_argument("--sites", nargs="+", metavar="ID", help="only these site ids")
     p.add_argument("--limit", type=int, help="at most N pages")
     p.add_argument("--reparse", action="store_true", help="reparse even if already parsed")
@@ -38,7 +36,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def run_pages_parsing(
     registry: Registry,
     data_dir: Path,
-    config_path: Path,
     sites: list[str] | None = None,
     limit: int | None = None,
     reparse: bool = False,
@@ -48,8 +45,6 @@ def run_pages_parsing(
         print("No pages to parse.")
         return {}
 
-    sites_list = load_sites_from_db() or (load_sites(config_path) if config_path.exists() else [])
-    categories = {s.id: s.category for s in sites_list}
     out_dir = data_dir / "parsed" / "pages"
 
     # Group by site for site-wide boilerplate filtering
@@ -65,7 +60,7 @@ def run_pages_parsing(
         if progress.cancelled():
             break
         t = time.monotonic()
-        stats = parse_site_pages(site_rows, data_dir, categories, registry, out_dir,
+        stats = parse_site_pages(site_rows, data_dir, registry, out_dir,
                                  context=registry.site_pages(site_id))
         progress.advance(len(site_rows))
         for k in total_stats:
@@ -100,7 +95,6 @@ def main() -> None:
         run_pages_parsing(
             registry=registry,
             data_dir=args.data,
-            config_path=args.config,
             sites=args.sites,
             limit=args.limit,
             reparse=args.reparse,

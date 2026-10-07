@@ -24,7 +24,7 @@ from spott.core.db import get_connection, init_app_db
 from spott.ingest.common.http import make_clients
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
-from spott.ingest.common.urls import bare_host, extension, url_key
+from spott.ingest.common.urls import extension, url_key
 
 from .detect import MAX_KEY_PAGES, detect
 
@@ -50,10 +50,8 @@ def register_documents(registry: Registry, site: dict, urls: set[str]) -> list[s
     keys = []
     for url in sorted(urls):
         key = url_key(url)
-        registry.add_document(key=key, url=url, site=site["site_id"], category=site.get("category") or "",
-                              extension=extension(url),
-                              external=bare_host(urlsplit(url).hostname or "") != bare_host(site["site_id"]),
-                              source={"found_on": "", "via": "freshness"})
+        registry.add_document(key=key, url=url, site=site["site_id"], extension=extension(url),
+                              source={"found_on": ""})
         keys.append(key)
     return keys
 

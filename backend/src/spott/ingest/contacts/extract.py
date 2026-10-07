@@ -142,8 +142,6 @@ def contact_from_chunk(chunk: dict, lines: list[dict], doc_lines: list[dict]) ->
         "hours": hours[0] if hours else None,
         "url": chunk["url"],
         "site": site,
-        "category": chunk.get("category"),
-        "doc_id": chunk["doc_id"],
         "line_ids": line_ids,
         # The City Hall named on the phone's own line: not a site whose pages all carry its name in the title,
         # nor a department's phone under a sentence about the City Hall.

@@ -4,9 +4,9 @@ For every citation in <frontend>/src/lib/mocks/ask/*.json this renders the same 
 returns, saves it to <frontend>/public/mocks/preview/<mock>-<citation>.html and points the citation's preview_url at
 it, so mock mode shows a real, highlighted preview without the backend.
 
-Documents and lines come from the offline index files (data/chunks), PDFs from data/raw, crawled copies of pages
-through the registry in Postgres (without a database pages get the text view). PDFs are copied next to the pages
-(files/<sha>.pdf) with pdf.js (static/), all paths relative, so the folder works from any origin. No LLM, no network.
+Documents and lines come from the index in Postgres, like the endpoint's (the cited documents must be indexed),
+PDFs from data/raw, crawled copies of pages through the registry. PDFs are copied next to the pages (files/<sha>.pdf)
+with pdf.js (static/), all paths relative, so the folder works from any origin. No LLM, no network.
 
     cd backend && uv run python scripts/export_previews.py ../frontend
 
@@ -18,45 +18,26 @@ import json
 import shutil
 from pathlib import Path
 
-import psycopg
-
 from spott.api import preview
-from spott.api.answering import to_top_left
-from spott.api.files import DATA_DIR, raw_pdf
-from spott.core.db import get_connection, get_pool
+from spott.api.files import raw_pdf
+from spott.api.store import PgStore
+from spott.core.db import get_pool
 
 MOCKS = Path()  # <frontend>/src/lib/mocks/ask, set by main()
 OUT = Path()  # <frontend>/public/mocks/preview
-PAGES = preview.PageSource(None, None)  # crawled copies of pages, set by main()
+STORE: PgStore  # the index, set by main()
+PAGES: preview.PageSource  # crawled copies of pages, set by main()
 PUBLIC_PREFIX = "/mocks/preview"
 # Mock mode is served by the frontend itself (same origin as the preview); any origin may talk to a static demo.
 ALLOWED = ["*"]
 
 
-def chunks_file(doc_id: str) -> Path:
-    return DATA_DIR / "chunks" / (doc_id.replace(":", "_", 1).replace("/", "_") + ".jsonl")
-
-
 def load_doc(doc_id: str) -> tuple[dict, list[dict]]:
-    """The document and its lines in reading order, like PgStore.preview_document + doc_lines."""
-    path = chunks_file(doc_id)
-    if not path.is_file():
-        raise SystemExit(f"{doc_id}: no {path} (run the indexing pipeline first)")
-    chunks = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    chunks.sort(key=lambda c: (int(c["block_ids"][0]) if c.get("block_ids") else 1 << 30, c["chunk_id"]))
-    first = chunks[0]
-    doc = {"doc_id": doc_id, "kind": first["kind"], "url": first["url"], "title": first.get("title"),
-           "site": first.get("site"), "found_on": first.get("found_on"), "page_sizes": first.get("page_sizes") or [],
-           "sha256": first.get("sha256"), "indexed_at": first.get("updated_at") or first.get("date")}
-    doc["has_file"] = raw_pdf(doc_id, doc["sha256"]) is not None
-    lines = []
-    for c in chunks:
-        for ln in sorted(c.get("lines") or [], key=lambda x: x.get("idx", 0)):
-            boxes = ln.get("bboxes") or [b for b in c.get("bboxes") or [] if b.get("page") == ln.get("page")]
-            lines.append({"line_id": ln["line_id"], "text": ln["text"],
-                          "page": ln.get("page") or (c.get("pages") or [None])[0],
-                          "bboxes": [b.model_dump() for b in to_top_left(boxes, doc["page_sizes"])]})
-    return doc, lines
+    """The document and its lines in reading order, as GET /api/preview/{doc_id} has them."""
+    doc = STORE.preview_document(doc_id)
+    if doc is None:
+        raise SystemExit(f"{doc_id}: not in the index (run the indexing pipeline first)")
+    return doc, [preview.preview_line(r, doc.get("page_sizes") or []) for r in STORE.doc_lines(doc_id)]
 
 
 def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tuple[str, str]:
@@ -77,17 +58,14 @@ def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tupl
 
 
 def main() -> None:
-    global MOCKS, OUT, PAGES
+    global MOCKS, OUT, PAGES, STORE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("frontend", type=Path, help="the frontend directory (its mocks are read and rewritten)")
     frontend = ap.parse_args().frontend
     MOCKS = frontend / "src" / "lib" / "mocks" / "ask"
     OUT = frontend / "public" / "mocks" / "preview"
-    try:
-        get_connection(register=False).close()
-        PAGES = preview.PageSource(None, get_pool(min_size=1, max_size=1))
-    except psycopg.OperationalError:
-        print("  ! no Postgres: pages get the text view (their crawled copies are found through the registry)")
+    pool = get_pool(min_size=1, max_size=1)
+    STORE, PAGES = PgStore(pool), preview.PageSource(None, pool)
     OUT.mkdir(parents=True, exist_ok=True)
     shutil.copytree(preview.STATIC, OUT / "static", dirs_exist_ok=True)
     cache: dict[str, tuple[dict, list[dict]]] = {}

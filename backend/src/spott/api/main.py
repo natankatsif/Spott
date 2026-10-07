@@ -29,7 +29,7 @@ from spott.core.sources import seed_sources
 
 from . import admin, errors, freshness, llm_settings, preview, usage
 from .admin import PgAdminStore
-from .answering import answer_events, answer_question, replay_events, to_top_left
+from .answering import answer_events, answer_question, replay_events
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter, client_address
 from .files import DATA_DIR
@@ -357,7 +357,7 @@ async def source_preview(doc_id: str, line: Annotated[list[str] | None, Query()]
     if doc is None:
         raise ApiException(404, "not_found", f"Unknown document {doc_id}")
     raw = await run_in_threadpool(store.doc_lines, doc_id)
-    lines = [preview_line(r, doc.get("page_sizes") or []) for r in raw]
+    lines = [preview.preview_line(r, doc.get("page_sizes") or []) for r in raw]
     known = {ln["line_id"] for ln in lines}
     selected = [lid for lid in dict.fromkeys(line or []) if lid in known][:preview.MAX_LINES]
     kind = preview.preview_kind(doc["kind"], doc["url"], doc["has_file"])
@@ -371,12 +371,6 @@ async def source_preview(doc_id: str, line: Annotated[list[str] | None, Query()]
     else:
         view = preview.text_view(**common, deep_link=deep, unavailable=kind == "page")
     return Response(view.body, media_type="text/html; charset=utf-8", headers=preview.headers(view, CORS_ORIGINS))
-
-
-def preview_line(row: dict, page_sizes: list[dict]) -> dict:
-    boxes = row.get("bboxes") or [b for b in row.get("chunk_bboxes") or [] if b.get("page") == row.get("page")]
-    return {"line_id": row["line_id"], "text": row["text"], "page": row.get("page") or (row.get("pages") or [None])[0],
-            "bboxes": [b.model_dump() for b in to_top_left(boxes, page_sizes)]}
 
 
 @app.get("/api/suggestions", response_model=SuggestionList)

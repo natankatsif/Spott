@@ -4,7 +4,9 @@
     registry_documents          one row per document URL; status of its download
     registry_document_sources   every page where a document link was found (provenance for citations)
     registry_files              unique downloaded contents, keyed by SHA-256; status of parsing
-    registry_document_versions  history of contents seen at each document URL
+
+New content at a known document URL is its next version: registry_documents counts the versions, and the index
+replaces the old one.
 """
 
 from collections.abc import Sequence
@@ -12,7 +14,6 @@ from datetime import UTC, datetime
 
 import psycopg
 from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 
 from spott.core.db import get_connection, init_registry_db
 from spott.ingest.common.urls import url_key
@@ -58,14 +59,12 @@ class Registry:
 
     def upsert_page(self, page: dict) -> None:
         """A fetched page. Fetched again, it is a new copy: parsed again, its parse fields start over."""
-        columns = ("url", "site", "status", "depth", "parent", "anchor_text", "title", "lang",
-                   "alternates", "html_file", "content_type", "error", "fetched_at")
-        values = [Jsonb(page.get("alternates") or {}) if c == "alternates" else page.get(c) for c in columns]
+        columns = ("url", "site", "status", "depth", "title", "lang", "html_file", "error", "fetched_at")
         self._write(
             f"INSERT INTO registry_pages ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "
             f"ON CONFLICT (url) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in columns[1:])}, "
-            "parse_status = DEFAULT, html_hash = NULL, parsed_at = NULL, parse_error = NULL",
-            values)
+            "parse_status = DEFAULT, parsed_at = NULL, parse_error = NULL",
+            [page.get(c) for c in columns])
 
     def page_fetch_failed(self, page: dict) -> None:
         """A page that couldn't be fetched this time (network error, 5xx). One that was fetched before keeps its
@@ -84,21 +83,19 @@ class Registry:
             "WHERE site = %s AND fetched_at < %s AND (status IS NULL OR status < 400)",
             (site, since))
 
-    def add_document(self, *, key: str, url: str, site: str, category: str, extension: str,
-                     external: bool, source: dict) -> bool:
-        """Registers a document link and where it was found. Returns True if the document is new."""
+    def add_document(self, *, key: str, url: str, site: str, extension: str, source: dict) -> bool:
+        """Registers a document link and where it was found ({found_on, anchor_text, depth}). Returns True if the
+        document is new."""
         ts = now()
         with self.conn.transaction():
             new = self._write(
-                "INSERT INTO registry_documents (key, url, site, category, extension, external, discovered_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (key) DO NOTHING",
-                (key, url, site, category, extension, bool(external), ts)) == 1
+                "INSERT INTO registry_documents (key, url, site, extension, discovered_at) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (key) DO NOTHING",
+                (key, url, site, extension, ts)) == 1
             self._write(
-                "INSERT INTO registry_document_sources "
-                "(document_key, found_on, found_on_title, anchor_text, site, depth, via, published, discovered_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (key, source.get("found_on") or "", source.get("found_on_title"), source.get("anchor_text"),
-                 site, source.get("depth"), source.get("via"), source.get("published"), ts))
+                "INSERT INTO registry_document_sources (document_key, found_on, anchor_text, depth, discovered_at) "
+                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                (key, source.get("found_on") or "", source.get("anchor_text"), source.get("depth"), ts))
         return new
 
     def record_crawl_missing(self, site: str, seen_keys: set[str]) -> tuple[int, int]:
@@ -137,16 +134,15 @@ class Registry:
     def has_file(self, sha256: str) -> bool:
         return bool(self._rows("SELECT 1 FROM registry_files WHERE sha256 = %s", (sha256,)))
 
-    def record_download(self, key: str, *, sha256: str, path: str | None, size: int, content_type: str,
-                        extension: str, http_status: int, etag: str | None, last_modified: str | None) -> None:
+    def record_download(self, key: str, *, sha256: str, path: str | None, extension: str, http_status: int,
+                        etag: str | None, last_modified: str | None) -> None:
         """Stores a successful download. New content at a known URL is the document's next version."""
         ts = now()
         with self.conn.transaction():
             if path is not None:
                 self._write(
-                    "INSERT INTO registry_files (sha256, path, size, content_type, extension, downloaded_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (sha256, path, size, content_type, extension, ts))
+                    "INSERT INTO registry_files (sha256, path, extension, downloaded_at) VALUES (%s, %s, %s, %s)",
+                    (sha256, path, extension, ts))
             rows = self._rows("SELECT sha256, version FROM registry_documents WHERE key = %s", (key,))
             row = rows[0] if rows else None
             old_sha = row["sha256"] if row else None
@@ -154,18 +150,13 @@ class Registry:
             changed = bool(old_sha and old_sha != sha256)
             if changed:
                 version += 1
-
-            self._write(
-                "INSERT INTO registry_document_versions (document_key, sha256, version, fetched_at) "
-                "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (key, sha256, version, ts))
             if changed:
                 self._write(
-                    "UPDATE registry_documents SET status = 'downloaded', sha256 = %s, previous_sha256 = %s, "
-                    "version = %s, updated_at = %s, etag = %s, last_modified = %s, "
+                    "UPDATE registry_documents SET status = 'downloaded', sha256 = %s, version = %s, updated_at = %s, "
+                    "etag = %s, last_modified = %s, "
                     "http_status = %s, error = NULL, checked_at = %s, consecutive_missing = 0, removed_at = NULL "
                     "WHERE key = %s",
-                    (sha256, old_sha, version, ts, etag, last_modified, http_status, ts, key))
+                    (sha256, version, ts, etag, last_modified, http_status, ts, key))
             else:
                 self._write(
                     "UPDATE registry_documents SET status = 'downloaded', sha256 = %s, etag = %s, last_modified = %s, "
@@ -238,8 +229,7 @@ class Registry:
         """file_sources() of many files in one query: nearest pages first."""
         by_sha: dict[str, list[dict]] = {}
         for row in self._rows(
-                "SELECT d.sha256, d.url, d.site, d.category, s.found_on, s.found_on_title, s.anchor_text, s.via, "
-                "       s.published "
+                "SELECT d.sha256, d.url, d.site, s.found_on, s.anchor_text "
                 "FROM registry_documents d JOIN registry_document_sources s ON s.document_key = d.key "
                 "WHERE d.sha256 = ANY(%s) ORDER BY s.depth NULLS LAST, s.discovered_at, d.key, s.found_on",
                 (shas,)):
@@ -247,12 +237,10 @@ class Registry:
             by_sha.setdefault(sha, []).append({k: v for k, v in row.items() if v not in (None, "")})
         return by_sha
 
-    def mark_parsed(self, sha256: str, status: str, *, parser_version: str | None = None,
-                    error: str | None = None) -> None:
+    def mark_parsed(self, sha256: str, status: str, *, error: str | None = None) -> None:
         self._write(
-            "UPDATE registry_files SET parse_status = %s, parser_version = %s, parse_error = %s, parsed_at = %s "
-            "WHERE sha256 = %s",
-            (status, parser_version, error, now(), sha256))
+            "UPDATE registry_files SET parse_status = %s, parse_error = %s, parsed_at = %s WHERE sha256 = %s",
+            (status, error, now(), sha256))
 
     def fail_interrupted_parses(self) -> int:
         """Files left 'parsing' by a run that died on them — the OOM killer does not let the run write anything.
@@ -289,12 +277,9 @@ class Registry:
         return self._rows("SELECT * FROM registry_pages WHERE site = %s AND status < 400 AND html_file IS NOT NULL "
                           "ORDER BY url", (site,))
 
-    def mark_page_parsed(self, url: str, status: str, *, html_hash: str | None = None,
-                         error: str | None = None) -> None:
-        self._write(
-            "UPDATE registry_pages SET parse_status = %s, html_hash = %s, parsed_at = %s, parse_error = %s "
-            "WHERE url = %s",
-            (status, html_hash, now(), error, url))
+    def mark_page_parsed(self, url: str, status: str, *, error: str | None = None) -> None:
+        self._write("UPDATE registry_pages SET parse_status = %s, parsed_at = %s, parse_error = %s WHERE url = %s",
+                    (status, now(), error, url))
 
     def status_counts(self) -> dict[str, dict[str, int]]:
         def counts(column: str, table: str) -> dict[str, int]:
@@ -311,9 +296,7 @@ class Registry:
         all other URLs are added to sources."""
         rows = self._rows(
             """
-            SELECT d.key, d.url, d.site, d.category, d.extension, d.sha256,
-                   d.version, d.previous_sha256, d.updated_at, d.discovered_at,
-                   f.path, f.size, f.content_type, f.parse_status, f.parser_version
+            SELECT d.key, d.url, d.sha256, d.updated_at
             FROM registry_documents d
             JOIN registry_files f ON d.sha256 = f.sha256
             WHERE d.status = 'downloaded' AND f.parse_status = 'parsed'
@@ -334,11 +317,6 @@ class Registry:
                 "primary_url": primary["url"],
                 "url_key": primary_key,
                 "sha256": sha,
-                "site": primary["site"],
-                "category": primary["category"],
-                "extension": primary["extension"],
-                "version": primary["version"],
-                "previous_sha256": primary["previous_sha256"],
                 "updated_at": iso(primary["updated_at"]),
                 "sources": sources.get(sha, []),
             })
@@ -348,7 +326,7 @@ class Registry:
         """Returns all parsed active (non-removed) pages."""
         rows = self._rows(
             """
-            SELECT url, site, html_hash, title, lang, html_file, fetched_at
+            SELECT url, fetched_at
             FROM registry_pages
             WHERE status < 400 AND parse_status = 'parsed' AND html_file IS NOT NULL
             ORDER BY fetched_at, url
@@ -360,11 +338,6 @@ class Registry:
                 "doc_id": f"page:{ukey}",
                 "url": r["url"],
                 "url_key": ukey,
-                "site": r["site"],
-                "html_hash": r["html_hash"],
-                "title": r["title"],
-                "lang": r["lang"],
-                "html_file": r["html_file"],
                 "fetched_at": iso(r["fetched_at"]),
             })
         return result

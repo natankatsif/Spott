@@ -130,8 +130,7 @@ def test_the_checks_before_an_answer_keep_their_order(ready):
 
 
 def test_feedback_is_stored(client, tmp_path):
-    r = client.post("/api/feedback", json={"answer_id": "a1", "vote": "down", "comment": "sursa e veche",
-                                           "citation_id": "c2"})
+    r = client.post("/api/feedback", json={"answer_id": "a1", "vote": "down", "comment": "sursa e veche"})
     assert r.json() == {"ok": True}
     [log] = (tmp_path / "feedback").glob("*.jsonl")
     assert json.loads(log.read_text(encoding="utf-8"))["vote"] == "down"

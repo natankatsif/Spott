@@ -30,7 +30,6 @@ from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
 
 from .build import (
-    PARSER_VERSION,
     SUPPORTED_EXTENSIONS,
     build_document,
     build_markdown,
@@ -108,7 +107,7 @@ class FileParser:
 
             parsed = build_document(
                 doc,
-                file={k: row[k] for k in ("sha256", "path", "extension", "size", "content_type")},
+                file={k: row[k] for k in ("sha256", "path", "extension")},
                 sources=self.registry.file_sources(sha),
                 text_layer=text_layer_pages(chars),
             )
@@ -120,7 +119,7 @@ class FileParser:
             self.registry.mark_parsed(sha, "failed", error=f"{type(e).__name__}: {e}")
             return "failed", ocr
 
-        self.registry.mark_parsed(sha, "parsed", parser_version=PARSER_VERSION)
+        self.registry.mark_parsed(sha, "parsed")
         return "parsed", ocr
 
 
@@ -143,11 +142,9 @@ def main() -> None:
         if args.pages:
             from spott.ingest.pages_parsing.__main__ import run_pages_parsing
 
-            config_path = args.data / "sources" / "sites.toml"
             run_pages_parsing(
                 registry=registry,
                 data_dir=args.data,
-                config_path=config_path,
                 sites=args.sites,
                 limit=args.limit,
                 reparse=args.reparse,

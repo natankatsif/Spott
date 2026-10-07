@@ -82,7 +82,6 @@ class SiteCrawler:
         self.queue: deque[tuple[str, int, str | None, str]] = deque()
         self.seen: set[str] = set()
         self.docs_seen: set[str] = set()
-        self.titles: dict[str, str] = {}
         self.new_documents: list[str] = []  # keys first seen in this run (a check hands them to the downloader)
         self.stats = {"pages": 0, "errors": 0, "documents": 0, "new_documents": 0, "wp_media": 0,
                       "robots_blocked": 0}
@@ -148,8 +147,7 @@ class SiteCrawler:
             self.stats["robots_blocked"] += 1
             return
 
-        page = {"url": url, "site": self.site.id, "depth": depth, "parent": parent, "anchor_text": anchor,
-                "fetched_at": now()}
+        page = {"url": url, "site": self.site.id, "depth": depth, "fetched_at": now()}
         try:
             status, final_url, ctype, body = await self._fetch(url, HTML_TYPES)
         except httpx.HTTPError as e:
@@ -168,13 +166,13 @@ class SiteCrawler:
 
         if status < 400 and is_document_type(ctype):
             # Link without a document extension that serves a file (e.g. /download?id=12).
-            self._add_document(final, parent, anchor, depth, via="content-type")
+            self._add_document(final, parent, anchor, depth)
             return
         if status < 400 and body is None:
             return  # some other non-HTML resource
 
         self.stats["pages"] += 1
-        page |= {"url": final, "status": status, "content_type": ctype}
+        page |= {"url": final, "status": status}
         if status >= 400:
             self.stats["errors"] += 1
             # a server error is the site's bad moment (keep the last good copy); 4xx means the page is gone
@@ -193,16 +191,8 @@ class SiteCrawler:
             base = urljoin(url, base_node.attributes.get("href") or "")
         title_node = tree.css_first("title")
         title = " ".join(title_node.text().split()) if title_node is not None else ""
-        self.titles[url] = title
         html_node = tree.css_first("html")
         lang = (html_node.attributes.get("lang") or "") if html_node is not None else ""
-
-        # hreflang pairs link ro/ru/en versions of the same page.
-        alternates = {}
-        for node in tree.css('link[rel="alternate"][hreflang]'):
-            href = normalize(urljoin(base, node.attributes.get("href") or ""))
-            if href and node.attributes.get("hreflang"):
-                alternates[node.attributes["hreflang"]] = href
 
         links_enqueued = docs_found = 0
         for selector, attr in LINK_SELECTORS:
@@ -216,7 +206,7 @@ class SiteCrawler:
                     anchor = node.attributes.get("title") or ""
                 internal = bare_host(urlsplit(target).hostname or "") in self.allowed_hosts
                 if is_document_url(target) or (not internal and is_external_doc_host(target)):
-                    self._add_document(target, url, anchor, depth + 1, via=node.tag, external=not internal)
+                    self._add_document(target, url, anchor, depth + 1)
                     docs_found += 1
                 elif (internal and depth < self.site.max_depth and not is_skipped(target)
                       and under_prefix(urlsplit(target).path, self.site.path_prefix)):
@@ -225,34 +215,16 @@ class SiteCrawler:
                     links_enqueued += len(self.queue) - before
 
         log.debug("%s: %s → %d links, %d documents", self.site.id, url, links_enqueued, docs_found)
-        return {"title": title, "lang": lang, "alternates": alternates, "html_file": html_file}
+        return {"title": title, "lang": lang, "html_file": html_file}
 
-    def _add_document(
-        self,
-        url: str,
-        found_on: str | None,
-        anchor: str,
-        depth: int | None,
-        *,
-        via: str,
-        external: bool = False,
-        **extra,
-    ) -> None:
+    def _add_document(self, url: str, found_on: str | None, anchor: str, depth: int | None) -> None:
         key = url_key(url)
         is_new = self.registry.add_document(
             key=key,
             url=url,
             site=self.site.id,
-            category=self.site.category,
             extension=extension(url),
-            external=external,
-            source={
-                "found_on": found_on,
-                "found_on_title": self.titles.get(found_on or ""),
-                "anchor_text": anchor,
-                "depth": depth,
-                "via": via,
-            } | extra,
+            source={"found_on": found_on, "anchor_text": anchor, "depth": depth},
         )
         self.stats["new_documents"] += is_new
         if is_new:
@@ -287,9 +259,6 @@ class SiteCrawler:
                     item.get("link"),
                     html.unescape((item.get("title") or {}).get("rendered") or ""),
                     None,
-                    via="wp-media",
-                    external=bare_host(urlsplit(src).hostname or "") not in self.allowed_hosts,
-                    published=item.get("date"),
                 )
 
     # --- HTTP -----------------------------------------------------------------

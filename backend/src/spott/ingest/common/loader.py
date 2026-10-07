@@ -44,8 +44,6 @@ def load_active_documents(
                 doc["doc_id"] = fdoc["doc_id"]
                 doc["primary_url"] = fdoc["primary_url"]
                 doc["url_key"] = fdoc["url_key"]
-                doc["version"] = fdoc.get("version", 1)
-                doc["previous_sha256"] = fdoc.get("previous_sha256")
                 doc["updated_at"] = fdoc.get("updated_at")
                 doc["sources"] = fdoc.get("sources", doc.get("sources", []))
                 docs.append(doc)
@@ -63,7 +61,6 @@ def load_active_documents(
                     doc = json.loads(p_json.read_text(encoding="utf-8"))
                     doc["doc_id"] = pdoc["doc_id"]
                     doc["url_key"] = pdoc["url_key"]
-                    doc["version"] = pdoc.get("version", 1)
                     doc["updated_at"] = pdoc.get("fetched_at")
                     docs.append(doc)
                 except Exception as e:

@@ -21,6 +21,9 @@ from .pipeline import acquire_conn, retrieve
 
 log = logging.getLogger("retrieval.tools")
 
+# Position of a chunk in its document: its first block.
+ORD = "COALESCE((c.block_ids->>0)::int, 0)"
+
 def escape_like_pattern(pattern: str) -> str:
     """Escapes SQL LIKE / ILIKE special wildcard characters (%, _, and backslash)."""
     return pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -113,7 +116,7 @@ def grep_tool(
 
     with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
+            f"""
             SELECT l.line_id, l.chunk_id, l.doc_id, l.idx, l.text, l.page, l.bboxes,
                    c.title, c.citation_label, c.url, c.found_on, c.site
             FROM lines l
@@ -121,7 +124,7 @@ def grep_tool(
             WHERE l.text ILIKE %(pat)s ESCAPE '\\'
               AND (%(doc_id)s::text IS NULL OR l.doc_id = %(doc_id)s::text)
               AND (%(site)s::text IS NULL OR c.site = %(site)s::text)
-            ORDER BY l.doc_id, c.ord, l.idx
+            ORDER BY l.doc_id, {ORD}, l.idx
             LIMIT %(limit)s
             """,
             {"pat": sql_pattern, "doc_id": doc_id, "site": site, "limit": limit},
@@ -165,14 +168,14 @@ def toc_tool(
     """Tool: table of contents for a document in document order."""
     with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
-            SELECT c.chunk_id, c.doc_id, c.ord, c.title, c.citation_label, c.section, c.legal_path,
+            f"""
+            SELECT c.chunk_id, c.doc_id, {ORD} AS ord, c.title, c.citation_label, c.section, c.legal_path,
                    COUNT(l.line_id) AS line_count
             FROM chunks c
             LEFT JOIN lines l ON c.chunk_id = l.chunk_id
             WHERE c.doc_id = %(doc_id)s
-            GROUP BY c.chunk_id, c.doc_id, c.ord, c.title, c.citation_label, c.section, c.legal_path
-            ORDER BY c.ord ASC, c.chunk_id ASC
+            GROUP BY c.chunk_id
+            ORDER BY ord ASC, c.chunk_id ASC
             """,
             {"doc_id": doc_id},
         )
@@ -200,14 +203,14 @@ def open_tool(
 
     with acquire_conn(pool) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            """
+            f"""
             SELECT l.line_id, l.chunk_id, l.doc_id, l.idx, l.text, l.page, l.bboxes,
-                   c.title, c.citation_label, c.url, c.found_on, c.site, c.ord
+                   c.title, c.citation_label, c.url, c.found_on, c.site
             FROM lines l
             JOIN chunks c ON l.chunk_id = c.chunk_id
             WHERE l.doc_id = %(doc_id)s
               AND (%(target)s::text IS NULL OR l.chunk_id = %(target)s::text)
-            ORDER BY c.ord ASC, l.idx ASC
+            ORDER BY {ORD} ASC, l.idx ASC
             LIMIT %(limit)s
             """,
             {"doc_id": doc_id, "target": target_id, "limit": max_lines},

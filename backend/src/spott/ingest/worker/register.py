@@ -15,7 +15,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--url", required=True)
     p.add_argument("--site", required=True)
-    p.add_argument("--category", default="document")
     return p.parse_args(argv)
 
 
@@ -24,9 +23,8 @@ def main() -> None:
     progress = Progress(total=1)
     registry = Registry.open()
     try:
-        new = registry.add_document(key=url_key(args.url), url=args.url, site=args.site, category=args.category,
-                                    extension=extension(args.url), external=False,
-                                    source={"found_on": "", "via": "admin"})
+        new = registry.add_document(key=url_key(args.url), url=args.url, site=args.site,
+                                    extension=extension(args.url), source={"found_on": ""})
     finally:
         registry.close()
     progress.advance()

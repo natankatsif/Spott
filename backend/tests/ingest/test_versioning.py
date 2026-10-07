@@ -28,12 +28,12 @@ def tmp_data(tmp_path: Path):
 
 
 def make_file_doc(*, sha256: str, title: str, text_blocks: list[dict], url: str = "https://chisinau.md/doc.pdf",
-                  site: str = "chisinau.md", category: str = "decizii"):
+                  site: str = "chisinau.md"):
     """Helper: build a parsed-file JSON dict."""
     return {
         "sha256": sha256,
         "metadata": {"title": title, "doc_type": "decizie"},
-        "sources": [{"url": url, "site": site, "category": category}],
+        "sources": [{"url": url, "site": site}],
         "blocks": text_blocks,
     }
 
@@ -45,12 +45,10 @@ def write_parsed_json(data_dir: Path, sha256: str, doc: dict) -> None:
 
 
 def setup_registry_with_file(reg: Registry, *, key: str, url: str, site: str,
-                              sha256: str, category: str = "decizii", ext: str = ".pdf") -> Registry:
+                              sha256: str, ext: str = ".pdf") -> Registry:
     """Adds a fully-downloaded, parsed file to the registry."""
-    reg.add_document(key=key, url=url, site=site, category=category,
-                     extension=ext, external=False, source={"found_on": url, "site": site})
-    reg.record_download(key, sha256=sha256, path=f"raw/{sha256[:2]}/{sha256}.pdf",
-                        size=1000, content_type="application/pdf", extension=".pdf",
+    reg.add_document(key=key, url=url, site=site, extension=ext, source={"found_on": url})
+    reg.record_download(key, sha256=sha256, path=f"raw/{sha256[:2]}/{sha256}.pdf", extension=".pdf",
                         http_status=200, etag=None, last_modified=None)
     reg.conn.execute("UPDATE registry_files SET parse_status = 'parsed' WHERE sha256 = %s", (sha256,))
     return reg
@@ -93,12 +91,11 @@ class TestVersionReplacement:
         # Record new download (simulates downloader finding new sha)
         # Need to insert the new file first
         reg.conn.execute(
-            "INSERT INTO registry_files (sha256, path, size, content_type, extension, downloaded_at, parse_status) "
-            "VALUES (%s, %s, %s, %s, %s, NOW(), 'parsed')",
-            (sha_v2, f"raw/{sha_v2[:2]}/{sha_v2}.pdf", 1200, "application/pdf", ".pdf")
+            "INSERT INTO registry_files (sha256, path, extension, downloaded_at, parse_status) "
+            "VALUES (%s, %s, %s, NOW(), 'parsed')",
+            (sha_v2, f"raw/{sha_v2[:2]}/{sha_v2}.pdf", ".pdf")
         )
-        reg.record_download(key, sha256=sha_v2, path=None, size=1200,
-                            content_type="application/pdf", extension=".pdf",
+        reg.record_download(key, sha256=sha_v2, path=None, extension=".pdf",
                             http_status=200, etag=None, last_modified=None)
 
         # Verify v2 is active now, same doc_id
@@ -112,16 +109,9 @@ class TestVersionReplacement:
             assert "Versiunea 1" not in c["text"]
             assert "Versiunea 2" in c["text"]
 
-        # Verify version history: 2 versions exist
-        versions = reg.conn.execute(
-            "SELECT sha256, version FROM registry_document_versions WHERE document_key = %s ORDER BY version", (key,)
-        ).fetchall()
-        assert versions == [(sha_v1, 1), (sha_v2, 2)]
-
-        # Doc record shows version=2, previous_sha256=sha_v1
-        doc_rec = reg.conn.execute("SELECT version, previous_sha256, sha256 FROM registry_documents WHERE key = %s",
-                                   (key,)).fetchone()
-        assert doc_rec == (2, sha_v1, sha_v2)
+        # Doc record shows version=2 with the new content
+        doc_rec = reg.conn.execute("SELECT version, sha256 FROM registry_documents WHERE key = %s", (key,)).fetchone()
+        assert doc_rec == (2, sha_v2)
 
 
     def test_unchanged_text_zero_recompute(self, tmp_data: Path, registry: Registry):
@@ -222,8 +212,7 @@ class TestDocumentRemoval:
         for i in range(2):
             k = f"test.md/doc{i}.pdf"
             url = f"https://test.md/doc{i}.pdf"
-            registry.add_document(key=k, url=url, site=site, category="test",
-                             extension=".pdf", external=False, source={"found_on": url, "site": site})
+            registry.add_document(key=k, url=url, site=site, extension=".pdf", source={"found_on": url})
 
         # Crawl sees only doc0, not doc1
         missing, removed = registry.record_crawl_missing(site, {"test.md/doc0.pdf"})
@@ -364,8 +353,8 @@ class TestTransientFailures:
         assert reg.conn.execute("SELECT status FROM registry_documents WHERE key = %s", (key,)).fetchone()[0] == "not_a_file"
 
     def test_failure_of_a_new_document_is_failed(self, registry: Registry):
-        registry.add_document(key="a.md/x.pdf", url="https://a.md/x.pdf", site="a.md", category="c", extension=".pdf",
-                         external=False, source={"found_on": "https://a.md/"})
+        registry.add_document(key="a.md/x.pdf", url="https://a.md/x.pdf", site="a.md", extension=".pdf",
+                              source={"found_on": "https://a.md/"})
         registry.mark_checked("a.md/x.pdf", "failed", http_status=500)
         assert registry.conn.execute("SELECT status FROM registry_documents").fetchone()[0] == "failed"
 
@@ -393,19 +382,19 @@ class TestPagesOnRecrawl:
 
     def test_a_page_fetched_again_is_parsed_again(self, registry: Registry):
         self.page(registry, "https://a.md/x")
-        registry.mark_page_parsed("https://a.md/x", "parsed", html_hash="h1")
+        registry.mark_page_parsed("https://a.md/x", "parsed")
         assert registry.pages_to_parse() == []
         self.page(registry, "https://a.md/x")
         [page] = registry.pages_to_parse()
-        assert (page["url"], page["parse_status"], page["html_hash"]) == ("https://a.md/x", "pending", None)
+        assert (page["url"], page["parse_status"], page["parsed_at"]) == ("https://a.md/x", "pending", None)
 
 
 def test_files_of_documents_are_only_theirs(registry: Registry):
     for key, sha in (("a.md/1.pdf", "a" * 64), ("a.md/2.pdf", "b" * 64)):
-        registry.add_document(key=key, url=f"https://{key}", site="a.md", category="c", extension=".pdf", external=False,
-                         source={"found_on": "https://a.md/"})
-        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
-                            extension=".pdf", http_status=200, etag=None, last_modified=None)
+        registry.add_document(key=key, url=f"https://{key}", site="a.md", extension=".pdf",
+                              source={"found_on": "https://a.md/"})
+        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", extension=".pdf", http_status=200,
+                                 etag=None, last_modified=None)
     assert [r["sha256"] for r in registry.files_of_documents(["a.md/2.pdf"], ["pending"])] == ["b" * 64]
     assert registry.files_of_documents([], ["pending"]) == []
 
@@ -413,10 +402,10 @@ def test_files_of_documents_are_only_theirs(registry: Registry):
 def test_files_to_parse_of_some_sites_only(registry: Registry):
     """A job for one site parses that site's files, not every pending file of every site."""
     for key, site, sha in (("a.md/1.pdf", "a.md", "a" * 64), ("b.md/1.pdf", "b.md", "b" * 64)):
-        registry.add_document(key=key, url=f"https://{key}", site=site, category="c", extension=".pdf", external=False,
-                         source={"found_on": f"https://{site}/"})
-        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", size=1, content_type="application/pdf",
-                            extension=".pdf", http_status=200, etag=None, last_modified=None)
+        registry.add_document(key=key, url=f"https://{key}", site=site, extension=".pdf",
+                              source={"found_on": f"https://{site}/"})
+        registry.record_download(key, sha256=sha, path=f"raw/{sha[:2]}/{sha}.pdf", extension=".pdf", http_status=200,
+                                 etag=None, last_modified=None)
     assert [r["sha256"] for r in registry.files_to_parse(["pending"], None, sites=["b.md"])] == ["b" * 64]
     assert registry.files_to_parse(["pending"], None, sites=["none.md"]) == []
     assert len(registry.files_to_parse(["pending"], None)) == 2  # no filter: the whole corpus, as `tools.pipeline` wants

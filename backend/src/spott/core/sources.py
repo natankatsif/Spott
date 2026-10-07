@@ -67,7 +67,8 @@ ON CONFLICT (site_id) WHERE kind = 'site' DO NOTHING
 
 def seed_sources(conn, toml_path: Path) -> int:
     """sites.toml into `sources` (only the sites not there yet), then every site that has chunks in the index but
-    no source (indexed before sources existed). Returns how many rows were added. Idempotent."""
+    no source (an index imported from another machine), categorized by its domain. Returns how many rows were added.
+    Idempotent."""
     added = 0
     if toml_path.is_file():
         data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
@@ -84,13 +85,12 @@ def seed_sources(conn, toml_path: Path) -> int:
         if cur.fetchone()[0] is None:  # no index on this database yet
             return added
         cur.execute("""
-            SELECT c.site, MIN(c.category) FROM chunks c
-            WHERE c.site IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sources s WHERE s.site_id = c.site)
-            GROUP BY c.site""")
-        for site, category in cur.fetchall():
+            SELECT DISTINCT c.site FROM chunks c
+            WHERE c.site IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sources s WHERE s.site_id = c.site)""")
+        for (site,) in cur.fetchall():
             cur.execute(INSERT_SITE.replace("'toml'", "'index'"),
-                        (f"https://{site}/", site, category, Jsonb([f"https://{site}/"]), DEFAULTS["max_depth"],
-                         DEFAULTS["max_pages"], DEFAULTS["delay"],
+                        (f"https://{site}/", site, categorize(site)[0], Jsonb([f"https://{site}/"]),
+                         DEFAULTS["max_depth"], DEFAULTS["max_pages"], DEFAULTS["delay"],
                          "blocked" if site in EXCLUDED_SITES else "allowed"))
             added += cur.rowcount
     return added

@@ -23,18 +23,13 @@ log = logging.getLogger("indexing.indexer")
 
 WRITE_BATCH = 128  # chunks embedded and written per step
 
-DOCUMENT_COLUMNS = (
-    "doc_id", "kind", "title", "doc_type", "number", "date", "category", "site",
-    "url", "found_on", "lang", "page_sizes",
-    "sha256", "previous_sha256", "version", "updated_at",
-)
-CHUNK_COLUMNS = ("chunk_id", "doc_id", "kind", "text", "embed_text", "citation_label",
-                 "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes", "lang",
-                 "char_count", "content_hash", "has_contacts", "is_table",
-                 "title", "doc_type", "number", "date", "category", "site", "url", "found_on", "ord", "embedding")
+DOCUMENT_COLUMNS = ("doc_id", "kind", "title", "site", "url", "found_on", "page_sizes", "sha256", "updated_at")
+CHUNK_COLUMNS = ("chunk_id", "doc_id", "kind", "text", "citation_label",
+                 "section", "legal_path", "block_ids", "pages", "bboxes", "lang", "content_hash", "has_contacts",
+                 "title", "doc_type", "number", "date", "site", "url", "found_on", "embedding")
 LINE_COLUMNS = ("line_id", "chunk_id", "doc_id", "idx", "text", "embed_text",
-                "lang", "block_id", "page", "bboxes", "content_hash", "embedding")
-JSON_COLUMNS = {"page_sizes", "section", "legal_path", "parent_legal_path", "block_ids", "pages", "bboxes"}
+                "lang", "page", "bboxes", "content_hash", "embedding")
+JSON_COLUMNS = {"page_sizes", "section", "legal_path", "block_ids", "pages", "bboxes"}
 
 
 def upsert_sql(table: str, columns: tuple[str, ...], key: str, touch: str | None = None) -> str:
@@ -61,16 +56,10 @@ def row_values(record: dict, columns: tuple[str, ...]) -> list:
             value = json.dumps(value or [], ensure_ascii=False)
         elif col == "embedding" and value is not None:
             value = value.to_numpy() if hasattr(value, "to_numpy") else np.asarray(value, dtype=np.float32)
-        elif col in ("has_contacts", "is_table"):
+        elif col == "has_contacts":
             value = bool(value)
-        elif col == "ord" and value is None:
-            # Chunks read from jsonl written before `ord` existed: the position is the first block.
-            blocks = record.get("block_ids") or []
-            value = blocks[0] if blocks and isinstance(blocks[0], int) else 0
         elif col == "idx" and value is None:
             value = 0
-        elif col == "version" and value is None:
-            value = 1
         values.append(value)
     return values
 
