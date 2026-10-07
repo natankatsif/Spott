@@ -3,7 +3,8 @@ over from another test. Here and not in tests/conftest.py, so that the core and 
 
 import pytest
 
-from spott.api import admin, main
+from spott.api import main
+from spott.api.admin import auth
 from spott.api.answering import pipeline
 
 
@@ -16,7 +17,7 @@ def log_dirs(monkeypatch, tmp_path):
 @pytest.fixture(autouse=True)
 def login_attempts():
     """Logins are rate limited per client, and every TestClient is the same client."""
-    admin.login_limiter.hits.clear()
+    auth.login_limiter.hits.clear()
 
 
 @pytest.fixture(autouse=True)

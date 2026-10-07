@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from tests.api.fakes import SCHEMA, CompatServer, MemorySettings, MemoryUsage
 
 from spott.api import llm_settings, main, usage
+from spott.api.admin import spending
 from spott.api.llm import LLMConfig, OpenAILLM, RoutedLLM
 
 AUTH: dict[str, str] = {}
@@ -51,8 +52,8 @@ def test_prices_turn_tokens_into_money_and_unpriced_models_are_flagged():
                                         (40, "gpt-4o", "answer", 1_000_000, 0)]:
         log.record(usage.Call("openai", model, "answer", kind, i, o, 10, at=now - timedelta(days=days_ago)))
     log.answered = [now, now - timedelta(days=1)]
-    pricing = usage.Pricing(prices={"gpt-4o": usage.Price(input=2.5, output=10)})
-    rep = usage.build_report(log, pricing, 30, ["gpt-4o", "claude-sonnet-5"], now=now)
+    pricing = spending.Pricing(prices={"gpt-4o": spending.Price(input=2.5, output=10)})
+    rep = spending.build_report(log, pricing, 30, ["gpt-4o", "claude-sonnet-5"], now=now)
 
     assert rep.today.calls == 2 and rep.today.unpriced_calls == 1
     assert rep.today.cost_usd == pytest.approx(2.5 + 1.0)            # the dated gpt-4o name uses gpt-4o's price

@@ -25,9 +25,10 @@ from psycopg_pool import ConnectionPool
 
 from spott.core.embeddings import embed_texts
 
-from .llm import FAST
-from .masking import mask
-from .schemas import AskRequest, AskResponse
+from ..llm import FAST
+from ..masking import mask
+from ..schemas import AskRequest, AskResponse
+from .views import iso
 
 log = logging.getLogger("backend.gaps")
 
@@ -71,10 +72,6 @@ MAX_TITLE = 80
 Cluster = Callable[[list[dict], list[dict]], dict]
 WORSE = {"not_found": 2, "partial": 1}
 MAX_QUESTIONS_SHOWN = 20
-
-
-def iso(value) -> str:
-    return value.isoformat(timespec="seconds") if isinstance(value, datetime) else str(value)
 
 
 def group(rows: list[dict], embed: Callable[[list[str]], np.ndarray], threshold: float = SAME_GAP) -> list[list[dict]]:

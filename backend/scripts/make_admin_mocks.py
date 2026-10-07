@@ -4,7 +4,7 @@ sources.json, add-source-*.json, gaps.json, gap-recheck.json, gap-hide.json.
 Built offline, no database: the 40 sources from sites.toml (same seed and category rules as the backend), their
 counters from the corpus-stats mock (a snapshot of the real index), lines spread by chunks. Then a few rows edited
 for the demo: one running (63 %, parse), one failed, one document added by URL. Gaps are hand-written realistic
-questions, shaped like spott/api/gaps.py builds them (a group re-checked as answered is not listed). To refresh sources.json from a real DB instead, save `GET /api/admin/sources` over it and re-apply the
+questions, shaped like spott/api/admin/gaps.py builds them (a group re-checked as answered is not listed). To refresh sources.json from a real DB instead, save `GET /api/admin/sources` over it and re-apply the
 three edits (see edit_for_demo). Deterministic: same input → same files.
 
     cd backend && uv run python scripts/make_admin_mocks.py ../frontend
@@ -160,7 +160,7 @@ def add_source_mocks(sources: list[dict]) -> dict[str, dict]:
 
 def group(gid: str, asked: list[tuple[str, str, str, str]], missing: list[str], hints: list[tuple[str, int]],
           rechecked: dict | None = None) -> dict:
-    """A group as the backend builds it (spott/api/gaps.py gap_item): questions oldest first, the first one is the
+    """A group as the backend builds it (spott/api/admin/gaps.py gap_item): questions oldest first, the first one is the
     example and the id, status = the worst, count = how many questions."""
     questions = [{"answer_id": f"{gid}_{i}" if i else gid, "question": text, "lang": lang, "status": status,
                   "ts": ts(hm)} for i, (text, lang, status, hm) in enumerate(asked)]

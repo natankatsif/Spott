@@ -1,6 +1,6 @@
-"""What the admin shows about a running stage: the file or address it is on right now (admin.current_item)."""
+"""What the admin shows about a running stage: the file or address it is on right now (admin.views.current_item)."""
 
-from spott.api.admin import current_item
+from spott.api.admin.views import current_item
 
 
 def test_the_file_being_parsed():

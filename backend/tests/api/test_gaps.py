@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from tests.api.fakes import DECISION, LOGIN, FakeLLM, FakeStore, model
 
 from spott.api import main
+from spott.api.admin.gaps import gaps, group
 from spott.api.answering import answer_question, pipeline
-from spott.api.gaps import gaps, group
 from spott.api.masking import mask
 from spott.api.schemas import AskRequest, AskResponse, GapList
 from spott.core.pipeline import RetrievalResult
@@ -156,7 +156,7 @@ def test_wording_groups_the_model_put_together_are_one_group():
 
 
 def test_question_embeddings_are_kept_between_lists():
-    from spott.api.gaps import CachedEmbed
+    from spott.api.admin.gaps import CachedEmbed
 
     calls = []
 

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from tests.api.fakes import SCHEMA, CompatServer, MemorySettings
 
 from spott.api import llm, llm_settings, main
+from spott.api.admin import model_settings
 from spott.api.llm import AnthropicLLM, LLMConfig, LLMUnavailable, OpenAILLM, RoutedLLM
 
 
@@ -264,7 +265,7 @@ def test_model_test_and_list(api, monkeypatch):
         seen.update(provider=provider, model=model, cfg=cfg)
         return llm.LLMResult(data={"reply": "ok"}, model=model, prompt_tokens=1, completion_tokens=1)
 
-    monkeypatch.setattr(llm_settings, "probe", fake_probe)
+    monkeypatch.setattr(model_settings, "probe", fake_probe)
     r = c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "openai", "model": "gpt-4o"}).json()
     assert r["ok"] and r["model"] == "gpt-4o" and seen["cfg"]["api_key"] == "sk-env-123456789"
     c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "gemini", "model": "g", "api_key": "typed"})
@@ -273,9 +274,9 @@ def test_model_test_and_list(api, monkeypatch):
     def failing_probe(provider, model, cfg):
         raise LLMUnavailable("no API key for Google (Gemini)")
 
-    monkeypatch.setattr(llm_settings, "probe", failing_probe)
+    monkeypatch.setattr(model_settings, "probe", failing_probe)
     r = c.post("/api/admin/llm/test", headers=AUTH, json={"provider": "gemini", "model": "g"}).json()
     assert not r["ok"] and "Gemini" in r["error"]
 
-    monkeypatch.setattr(llm_settings, "list_models", lambda provider, cfg: ["a", "b"])
+    monkeypatch.setattr(model_settings, "list_models", lambda provider, cfg: ["a", "b"])
     assert c.post("/api/admin/llm/models", headers=AUTH, json={"provider": "openai"}).json() == {"models": ["a", "b"]}

@@ -8,8 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.api.fakes import LOGIN
 
-from spott.api import admin, llm_settings, main
-from spott.api.admin import Duplicate
+from spott.api import llm_settings, main
+from spott.api.admin import auth, views
+from spott.api.admin.store import Duplicate
 
 TOKEN: dict[str, str] = {}
 ROBOTS = {
@@ -166,7 +167,7 @@ def test_admin_needs_a_valid_session(client, monkeypatch):
     assert client.post("/api/admin/login", json=LOGIN | {"password": "wrong"}).status_code == 401
     token = TOKEN["Authorization"].removeprefix("Bearer ")
     payload, signature = token.split(".")
-    expired = admin.make_token("admin", datetime.now(UTC) - timedelta(minutes=1))
+    expired = auth.make_token("admin", datetime.now(UTC) - timedelta(minutes=1))
     for headers in ({}, {"Authorization": "Bearer wrong"}, {"Authorization": f"Bearer {payload}.{signature[:-2]}xx"},
                     {"Authorization": f"Bearer {expired}"}):
         r = client.get("/api/admin/sources", headers=headers)
@@ -276,12 +277,12 @@ def test_one_list_call_has_status_progress_and_totals(client):
 
 def test_status_precedence():
     base = {"enabled": True, "robots": "allowed", "chunks": 5, "last_job": None}
-    assert admin.status_of(base) == "indexed"
-    assert admin.status_of(base | {"chunks": 0}) == "pending"
-    assert admin.status_of(base | {"last_job": {"status": "failed"}}) == "failed"
-    assert admin.status_of(base | {"last_job": {"status": "queued"}}) == "queued"
-    assert admin.status_of(base | {"robots": "blocked", "last_job": {"status": "running"}}) == "blocked"
-    assert admin.status_of(base | {"enabled": False, "robots": "blocked"}) == "disabled"
+    assert views.status_of(base) == "indexed"
+    assert views.status_of(base | {"chunks": 0}) == "pending"
+    assert views.status_of(base | {"last_job": {"status": "failed"}}) == "failed"
+    assert views.status_of(base | {"last_job": {"status": "queued"}}) == "queued"
+    assert views.status_of(base | {"robots": "blocked", "last_job": {"status": "running"}}) == "blocked"
+    assert views.status_of(base | {"enabled": False, "robots": "blocked"}) == "disabled"
 
 
 def test_patch_and_delete(client):

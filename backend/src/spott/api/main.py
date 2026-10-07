@@ -27,12 +27,12 @@ from spott.core.paths import DATA_DIR
 from spott.core.pipeline import retrieve
 from spott.core.sources import seed_sources
 
-from . import admin, errors, freshness, llm_settings, preview, usage
-from .admin import PgAdminStore
+from . import admin, errors, freshness, preview, usage
+from .admin.gaps import PgGaps, llm_cluster
+from .admin.store import PgAdminStore
 from .answering import answer_events, answer_question, replay_events
 from .answers import PgAnswers
 from .errors import ApiException, RateLimiter, client_address
-from .gaps import PgGaps, llm_cluster
 from .llm import LLM, LLMUnavailable
 from .llm_settings import LLMHolder, PgSettings
 from .pdf_source import PdfSource, make_clients
@@ -148,10 +148,8 @@ app = FastAPI(title="Chișinău Municipal Assistant", lifespan=lifespan)
 errors.install(app)
 mimetypes.add_type("text/javascript", ".mjs")  # pdf.js is ES modules: a module script needs a JS type
 app.mount(preview.STATIC_PREFIX, StaticFiles(directory=preview.STATIC), name="preview-static")
-app.include_router(admin.auth_router)
-app.include_router(admin.router)
-app.include_router(llm_settings.router)
-app.include_router(usage.router)
+for router in admin.ROUTERS:
+    app.include_router(router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,  # CORS_ORIGINS=* for the widget embedded on other sites
