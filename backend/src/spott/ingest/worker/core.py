@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 
 from spott.core.paths import BACKEND_DIR
 from spott.core.sources import is_document_link
+from spott.ingest.common.console import child_env
 from spott.ingest.common.progress import read_progress
 
 WEIGHTS = {"crawl": 20.0, "download": 20.0, "parse": 40.0, "index": 20.0}
@@ -177,8 +178,7 @@ class JobRunner:
                     status = "cancelled"
                     break
                 progress_file.unlink(missing_ok=True)
-                env = {**os.environ, "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
-                       "PROGRESS_FILE": str(progress_file), "CANCEL_FILE": str(cancel_file)}
+                env = child_env(PROGRESS_FILE=str(progress_file), CANCEL_FILE=str(cancel_file))
                 step = Step(step.stage, [a.replace("{tmp}", tmp) for a in step.args], step.weight,
                             step.stop_if_nothing.replace("{tmp}", tmp) if step.stop_if_nothing else None)
                 code = self._run_step(job_id, step, env, tail, progress_file, cancel_file, finished_weight, started,

@@ -9,6 +9,7 @@ pg_dump / pg_restore run inside the container, so no local Postgres client is ne
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -16,8 +17,19 @@ from datetime import date
 from pathlib import Path
 
 from spott.core.paths import DATA_DIR, REPO_ROOT, SITES_TOML
+from spott.ingest.common.console import utf8_console
 
-from .common import CONTAINER, db_env, utf8_console
+CONTAINER = os.getenv("POSTGRES_CONTAINER", "qwerty-pgvector")
+
+
+def db_env() -> dict[str, str]:
+    from dotenv import load_dotenv
+
+    load_dotenv(REPO_ROOT / ".env")
+    return {
+        "user": os.getenv("POSTGRES_USER", "qwerty"),
+        "db": os.getenv("POSTGRES_DB", "qwerty"),
+    }
 
 TABLES = ("documents", "chunks", "lines", "contacts")  # contacts: python -m spott.ingest.contacts
 

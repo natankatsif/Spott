@@ -14,10 +14,10 @@ import re
 
 from selectolax.parser import HTMLParser, Node
 
+from spott.ingest.common.normalize import normalize_text
 from spott.ingest.common.text import has_contacts
 
 from .metadata import find_date
-from .normalize import normalize_text
 
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 PRICE = re.compile(r"^\d[\d\s.,]*\s*(lei|mdl)\.?$", re.I)

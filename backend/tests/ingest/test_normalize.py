@@ -1,8 +1,8 @@
-"""Tests for parsing/normalize.py: text normalization and language code normalization."""
+"""Tests for common/normalize.py: text normalization and language code normalization."""
 
 import pytest
 
-from spott.ingest.parsing.normalize import normalize_lang
+from spott.ingest.common.normalize import normalize_lang
 
 
 @pytest.mark.parametrize(

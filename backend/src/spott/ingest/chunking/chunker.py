@@ -8,9 +8,9 @@ and length constraints.
 import hashlib
 import re
 
+from spott.ingest.common.normalize import normalize_lang
 from spott.ingest.common.text import check_contacts, format_table_markdown
 from spott.ingest.common.urls import url_key
-from spott.ingest.parsing.normalize import normalize_lang
 
 from .legal import LegalHierarchyTracker, is_act_or_has_major_legal
 

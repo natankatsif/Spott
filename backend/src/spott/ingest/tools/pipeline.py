@@ -24,8 +24,7 @@ import psycopg
 from spott.core.db import get_connection
 from spott.core.paths import BACKEND_DIR, DATA_DIR, SITES_TOML
 from spott.core.sources import EXCLUDED_SITES
-
-from .common import child_env, utf8_console
+from spott.ingest.common.console import child_env, utf8_console
 
 STAGES = ("crawler", "downloader", "parsing", "pages_parsing", "indexing")
 

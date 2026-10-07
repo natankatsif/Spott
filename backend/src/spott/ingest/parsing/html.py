@@ -13,12 +13,12 @@ from pathlib import Path
 
 import trafilatura
 
+from spott.ingest.common.normalize import normalize_lang, normalize_text
 from spott.ingest.common.registry import Registry
 from spott.ingest.common.text import format_table_markdown, has_contacts
 from spott.ingest.common.urls import url_key
 
 from .html_prep import preprocess_html, publication_date
-from .normalize import normalize_lang, normalize_text
 
 log = logging.getLogger("parsing.html")
 

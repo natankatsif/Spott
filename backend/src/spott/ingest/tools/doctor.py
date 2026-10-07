@@ -15,8 +15,7 @@ import sys
 from collections.abc import Callable
 
 from spott.core.paths import REPO_ROOT
-
-from .common import utf8_console
+from spott.ingest.common.console import utf8_console
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 Result = tuple[str, str, str]  # status, message, hint

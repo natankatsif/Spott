@@ -17,9 +17,8 @@ import psycopg
 from spott.core.db import get_connection, init_app_db
 from spott.core.paths import SITES_TOML
 from spott.core.sources import seed_sources
+from spott.ingest.common.console import utf8_console
 from spott.ingest.crawler.config import load_sites
-
-from .common import utf8_console
 
 
 def import_sites(conn: psycopg.Connection, config: Path = SITES_TOML) -> int:

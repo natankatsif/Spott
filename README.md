@@ -106,7 +106,7 @@ Two independent projects that talk only over HTTP: the Python backend and the Ne
 
 | Directory | Stack | Purpose |
 |---|---|---|
-| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`), in three layers: |
+| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`): a library, `core`, and three apps on it: |
 | [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the library the rest builds on: the database schema, embeddings, the corpus search (`retrieve`), sources and crawl rules |
 | [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Docling | corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, the admin `worker`, `tools` (doctor, pipeline, index export/import) |
 | [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the API: `main` builds the app, `routes` are the public endpoints, `answering/` the answer pipeline, `admin/` the admin panel by section |

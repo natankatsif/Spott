@@ -30,8 +30,9 @@ from docling_core.types.doc import (
 )
 from dotenv import find_dotenv, load_dotenv
 
+from spott.ingest.common.normalize import detect_lang, normalize_text
+
 from . import metadata
-from .normalize import detect_lang, normalize_text
 
 PARSER_VERSION = "2"
 SUPPORTED_EXTENSIONS = {
