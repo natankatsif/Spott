@@ -12,7 +12,6 @@ Logs: data/logs/<mode>-<date>/<stage>.log
 from __future__ import annotations
 
 import argparse
-import sqlite3
 import subprocess
 import sys
 import time
@@ -20,7 +19,10 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
-from spott.core.paths import BACKEND_DIR, DATA_DIR, REGISTRY, SITES_TOML
+import psycopg
+
+from spott.core.db import get_connection
+from spott.core.paths import BACKEND_DIR, DATA_DIR, SITES_TOML
 
 from .common import child_env, utf8_console
 
@@ -40,12 +42,14 @@ def allowed_sites(config: Path = SITES_TOML) -> list[str]:
     return [s["id"] for s in sites if s["id"] not in EXCLUDED_SITES]
 
 
-def crawled_sites(db: Path = REGISTRY) -> list[str]:
-    """Sites that already have pages in the registry — what `update` refreshes by default."""
-    if not db.exists():
+def crawled_sites() -> list[str]:
+    """Sites that already have pages in the registry — what `update` refreshes by default; [] without a database."""
+    try:
+        with get_connection(register=False) as conn:
+            rows = conn.execute("SELECT DISTINCT site FROM registry_pages").fetchall()
+    except psycopg.Error:
         return []
-    with sqlite3.connect(db) as conn:
-        return sorted(r[0] for r in conn.execute("SELECT DISTINCT site FROM pages") if r[0] not in EXCLUDED_SITES)
+    return sorted(site for (site,) in rows if site not in EXCLUDED_SITES)
 
 
 def plan(mode: str, sites: list[str], max_depth: int | None) -> list[tuple[str, list[str]]]:
@@ -88,20 +92,20 @@ def run_stage(name: str, args: list[str], log_file: Path) -> bool:
     return code == 0
 
 
-def registry_summary(db: Path = REGISTRY) -> list[str]:
-    if not db.exists():
-        return ["registry.sqlite ещё нет"]
-    queries = {
-        "Документы (файлы)": "SELECT status, count(*) FROM documents GROUP BY status",
-        "Страницы (разбор)": "SELECT parse_status, count(*) FROM pages GROUP BY parse_status",
-        "Файлы (разбор)": "SELECT parse_status, count(*) FROM files GROUP BY parse_status",
-    }
-    out = []
-    with sqlite3.connect(db) as conn:
-        for title, sql in queries.items():
-            rows = conn.execute(sql).fetchall()
-            out.append(f"{title}: " + ", ".join(f"{k or '—'} {v}" for k, v in rows))
-    return out
+def registry_summary() -> list[str]:
+    from spott.ingest.common.registry import Registry
+
+    try:
+        registry = Registry.open()
+    except psycopg.Error as e:
+        return [f"реестр недоступен: {e}"]
+    try:
+        counts = registry.status_counts()
+    finally:
+        registry.close()
+    titles = {"documents": "Документы (файлы)", "pages": "Страницы (разбор)", "files": "Файлы (разбор)"}
+    return [f"{title}: " + ", ".join(f"{k or '—'} {v}" for k, v in counts[key].items())
+            for key, title in titles.items()]
 
 
 def main(argv: list[str] | None = None) -> None:

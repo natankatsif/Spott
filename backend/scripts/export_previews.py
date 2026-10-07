@@ -4,9 +4,9 @@ For every citation in <frontend>/src/lib/mocks/ask/*.json this renders the same 
 returns, saves it to <frontend>/public/mocks/preview/<mock>-<citation>.html and points the citation's preview_url at
 it, so mock mode shows a real, highlighted preview without the backend.
 
-Works without Postgres: documents and lines come from the offline index files (data/chunks,
-crawl copies from registry.sqlite, PDFs from data/raw). PDFs are copied next to the pages (files/<sha>.pdf) with
-pdf.js (static/), all paths relative, so the folder works from any origin. No LLM, no network.
+Documents and lines come from the offline index files (data/chunks), PDFs from data/raw, crawled copies of pages
+through the registry in Postgres (without a database pages get the text view). PDFs are copied next to the pages
+(files/<sha>.pdf) with pdf.js (static/), all paths relative, so the folder works from any origin. No LLM, no network.
 
     cd backend && uv run python scripts/export_previews.py ../frontend
 
@@ -18,12 +18,16 @@ import json
 import shutil
 from pathlib import Path
 
+import psycopg
+
 from spott.api import preview
 from spott.api.answering import to_top_left
 from spott.api.files import DATA_DIR, raw_pdf
+from spott.core.db import get_connection, get_pool
 
 MOCKS = Path()  # <frontend>/src/lib/mocks/ask, set by main()
 OUT = Path()  # <frontend>/public/mocks/preview
+PAGES = preview.PageSource(None, None)  # crawled copies of pages, set by main()
 PUBLIC_PREFIX = "/mocks/preview"
 # Mock mode is served by the frontend itself (same origin as the preview); any origin may talk to a static demo.
 ALLOWED = ["*"]
@@ -65,7 +69,7 @@ def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tupl
         (OUT / "files").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(pdf, OUT / "files" / pdf.name)
         view = preview.pdf_view(**common, file_url=f"files/{pdf.name}", deep_link=deep, static_prefix="static")
-    elif kind == "page" and (got := preview.PageSource(None).crawled(doc["url"])):
+    elif kind == "page" and (got := PAGES.crawled(doc["url"])):
         view = preview.page_view(**common, page_html=got[0], how="crawl", date=got[1], deep_link=deep)
     else:
         view = preview.text_view(**common, deep_link=deep, unavailable=kind == "page")
@@ -73,12 +77,17 @@ def render(doc: dict, lines: list[dict], selected: list[str], lang: str) -> tupl
 
 
 def main() -> None:
-    global MOCKS, OUT
+    global MOCKS, OUT, PAGES
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("frontend", type=Path, help="the frontend directory (its mocks are read and rewritten)")
     frontend = ap.parse_args().frontend
     MOCKS = frontend / "src" / "lib" / "mocks" / "ask"
     OUT = frontend / "public" / "mocks" / "preview"
+    try:
+        get_connection(register=False).close()
+        PAGES = preview.PageSource(None, get_pool(min_size=1, max_size=1))
+    except psycopg.OperationalError:
+        print("  ! no Postgres: pages get the text view (their crawled copies are found through the registry)")
     OUT.mkdir(parents=True, exist_ok=True)
     shutil.copytree(preview.STATIC, OUT / "static", dirs_exist_ok=True)
     cache: dict[str, tuple[dict, list[dict]]] = {}

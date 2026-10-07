@@ -46,34 +46,35 @@ API-сервер: `cd backend && uv run uvicorn spott.api.main:app --port 8000` 
 
 ### Offline Indexation Pipeline
 
-Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр SQLite (`data/registry.sqlite`) и локальные директории хранения.
+Пайплайн сбора, оцифровки и индексации данных состоит из 8 последовательных этапов. Все этапы координируются через реестр (таблицы `registry_*` в Postgres) и локальные директории хранения, поэтому Postgres нужен с первого этапа.
 
 #### Порядок выполнения и зависимости этапов:
 
 ```mermaid
 graph TD
-    A[1. crawler] -->|URLs & metadata| B[2. downloader]
+    F[0. docker compose] -->|реестр| A[1. crawler]
+    A -->|URLs & metadata| B[2. downloader]
     A -->|HTML pages| D[4. pages_parsing]
     B -->|PDF/DOCX files| C[3. parsing]
     C -->|parsed files JSON| E[5. chunking]
     D -->|parsed pages JSON| E
-    F[6. docker compose] -->|pgvector DB| G[7. indexing]
+    F -->|pgvector DB| G[6. indexing]
     E -->|JSONL chunks| G
-    G -->|indexed DB| H[8. search]
+    G -->|indexed DB| H[7. search]
 ```
 
 #### Сводная таблица этапов:
 
 | № | Модуль | Входные данные | Выходные данные | Сложность / Ресурсы | Назначение |
 |---|---|---|---|---|---|
-| **1** | `crawler` | `data/sources/sites.toml` | `registry.sqlite` | 🌐 Сеть (умеренно) | Обход муниципальных сайтов, сбор ссылок на акты и страниц |
-| **2** | `downloader` | `registry.sqlite` | `data/raw/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
+| **0** | `docker compose` | `docker-compose.yml` | PostgreSQL порт 5432 | 🟢 Лёгкий | PostgreSQL 17 с `pgvector`: реестр этапов, потом индекс |
+| **1** | `crawler` | `data/sources/sites.toml` | реестр (Postgres) | 🌐 Сеть (умеренно) | Обход муниципальных сайтов, сбор ссылок на акты и страниц |
+| **2** | `downloader` | реестр (Postgres) | `data/raw/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
 | **3** | `parsing` | `data/raw/` | `data/parsed/<sha>.json` | ⚡ **Тяжёлый** (CPU/RAM/OCR) | Оцифровка через Docling: текстовый слой, OCR сканов, bboxes, таблицы |
 | **4** | `pages_parsing` | `data/crawled/pages/` | `data/parsed/pages/*.json` | 🟢 Лёгкий (~секунды) | Парсинг текстовых страниц сайтов, очистка навигации, извлечение контактов |
 | **5** | `chunking` | `data/parsed/` | `data/chunks/*.jsonl` | 🟢 Лёгкий (~1-2 сек) | Семантическая нарезка: привязка заголовков, `legal_path`, слияние <150 симв. |
-| **6** | `docker compose` | `docker-compose.yml` | PostgreSQL порт 5432 | 🟢 Лёгкий | Запуск СУБД PostgreSQL 16 с расширением `pgvector` |
-| **7** | `indexing` | `data/chunks/` или `data/parsed/` | Таблицы `documents`, `chunks` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Загрузка мультиязычной модели `bge-m3` (~2.3 GB), генерация векторов (1024 dim) и FTS-индекса |
-| **8** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
+| **6** | `indexing` | `data/chunks/` или `data/parsed/` | Таблицы `documents`, `chunks` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Загрузка мультиязычной модели `bge-m3` (~2.3 GB), генерация векторов (1024 dim) и FTS-индекса |
+| **7** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
 
 ---
 
@@ -81,6 +82,9 @@ graph TD
 
 ```bash
 cd backend
+
+# 0. Postgres + pgvector (из корня репозитория): реестр этапов, потом индекс
+docker compose up -d
 
 # 1. Сбор ссылок (crawler)
 uv run python -m spott.ingest.crawler --list                          # Список поддерживаемых сайтов
@@ -109,17 +113,14 @@ uv run python -m spott.ingest.chunking --files-only                   # Толь
 uv run python -m spott.ingest.chunking --pages-only                   # Только веб-страницы
 uv run python -m spott.ingest.chunking --limit 50                     # Лимит обработки
 
-# 6. Запуск инфраструктуры хранения
-docker compose up -d                                     # Запуск PostgreSQL 16 + pgvector
-
-# 7. Индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
+# 6. Индексация в БД (indexing) — ТЯЖЁЛАЯ ОПЕРАЦИЯ (загрузка весов ~2.3 GB + эмбеддинги)
 uv run python -m spott.ingest.indexing                                # Генерация эмбеддингов BGE-M3 и загрузка в pgvector
 uv run python -m spott.ingest.indexing --from-jsonl                   # Загрузить чанки из готовых data/chunks/*.jsonl
 uv run python -m spott.ingest.indexing --recreate                     # Полный пересоздание схемы БД
 uv run python -m spott.ingest.indexing --batch-size 32                # Размер батча эмбеддингов
 uv run python -m spott.ingest.indexing --clean-orphans                # Удалить из БД чанки, удалённые из корпуса
 
-# 8. Проверка поиска (search)
+# 7. Проверка поиска (search)
 uv run python -m spott.core.search --query "bugetul municipal 2026"
 uv run python -m spott.core.search --query "компенсация за отопление" --lang ru --top-k 5
 uv run python -m spott.core.search --query "plan urbanistic" --doc-type decizie

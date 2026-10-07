@@ -105,10 +105,6 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS sha256 TEXT;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS previous_sha256 TEXT;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
 CREATE INDEX IF NOT EXISTS idx_documents_site ON documents(site);
 
@@ -150,8 +146,6 @@ CREATE TABLE IF NOT EXISTS chunks (
         )
     ) STORED
 );
-
-ALTER TABLE chunks ADD COLUMN IF NOT EXISTS ord INTEGER DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_content_hash ON chunks(content_hash);
@@ -244,7 +238,19 @@ CREATE TABLE IF NOT EXISTS sources (
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     robots TEXT NOT NULL DEFAULT 'allowed' CHECK (robots IN ('allowed', 'blocked')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_job_id BIGINT
+    last_job_id BIGINT,
+    title TEXT,                      -- sources added by URL: the page's title
+    category_source TEXT,            -- how the category was decided
+    -- Automatic updates (docs/history/audit/06-freshness-plan.md): a nightly `check` of what changed, a weekly full
+    -- `refresh`, earlier when people signal outdated content.
+    auto_update BOOLEAN NOT NULL DEFAULT TRUE,
+    check_method TEXT,               -- wordpress | sitemap | fingerprint (+…)
+    last_checked_at TIMESTAMPTZ,     -- the last check or full refresh
+    last_full_at TIMESTAMPTZ,        -- the last complete refresh
+    next_check_at TIMESTAMPTZ,       -- when the scheduler queues the next one
+    fingerprints JSONB NOT NULL DEFAULT '{}',  -- key page → hash of its text
+    stale_signals INTEGER NOT NULL DEFAULT 0,  -- since the last check
+    last_signal_at TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_site ON sources(site_id) WHERE kind = 'site';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_document ON sources(url) WHERE kind = 'document';
@@ -252,7 +258,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_document ON sources(url) WHERE kind
 CREATE TABLE IF NOT EXISTS jobs (
     id BIGSERIAL PRIMARY KEY,
     source_id BIGINT,                -- NULL = all sources
-    kind TEXT NOT NULL CHECK (kind IN ('crawl', 'refresh')),
+    -- `check` and `refresh`: automatic updates; `backlog`: the autopilot's own job, queued by the worker when it has
+    -- nothing else to do, so a source is finished methodically across as many nights as it takes.
+    kind TEXT NOT NULL CHECK (kind IN ('crawl', 'refresh', 'check', 'backlog')),
     status TEXT NOT NULL DEFAULT 'queued'
         CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled')),
     cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
@@ -266,29 +274,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     finished_at TIMESTAMPTZ,
     stats JSONB NOT NULL DEFAULT '{}',
     log_tail JSONB NOT NULL DEFAULT '[]',
-    error TEXT
+    error TEXT,
+    url TEXT                         -- a job for one URL of a source (a deeper path, a document of a known domain)
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-
--- Task 11: sources added by URL (title, how the category was decided), a job for one URL of a source
--- (a deeper path or a document merged into an existing domain).
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS title TEXT;
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS category_source TEXT;
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS url TEXT;
--- Automatic updates (docs/history/audit/06-freshness-plan.md): a nightly `check` of what changed, a weekly full `refresh`,
--- earlier when people signal outdated content.
-ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_kind_check;
--- `backlog`: the autopilot's own job, queued by the worker when it has nothing else to do, so a source is
--- finished methodically across as many nights as it takes (docs/history/audit/06-freshness-plan.md).
-ALTER TABLE jobs ADD CONSTRAINT jobs_kind_check CHECK (kind IN ('crawl', 'refresh', 'check', 'backlog'));
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS auto_update BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS check_method TEXT;          -- wordpress | sitemap | fingerprint (+…)
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;  -- the last check or full refresh
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_full_at TIMESTAMPTZ;     -- the last complete refresh
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ;    -- when the scheduler queues the next one
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS fingerprints JSONB NOT NULL DEFAULT '{}';  -- key page → hash of its text
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS stale_signals INTEGER NOT NULL DEFAULT 0;  -- since the last check
-ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_signal_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS answers (
     answer_id TEXT PRIMARY KEY,
@@ -301,18 +290,17 @@ CREATE TABLE IF NOT EXISTS answers (
     path TEXT NOT NULL,
     citations INTEGER NOT NULL,
     doc_ids JSONB NOT NULL DEFAULT '[]',
-    answer TEXT NOT NULL
+    answer TEXT NOT NULL,
+    -- The admin's gaps: what a partial answer lacked, sites found but not used, hidden by the admin, the last re-check.
+    missing JSONB,
+    retrieved_sites JSONB,
+    gap_hidden BOOLEAN NOT NULL DEFAULT FALSE,
+    topic TEXT,                      -- of an unanswered question, set once by a small model (spott/api/gaps.py)
+    gap_group TEXT,                  -- the group a wording group was sorted into
+    gap_title JSONB,                 -- {"ro", "ru"} on a group's first answer
+    recheck JSONB
 );
 CREATE INDEX IF NOT EXISTS idx_answers_created ON answers(created_at);
--- Task 11 (gaps): what a partial answer lacked, sites found but not used, hidden by the admin, the last re-check.
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS missing JSONB;
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS retrieved_sites JSONB;
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_hidden BOOLEAN NOT NULL DEFAULT FALSE;
--- the admin's gaps: the topic of an unanswered question (set once by a small model, see backend/src/spott/api/gaps.py)
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS topic TEXT;
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_group TEXT;  -- the group a wording group was sorted into
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS gap_title JSONB;  -- {"ro", "ru"} on a group's first answer
-ALTER TABLE answers ADD COLUMN IF NOT EXISTS recheck JSONB;
 
 CREATE TABLE IF NOT EXISTS feedback (
     answer_id TEXT NOT NULL,
@@ -347,11 +335,10 @@ CREATE TABLE IF NOT EXISTS suggestions (
     index_version TEXT,
     cached JSONB,                        -- the last verified AskResponse, replayed on click
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    pin_group TEXT,                      -- the same pinned question in each language (pinned in RO, translated to RU)
+    texts JSONB,                         -- a pinned group's text in RO, RU and EN
     UNIQUE (lang, question)
 );
--- the same pinned question in each language (one pinned in RO is translated and pinned in RU too)
-ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS pin_group TEXT;
-ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS texts JSONB;  -- a pinned group's text in RO, RU and EN
 
 -- Admin settings (backend/src/spott/api/llm_settings.py: API keys and the model of each role), one JSON value per key.
 CREATE TABLE IF NOT EXISTS settings (
@@ -382,6 +369,112 @@ CREATE TABLE IF NOT EXISTS visitors (
 """
 
 
+# The crawl registry (spott.ingest.common.registry): what the ingest stages found, downloaded and parsed, so every
+# stage is incremental. Not part of the index dump: it stays with the machine that crawls.
+REGISTRY_SQL = """
+CREATE TABLE IF NOT EXISTS registry_pages (
+    url           TEXT PRIMARY KEY,          -- final URL after redirects
+    site          TEXT NOT NULL,
+    status        INTEGER,                   -- HTTP status; 410 = not reached by the last complete crawl
+    depth         INTEGER,
+    parent        TEXT,
+    anchor_text   TEXT,
+    title         TEXT,
+    lang          TEXT,
+    alternates    JSONB NOT NULL DEFAULT '{}',  -- {hreflang: url}
+    html_file     TEXT,                      -- relative to data/crawl/<site>/
+    content_type  TEXT,
+    error         TEXT,
+    fetched_at    TIMESTAMPTZ NOT NULL,
+    parse_status  TEXT NOT NULL DEFAULT 'pending',  -- pending | parsed | empty | failed
+    html_hash     TEXT,
+    parsed_at     TIMESTAMPTZ,
+    parse_error   TEXT
+);
+
+-- Unique downloaded contents, keyed by SHA-256.
+CREATE TABLE IF NOT EXISTS registry_files (
+    sha256          TEXT PRIMARY KEY,
+    path            TEXT NOT NULL,           -- relative to data/
+    size            BIGINT NOT NULL,
+    content_type    TEXT,
+    extension       TEXT,
+    downloaded_at   TIMESTAMPTZ NOT NULL,
+    parse_status    TEXT NOT NULL DEFAULT 'pending',  -- pending | parsing | parsed | failed | unsupported
+    parser_version  TEXT,
+    parsed_at       TIMESTAMPTZ,
+    parse_error     TEXT
+);
+
+-- One row per document URL and the state of its download.
+CREATE TABLE IF NOT EXISTS registry_documents (
+    key             TEXT PRIMARY KEY,        -- url_key(): ignores scheme, www., trailing slash
+    url             TEXT NOT NULL,
+    site            TEXT NOT NULL,           -- site where first discovered
+    category        TEXT,
+    extension       TEXT,
+    external        BOOLEAN NOT NULL DEFAULT FALSE,
+    status          TEXT NOT NULL DEFAULT 'discovered',  -- discovered, downloaded, not_a_file, failed, removed, missing
+    sha256          TEXT REFERENCES registry_files(sha256),  -- current content
+    etag            TEXT,
+    last_modified   TEXT,                    -- the Last-Modified header as the site sent it
+    http_status     INTEGER,
+    error           TEXT,
+    discovered_at   TIMESTAMPTZ NOT NULL,
+    checked_at      TIMESTAMPTZ,             -- last download attempt
+    version         INTEGER NOT NULL DEFAULT 1,
+    previous_sha256 TEXT,
+    updated_at      TIMESTAMPTZ,
+    consecutive_missing INTEGER NOT NULL DEFAULT 0,
+    removed_at      TIMESTAMPTZ
+);
+
+-- Every page where a document link was found (provenance for citations).
+CREATE TABLE IF NOT EXISTS registry_document_sources (
+    document_key   TEXT NOT NULL REFERENCES registry_documents(key),
+    found_on       TEXT NOT NULL DEFAULT '', -- page URL; '' when unknown
+    found_on_title TEXT,
+    anchor_text    TEXT,
+    site           TEXT NOT NULL,
+    depth          INTEGER,
+    via            TEXT,                     -- a | iframe | embed | object | content-type | wp-media | freshness
+    published      TEXT,                     -- upload date from WordPress media, as the site gives it
+    discovered_at  TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (document_key, found_on)
+);
+
+-- History of the contents seen at each document URL.
+CREATE TABLE IF NOT EXISTS registry_document_versions (
+    document_key  TEXT NOT NULL REFERENCES registry_documents(key),
+    sha256        TEXT NOT NULL REFERENCES registry_files(sha256),
+    fetched_at    TIMESTAMPTZ NOT NULL,
+    version       INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (document_key, sha256)
+);
+
+-- Indexes only when missing: CREATE INDEX IF NOT EXISTS waits for a stage that is writing, and every stage runs this.
+DO $$
+BEGIN
+  IF to_regclass('idx_registry_pages_site') IS NULL THEN
+    CREATE INDEX idx_registry_pages_site ON registry_pages(site);
+  END IF;
+  IF to_regclass('idx_registry_files_parse_status') IS NULL THEN
+    CREATE INDEX idx_registry_files_parse_status ON registry_files(parse_status);
+  END IF;
+  IF to_regclass('idx_registry_documents_site') IS NULL THEN
+    CREATE INDEX idx_registry_documents_site ON registry_documents(site);
+  END IF;
+  IF to_regclass('idx_registry_documents_status') IS NULL THEN
+    CREATE INDEX idx_registry_documents_status ON registry_documents(status);
+  END IF;
+  IF to_regclass('idx_registry_documents_sha256') IS NULL THEN
+    CREATE INDEX idx_registry_documents_sha256 ON registry_documents(sha256);
+  END IF;
+END
+$$;
+"""
+
+
 def init_db(conn: psycopg.Connection | None = None) -> None:
     own_conn = conn is None
     # No vector registration: on a fresh database the extension doesn't exist until INIT_SQL creates it.
@@ -391,19 +484,26 @@ def init_db(conn: psycopg.Connection | None = None) -> None:
             cur.execute(INIT_SQL)
             cur.execute(CONTACTS_SQL)
             cur.execute(APP_SQL)
+            cur.execute(REGISTRY_SQL)
     finally:
         if own_conn:
             c.close()
 
 
 def init_app_db(conn: psycopg.Connection | None = None) -> None:
-    """The app-state tables only (and contacts), on an existing index: what the backend needs at startup."""
+    """The app-state tables, contacts and the registry, on an existing index: what the backend needs at startup."""
     own_conn = conn is None
     c = conn or get_connection(autocommit=True)
     try:
         with c.cursor() as cur:
             cur.execute(CONTACTS_SQL)
             cur.execute(APP_SQL)
+            cur.execute(REGISTRY_SQL)
     finally:
         if own_conn:
             c.close()
+
+
+def init_registry_db(conn: psycopg.Connection) -> None:
+    """The registry tables only: what the ingest stages need (spott.ingest.common.registry)."""
+    conn.execute(REGISTRY_SQL)

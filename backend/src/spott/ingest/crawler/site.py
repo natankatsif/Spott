@@ -1,6 +1,6 @@
 """Breadth-first crawler for a single site.
 
-Pages and discovered document links go to the registry (tables pages, documents, document_sources).
+Pages and discovered document links go to the registry (registry_pages, registry_documents, registry_document_sources).
 Files on disk (data/crawl/<site id>/):
     html/        raw HTML of every page, named by hash of the URL
     state.json   queue + seen sets, for --resume
@@ -22,7 +22,7 @@ from selectolax.parser import HTMLParser
 
 from spott.ingest.common.http import HTML_TYPES, RETRY_STATUSES, USER_AGENT, content_type, tls_failed
 from spott.ingest.common.progress import Progress
-from spott.ingest.common.registry import Registry, now
+from spott.ingest.common.registry import Registry, iso, now
 from spott.ingest.common.urls import (
     bare_host,
     extension,
@@ -357,7 +357,7 @@ class SiteCrawler:
             "docs_seen": sorted(self.docs_seen),
             "allowed_hosts": sorted(self.allowed_hosts),
             "stats": self.stats,
-            "saved_at": now(),
+            "saved_at": iso(now()),
         }
         tmp = self.out / "state.json.tmp"
         tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")

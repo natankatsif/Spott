@@ -17,7 +17,7 @@
 | `GET /api/preview/{doc_id}` | works: the cited page/PDF scrolled to the quote and highlighted, for an iframe (`citation.preview_url`) |
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | `GET /api/wall` | works (in memory) |
-| `GET /api/corpus/stats` | works; without `registry.sqlite` on the machine, pages/documents come from the index |
+| `GET /api/corpus/stats` | works; for a site the registry has nothing on (an index restored from a dump), pages/documents come from the index |
 | Error body `ApiError`, CORS | works: `CORS_ORIGINS`, rate limit `ASK_RATE_LIMIT` per minute per client |
 
 Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. Then `ask()` picks a mock by keywords in the question:
@@ -306,7 +306,7 @@ Poll every 2–3 s. `after` = newest id you already have, so the response only h
   - `blocked`: robots.txt forbids crawling (chisinau.md, actelocale.gov.md).
 - Sources for the backend:
   - `data/sources/sites.toml`: all Annex-1 sites + category;
-  - `registry.sqlite`: pages / documents per site, `version > 1` = replaced, `status = 'removed'`;
+  - the registry (`registry_pages`, `registry_documents`): pages / documents per site, `version > 1` = replaced, `status = 'removed'`;
   - Postgres: chunks per site, lines total.
 
 ## Not in the contract (frontend owns)

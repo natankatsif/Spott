@@ -19,6 +19,7 @@ from pathlib import Path
 from spott.core.db import get_connection, init_db
 from spott.core.paths import DATA_DIR
 from spott.ingest.chunking.chunker import chunk_document, extract_chunk_lines
+from spott.ingest.common.registry import Registry
 
 from .indexer import Indexer
 
@@ -54,14 +55,15 @@ def doc_site(doc: dict) -> str | None:
     return doc.get("site") or ((doc.get("sources") or [{}])[0] or {}).get("site")
 
 
-def chunk_all(parsed_dir: Path, chunks_dir: Path, sites: list[str] | None = None) -> dict[str, list[dict]]:
+def chunk_all(parsed_dir: Path, chunks_dir: Path, sites: list[str] | None = None,
+              registry: Registry | None = None) -> dict[str, list[dict]]:
     """Runs chunking over parsed files and pages (only these sites' when given), writing jsonl and returning
     by_doc. Stale jsonl files are deleted only after a run over every site."""
     chunks_dir.mkdir(parents=True, exist_ok=True)
     from spott.ingest.common.loader import load_active_documents
 
     data_dir = chunks_dir.parent
-    docs = load_active_documents(data_dir)
+    docs = load_active_documents(data_dir, registry=registry)
     if sites:
         docs = [d for d in docs if doc_site(d) in set(sites)]
 

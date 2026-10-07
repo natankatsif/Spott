@@ -1,11 +1,10 @@
 """Corpus health dashboard (GET /api/corpus/stats): every Annex-1 site, what is crawled and indexed.
 
 Sources: the admin panel's `sources` table (all sites, robots status; sites.toml only until it is imported),
-registry.sqlite (pages and documents per site, if present on this machine), Postgres (chunks per site, lines).
+the registry (pages and documents per site, where this database was crawled into), the index (chunks, lines).
 """
 
 import json
-import sqlite3
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,7 +16,7 @@ from .files import DATA_DIR
 from .schemas import CorpusStats, CorpusTotals, SiteStats
 
 SITES_TOML = DATA_DIR / "sources" / "sites.toml"
-REGISTRY = DATA_DIR / "registry.sqlite"
+CRAWL_DIR = DATA_DIR / "crawl"
 BLOCKED = {"chisinau.md", "actelocale.gov.md"}  # robots.txt: Disallow: /
 
 
@@ -38,42 +37,38 @@ def source_sites(pool: ConnectionPool) -> list[dict]:
         return []
 
 
-def registry_counts(path: Path = REGISTRY) -> dict[str, dict]:
-    """Per site: pages, documents found / downloaded / replaced / removed, last crawl. {} without a registry."""
-    if not path.is_file():
-        return {}
+def registry_counts(conn: psycopg.Connection, crawl_dir: Path = CRAWL_DIR) -> dict[str, dict]:
+    """Per site: pages, documents found / downloaded / replaced / removed, last crawl. {} before anything is crawled."""
     per_site: dict[str, dict] = {}
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        for site, pages, last in conn.execute("SELECT site, COUNT(*), MAX(fetched_at) FROM pages GROUP BY site"):
-            per_site[site] = {"pages": pages, "last_crawled": last}
-        doc_columns = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
-        replaced = "SUM(version > 1)" if "version" in doc_columns else "0"
-        for site, found, downloaded, repl, removed in conn.execute(
-            f"SELECT site, COUNT(*), SUM(status = 'downloaded'), {replaced}, SUM(status = 'removed') "
-            "FROM documents GROUP BY site"
-        ):
+        for site, pages, last in conn.execute(
+                "SELECT site, COUNT(*), MAX(fetched_at) FROM registry_pages GROUP BY site").fetchall():
+            per_site[site] = {"pages": pages, "last_crawled": last.astimezone(UTC).isoformat(timespec="seconds")}
+        for site, found, downloaded, replaced, removed in conn.execute(
+                "SELECT site, COUNT(*), COUNT(*) FILTER (WHERE status = 'downloaded'), "
+                "COUNT(*) FILTER (WHERE version > 1), COUNT(*) FILTER (WHERE status = 'removed') "
+                "FROM registry_documents GROUP BY site").fetchall():
             per_site.setdefault(site, {}).update(
-                documents_found=found, documents_downloaded=downloaded or 0,
-                documents_replaced=repl or 0, documents_removed=removed or 0)
-        add_work_left(conn, per_site, path.parent / "crawl")
-    finally:
-        conn.close()
+                documents_found=found, documents_downloaded=downloaded,
+                documents_replaced=replaced, documents_removed=removed)
+        add_work_left(conn, per_site, crawl_dir)
+    except psycopg.errors.UndefinedTable:
+        return {}
     return per_site
 
 
-def add_work_left(conn: sqlite3.Connection, per_site: dict[str, dict], crawl_dir: Path) -> None:
+def add_work_left(conn: psycopg.Connection, per_site: dict[str, dict], crawl_dir: Path) -> None:
     """What the autopilot still has to do per site (worker/schedule.py: next_backlog): documents found but never
     fetched, downloaded files and crawled pages not parsed yet, and pages the last crawl did not reach."""
     for site, undownloaded, files in conn.execute(
-        "SELECT d.site, COALESCE(SUM(d.status = 'discovered'), 0), "
-        "       COUNT(DISTINCT CASE WHEN f.parse_status = 'pending' THEN f.sha256 END) "
-        "FROM documents d LEFT JOIN files f ON f.sha256 = d.sha256 "
+        "SELECT d.site, COUNT(*) FILTER (WHERE d.status = 'discovered'), "
+        "       COUNT(DISTINCT f.sha256) FILTER (WHERE f.parse_status = 'pending') "
+        "FROM registry_documents d LEFT JOIN registry_files f ON f.sha256 = d.sha256 "
         "WHERE d.status IN ('discovered', 'downloaded') GROUP BY d.site"
-    ):
+    ).fetchall():
         per_site.setdefault(site, {}).update(documents_pending=undownloaded, files_pending=files)
-    for site, pages in conn.execute("SELECT site, COUNT(*) FROM pages WHERE parse_status = 'pending' "
-                                    "AND status < 400 AND html_file IS NOT NULL GROUP BY site"):
+    for site, pages in conn.execute("SELECT site, COUNT(*) FROM registry_pages WHERE parse_status = 'pending' "
+                                    "AND status < 400 AND html_file IS NOT NULL GROUP BY site").fetchall():
         per_site.setdefault(site, {})["pages_pending"] = pages
     for site in list(per_site):
         try:
@@ -100,9 +95,10 @@ def index_counts(pool: ConnectionPool) -> tuple[dict[str, dict], int, str | None
     return per_site, lines, indexed_at.isoformat(timespec="seconds") if indexed_at else None
 
 
-def corpus_stats(pool: ConnectionPool, sites_path: Path = SITES_TOML, registry_path: Path = REGISTRY) -> CorpusStats:
+def corpus_stats(pool: ConnectionPool, sites_path: Path = SITES_TOML) -> CorpusStats:
     sites = source_sites(pool) or load_sites(sites_path)
-    registry = registry_counts(registry_path)
+    with pool.connection() as conn:
+        registry = registry_counts(conn)
     index, lines, indexed_at = index_counts(pool)
 
     rows = []
@@ -114,7 +110,7 @@ def corpus_stats(pool: ConnectionPool, sites_path: Path = SITES_TOML, registry_p
             site=sid,
             category=site.get("category"),
             status="indexed" if chunks else "blocked" if site["blocked"] else "pending",
-            # Without the registry on this machine, fall back to what the index holds.
+            # A site this database's registry knows nothing of (an index restored from a dump): what the index holds.
             pages=reg.get("pages", idx.get("indexed_pages", 0)),
             documents_found=reg.get("documents_found", idx.get("indexed_files", 0)),
             documents_downloaded=reg.get("documents_downloaded", idx.get("indexed_files", 0)),

@@ -34,17 +34,17 @@ Cross-platform maintenance commands (run in `backend/`; `scripts/*.sh` are thin 
 ```bash
 cd backend
 uv sync --all-extras
+docker compose up -d                                     #    (from the repo root) Postgres + pgvector: the registry, then the index
 
 uv run python -m spott.ingest.crawler --list                          # configured sites
 uv run python -m spott.ingest.crawler --max-depth 2 --max-pages 200   # 1. crawl (quick pass); --resume continues an interrupted crawl
 uv run python -m spott.ingest.downloader                              # 2. download new documents; --refresh re-checks known ones
 uv run python -m spott.ingest.parsing                                 # 3. parse into data/parsed/; --rebuild re-derives output without OCR
 uv run python -m spott.ingest.pages_parsing                           # 4. text of crawled HTML pages
-docker compose up -d                                     #    (from the repo root) Postgres + pgvector
 uv run python -m spott.ingest.indexing                                # 5. chunk, embed and index (incremental)
 ```
 
-Every command accepts `--help`. All generated data stays in `data/` and is git-ignored.
+Every command accepts `--help`. All generated data stays in `data/` and is git-ignored. What the stages found, downloaded and parsed is in the registry, the `registry_*` tables in Postgres, so Postgres is needed from the first stage on.
 
 The first parsing run downloads Docling's layout and table models, which takes a few minutes. After that, parsing takes about 1–3 s per page, including OCR, on an Apple M4.
 

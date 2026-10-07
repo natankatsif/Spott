@@ -62,12 +62,12 @@ The system has two halves. **Offline indexation** turns the City Hall websites i
 │ websites  │   └─────────┘   └────────────┘   └─────────┘   │  indexing  │             (retrieval,   (chat,
 └───────────┘   pages, doc    files, dedup     text, OCR,    └────────────┘              LLM answer    RO / RU)
                 links         by SHA-256       structure     Postgres+pgvector           with citations)
-                     └──────────────┴────────────────┴── SQLite registry ──┘
+                     └──────────────┴────────────────┴─ Postgres registry ─┘
 ```
 
 ### Offline indexation
 
-Each stage is a separate command. The stages share one SQLite registry (`data/registry.sqlite`), so every stage is incremental and can be re-run on its own.
+Each stage is a separate command. The stages share one registry, the `registry_*` tables in Postgres, so every stage is incremental and can be re-run on its own.
 
 1. **Crawler.** Breadth-first crawl of the sites listed in Annex 1. It records every page and every link to a document (PDF, DOC/DOCX, XLS/XLSX, ODT, …), including where the link was found and its anchor text. This provenance is later used for citations. On WordPress sites it also reads the media library API, which finds files that no page links to. It respects `robots.txt` and rate limits, and can resume after an interruption.
 2. **Downloader.** Stores files by content hash (`data/raw/<sha256>.<ext>`). Deduplication happens at three levels:
@@ -112,7 +112,7 @@ Two independent projects that talk only over HTTP: the Python backend and the Ne
 | [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the question answering and admin API |
 | [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | | eval sets, benchmarks and one-off scripts |
 | [`frontend/`](frontend) | Node, Next.js 16 | Chat UI, admin panel, site widget |
-| [`data/`](data) | | everything generated (crawl, files, registry, dumps, logs; `SPOTT_DATA_DIR`), only `data/sources/sites.toml` is versioned |
+| [`data/`](data) | | everything generated (crawl, files, dumps, logs; `SPOTT_DATA_DIR`), only `data/sources/sites.toml` is versioned |
 
 `api` and `ingest` both build on `core` and never import each other; CI checks it (`uv run lint-imports`, rules in `backend/pyproject.toml`). The API needs only the `api` extra, the pipeline the `ingest` extra (Docling, OCR); `uv sync --all-extras` installs both.
 

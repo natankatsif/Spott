@@ -14,7 +14,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from spott.core.paths import DATA_DIR, REGISTRY
+from spott.core.paths import DATA_DIR
 from spott.ingest.common.http import make_clients
 from spott.ingest.common.registry import Registry
 from spott.ingest.common.urls import bare_host
@@ -29,7 +29,6 @@ OUTCOMES = ("new_file", "duplicate", "updated", "unchanged", "not_modified", "no
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.downloader", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--db", type=Path, default=REGISTRY)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="files go to <data>/raw/")
     p.add_argument("--sites", nargs="+", metavar="ID", help="only documents discovered on these sites")
     p.add_argument("--limit", type=int, help="at most N documents")
@@ -85,7 +84,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    registry = Registry(args.db)
+    registry = Registry.open()
     try:
         downloader = asyncio.run(download_all(args, registry))
         if downloader:

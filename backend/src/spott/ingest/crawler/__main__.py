@@ -13,7 +13,7 @@ import logging
 import sys
 from pathlib import Path
 
-from spott.core.paths import DATA_DIR, REGISTRY, SITES_TOML
+from spott.core.paths import DATA_DIR, SITES_TOML
 from spott.ingest.common.http import make_clients
 from spott.ingest.common.registry import Registry
 
@@ -31,7 +31,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="a sites TOML instead of the admin panel's sources (default: the database; "
                         "data/sources/sites.toml while it has no sources)")
     p.add_argument("--out", type=Path, default=DATA_DIR / "crawl", help="raw HTML and crawl state")
-    p.add_argument("--db", type=Path, default=REGISTRY)
     p.add_argument("--sites", nargs="+", metavar="ID", help="site ids from the config (default: all)")
     p.add_argument("--max-depth", type=int, help="override max_depth for every site")
     p.add_argument("--max-pages", type=int, help="override max_pages for every site")
@@ -75,7 +74,7 @@ def select_sites(args: argparse.Namespace) -> list[Site]:
 
 async def crawl_all(sites: list[Site], args: argparse.Namespace) -> dict[str, dict]:
     semaphore = asyncio.Semaphore(args.concurrency)
-    registry = Registry(args.db)
+    registry = Registry.open()
 
     async with make_clients() as (client, insecure_client):
 

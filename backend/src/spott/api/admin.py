@@ -55,7 +55,7 @@ from .schemas import (
     SuggestionCreate,
     SuggestionList,
 )
-from .stats import REGISTRY, corpus_stats, registry_counts
+from .stats import corpus_stats, registry_counts
 
 # The crawler's User-Agent (backend/src/spott/ingest/common/http.py): robots.txt is checked for the bot that will crawl.
 CRAWLER_AGENT = "ChisinauAssistantBot/0.1 (+GigaHack 2026; municipal RAG research crawler)"
@@ -300,7 +300,8 @@ class PgAdminStore:
             LEFT JOIN LATERAL (SELECT {JOB_COLUMNS} FROM jobs WHERE jobs.id = s.last_job_id) j ON TRUE
             ORDER BY s.id
             """)
-        registry = registry_counts(REGISTRY)
+        with self.pool.connection() as conn:
+            registry = registry_counts(conn)
         return [with_job(r) | registry_fields(r, registry) for r in rows]
 
     def get_source(self, source_id: int) -> dict | None:
@@ -437,7 +438,7 @@ def job_model(row: dict) -> Job:
 
 
 def registry_fields(row: dict, registry: dict[str, dict]) -> dict:
-    """Pages, documents and last crawl of a site source from registry.sqlite (when this machine has it)."""
+    """Pages, documents and last crawl of a site source from the registry."""
     reg = registry.get(row["site_id"], {}) if row["kind"] == "site" else {}
     return {"pages": reg.get("pages", 0), "documents_found": reg.get("documents_found", 0),
             "documents_downloaded": reg.get("documents_downloaded", 0), "last_crawled": reg.get("last_crawled"),

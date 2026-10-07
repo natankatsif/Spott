@@ -15,7 +15,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from spott.core.paths import DATA_DIR, REGISTRY, SITES_TOML
+from spott.core.paths import DATA_DIR, SITES_TOML
 from spott.ingest.common.progress import Progress
 from spott.ingest.common.registry import Registry
 from spott.ingest.crawler.config import load_sites, load_sites_from_db
@@ -27,7 +27,6 @@ log = logging.getLogger("pages_parsing")
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.pages_parsing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--db", type=Path, default=REGISTRY)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="reads <data>/crawl/, writes <data>/parsed/pages/")
     p.add_argument("--config", type=Path, default=SITES_TOML)
     p.add_argument("--sites", nargs="+", metavar="ID", help="only these site ids")
@@ -96,7 +95,7 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
-    registry = Registry(args.db)
+    registry = Registry.open()
     try:
         run_pages_parsing(
             registry=registry,
