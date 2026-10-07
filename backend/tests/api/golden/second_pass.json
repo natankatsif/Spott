@@ -1,0 +1,227 @@
+[
+  {
+    "type": "start",
+    "id": "<answer id>",
+    "lang": "ro"
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "search",
+      "input": "Cât costă certificatul?",
+      "summary": "Găsite 1 fragmente în 1 documente",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "search",
+      "input": "later acts · newer acts · current state",
+      "summary": "Caut acte mai noi… găsite 0",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "citation",
+    "citation": {
+      "id": "c1",
+      "doc_id": "file:dgaurf.md/storage/d.pdf",
+      "chunk_id": "c1",
+      "line_ids": [
+        "l1"
+      ],
+      "kind": "file",
+      "document_title": "Decizia nr. 12/14 din 28.07.2020 cu privire la taxe",
+      "doc_type": "decizie",
+      "act_number": "12/14",
+      "published": "2020-07-28",
+      "location": "pct. 5",
+      "page": 2,
+      "quote": "5. Taxa este de 200 lei.",
+      "quote_lang": "ro",
+      "translation": null,
+      "url": "https://dgaurf.md/storage/d.pdf",
+      "deep_link": "https://dgaurf.md/storage/d.pdf#page=2",
+      "found_on": "https://dgaurf.md/ro/acte",
+      "site": "dgaurf.md",
+      "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fd.pdf/file",
+      "bboxes": [
+        {
+          "page": 2,
+          "l": 70.0,
+          "t": 142.0,
+          "r": 500.0,
+          "b": 162.0,
+          "page_width": 595.0,
+          "page_height": 842.0
+        }
+      ],
+      "preview_url": "/api/preview/file%3Adgaurf.md%2Fstorage%2Fd.pdf?lang=ro&line=l1",
+      "preview_kind": "pdf"
+    }
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Taxa"
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": " este d"
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "e 200 l"
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "ei."
+  },
+  {
+    "type": "sentence",
+    "index": 0,
+    "sentence": {
+      "text": "Taxa este de 200 lei.",
+      "cites": [
+        "c1"
+      ]
+    },
+    "verified": true
+  },
+  {
+    "type": "done",
+    "response": {
+      "id": "<answer id>",
+      "status": "answered",
+      "lang": "ro",
+      "answer": "Taxa actuală este de 350 lei. Anterior era de 200 lei.",
+      "sentences": [
+        {
+          "text": "Taxa actuală este de 350 lei.",
+          "cites": [
+            "c1"
+          ]
+        },
+        {
+          "text": "Anterior era de 200 lei.",
+          "cites": [
+            "c2"
+          ]
+        }
+      ],
+      "citations": [
+        {
+          "id": "c1",
+          "doc_id": "file:dgaurf.md/storage/n.pdf",
+          "chunk_id": "c2",
+          "line_ids": [
+            "l3"
+          ],
+          "kind": "file",
+          "document_title": "Decizia nr. 3/1 din 10.01.2024 cu privire la taxe",
+          "doc_type": "decizie",
+          "act_number": "3/1",
+          "published": "2024-01-10",
+          "location": null,
+          "page": 1,
+          "quote": "Taxa este de 350 lei.",
+          "quote_lang": "ro",
+          "translation": null,
+          "url": "https://dgaurf.md/storage/n.pdf",
+          "deep_link": "https://dgaurf.md/storage/n.pdf#page=1",
+          "found_on": "https://dgaurf.md/ro/acte",
+          "site": "dgaurf.md",
+          "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fn.pdf/file",
+          "bboxes": [],
+          "preview_url": "/api/preview/file%3Adgaurf.md%2Fstorage%2Fn.pdf?lang=ro&line=l3",
+          "preview_kind": "pdf"
+        },
+        {
+          "id": "c2",
+          "doc_id": "file:dgaurf.md/storage/d.pdf",
+          "chunk_id": "c1",
+          "line_ids": [
+            "l1"
+          ],
+          "kind": "file",
+          "document_title": "Decizia nr. 12/14 din 28.07.2020 cu privire la taxe",
+          "doc_type": "decizie",
+          "act_number": "12/14",
+          "published": "2020-07-28",
+          "location": "pct. 5",
+          "page": 2,
+          "quote": "5. Taxa este de 200 lei.",
+          "quote_lang": "ro",
+          "translation": null,
+          "url": "https://dgaurf.md/storage/d.pdf",
+          "deep_link": "https://dgaurf.md/storage/d.pdf#page=2",
+          "found_on": "https://dgaurf.md/ro/acte",
+          "site": "dgaurf.md",
+          "file_url": "/api/documents/file%3Adgaurf.md%2Fstorage%2Fd.pdf/file",
+          "bboxes": [
+            {
+              "page": 2,
+              "l": 70.0,
+              "t": 142.0,
+              "r": 500.0,
+              "b": 162.0,
+              "page_width": 595.0,
+              "page_height": 842.0
+            }
+          ],
+          "preview_url": "/api/preview/file%3Adgaurf.md%2Fstorage%2Fd.pdf?lang=ro&line=l1",
+          "preview_kind": "pdf"
+        }
+      ],
+      "conflict": null,
+      "checklist": null,
+      "nav_links": [
+        {
+          "title": "Pagina sursei pe dgaurf.md",
+          "url": "https://dgaurf.md/ro/acte",
+          "kind": "page",
+          "selector": null
+        }
+      ],
+      "followups": [],
+      "trace": [
+        {
+          "tool": "search",
+          "input": "Cât costă certificatul?",
+          "summary": "Găsite 1 fragmente în 1 documente",
+          "ms": "<ms>"
+        },
+        {
+          "tool": "search",
+          "input": "later acts · newer acts · current state",
+          "summary": "Caut acte mai noi… găsite 0",
+          "ms": "<ms>"
+        },
+        {
+          "tool": "search",
+          "input": "taxa actuală · nr. 12/14 · > 2020-07-28",
+          "summary": "Caut acte mai noi… găsite 1",
+          "ms": "<ms>"
+        },
+        {
+          "tool": "verify",
+          "input": "",
+          "summary": "Citate confirmate: 2 din 2 propoziții",
+          "ms": "<ms>"
+        }
+      ],
+      "meta": {
+        "model": "fake",
+        "path": "agent",
+        "latency_ms": "<ms>",
+        "verified": true
+      },
+      "focus_citation_id": null,
+      "contacts": []
+    }
+  }
+]

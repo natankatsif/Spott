@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from test_llm import SCHEMA, CompatServer
+from tests.api.fakes import SCHEMA, CompatServer
 
-from spott.api import admin, llm_settings, main, usage
+from spott.api import llm_settings, main, usage
 from spott.api.llm import LLMConfig, OpenAILLM, RoutedLLM
 
 AUTH: dict[str, str] = {}
@@ -75,7 +75,6 @@ def api(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-pass")
     monkeypatch.delenv("ADMIN_SECRET", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-env-123456789")
-    admin.login_limiter.hits.clear()
     store = llm_settings.MemorySettings()
     log = usage.MemoryUsage()
     main.app.state.llm_holder = llm_settings.LLMHolder(store, on_usage=main.record_usage)
@@ -83,9 +82,7 @@ def api(monkeypatch):
     c = TestClient(main.app)
     AUTH["Authorization"] = "Bearer " + c.post("/api/admin/login", json={"login": "admin",
                                                                          "password": "secret-pass"}).json()["token"]
-    yield c, store, log
-    main.app.state.llm_holder = None
-    main.app.state.usage = None
+    return c, store, log
 
 
 def test_pricing_is_saved_and_the_report_uses_it(api):

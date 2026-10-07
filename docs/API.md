@@ -209,7 +209,7 @@ PUT    /api/admin/usage/pricing              Pricing → Pricing
   - One row per domain: a deeper path or a document of a domain that is already a source → **200** with `merged_into` = that source's id (the path joins its `start_urls`, a crawl of it is queued).
   - Responses to map in the UI: 201 new · 200 merged · 201/200 with `robots: "blocked"` (saved, no crawl) · `409 conflict` (the same site root or document again) · `422 validation_error` (not http(s), the site doesn't answer, it answered 4xx/5xx).
   - The old optional fields (`kind`, `category`, `max_depth`, `max_pages`, `start`) are still accepted; the UI doesn't send them.
-- `Job` = `{id, source_id, kind, status: queued|running|done|failed|cancelled, stage: crawl|download|parse|index, stage_done, stage_total, percent, eta_s, started_at, finished_at, stats{pages, documents_found, documents_downloaded, files_parsed, chunks, lines, embeddings_reused, embeddings_computed, errors}, log_tail[], error}`. `percent` over all stages: crawl 20, download 20, parse 40, index 20.
+- `Job` = `{id, source_id, kind: crawl|refresh|check|backlog, status: queued|running|done|failed|cancelled, stage: crawl|download|parse|index, stage_done, stage_total, percent, eta_s, started_at, finished_at, stats{pages, documents_found, documents_downloaded, files_parsed, chunks, lines, embeddings_reused, embeddings_computed, errors}, log_tail[], error}`. `percent` over all stages: crawl 20, download 20, parse 40, index 20.
 - A job can't start on a `blocked` or disabled source, or while another one of it is queued/running (`409`).
 
 **Gaps: questions the bot couldn't (fully) answer.** Similar questions are grouped (local embeddings, no LLM), sorted by how often they were asked.

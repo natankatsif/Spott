@@ -146,8 +146,7 @@ class FakePages:
 def client():
     main.app.state.store = FakeStore()
     main.app.state.pages = FakePages((PAGE, "crawl", "2026-09-25T10:00:00+00:00"))
-    yield TestClient(main.app, raise_server_exceptions=False)
-    main.app.state.store = None
+    return TestClient(main.app, raise_server_exceptions=False)
 
 
 def get(client, doc_id, **params):

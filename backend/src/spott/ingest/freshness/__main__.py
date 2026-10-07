@@ -104,13 +104,17 @@ def run(site_id: str, out: Path, registry_path: Path) -> dict:
     return result
 
 
-def main() -> None:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.freshness", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--site", required=True, help="site id of the source")
     p.add_argument("--out", type=Path, required=True, help="where to write the changes (JSON)")
     p.add_argument("--db", type=Path, default=REGISTRY)
-    args = p.parse_args()
+    return p.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     r = run(args.site, args.out, args.db)

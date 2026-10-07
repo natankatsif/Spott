@@ -26,7 +26,7 @@ log = logging.getLogger("downloader")
 OUTCOMES = ("new_file", "duplicate", "updated", "unchanged", "not_modified", "not_a_file", "failed")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.downloader", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", type=Path, default=REGISTRY)
@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
                         "re-checked conditionally; the site's backlog waits for the weekly refresh")
     p.add_argument("--delay", type=float, default=0.5, help="pause between requests to one host, seconds")
     p.add_argument("--concurrency", type=int, default=6, help="hosts downloaded from in parallel")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 async def download_all(args: argparse.Namespace, registry: Registry) -> Downloader | None:

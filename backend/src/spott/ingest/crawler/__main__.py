@@ -24,7 +24,7 @@ log = logging.getLogger("crawler")
 DEFAULT_CONFIG = SITES_TOML
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.crawler", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", type=Path,
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--ignore-robots", action="store_true", help="ignore robots.txt on every site")
     p.add_argument("--resume", action="store_true", help="continue from data/crawl/<site>/state.json")
     p.add_argument("--list", action="store_true", help="print configured sites and exit")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def select_sites(args: argparse.Namespace) -> list[Site]:

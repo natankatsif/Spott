@@ -1,6 +1,7 @@
 # Lint + unit tests on Linux and Windows. Windows runs without PYTHONUTF8 on purpose:
 # the default cp1252 encoding is what a tester's PC has, so encoding bugs show up here first.
-# Python 3.14 as in the Docker image (requires-python allows 3.12 for Intel Macs, see backend/pyproject.toml).
+# Python 3.14 as in the Docker image; on Linux also 3.12, the oldest requires-python allows (for Intel Macs, see
+# backend/pyproject.toml), so that code which only works on 3.14 fails here and not on a tester's Mac.
 # The frontend job checks its API types and mocks against backend/openapi.json, lints, type-checks and builds the app.
 #
 # A push to main with green tests updates the server: it pulls and restarts what changed (docker/deploy.sh).
@@ -23,6 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python: ["3.14"]
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -32,7 +37,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          python-version: "3.14"
+          python-version: ${{ matrix.python }}
       - name: Install (lockfile must be up to date)
         run: uv sync --all-extras --all-groups --frozen
       - name: Ruff

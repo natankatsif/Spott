@@ -25,7 +25,7 @@ from .indexer import Indexer
 log = logging.getLogger("indexing")
 
 
-def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m spott.ingest.indexing", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", type=Path, default=DATA_DIR, help="path to data directory")
@@ -35,7 +35,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--sites", nargs="+", metavar="ID", help="index only documents from these sites")
     p.add_argument("--limit", type=int, help="index at most N documents")
     p.add_argument("--clean-orphans", action=argparse.BooleanOptionalAction, default=True, help="remove stale documents from index (default: True)")
-    return p.parse_args(args)
+    return p.parse_args(argv)
 
 
 def load_chunks_from_disk(chunks_dir: Path) -> dict[str, list[dict]]:

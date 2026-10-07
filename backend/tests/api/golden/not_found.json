@@ -1,0 +1,178 @@
+[
+  {
+    "type": "start",
+    "id": "<answer id>",
+    "lang": "ro"
+  },
+  {
+    "type": "trace",
+    "step": {
+      "tool": "search",
+      "input": "Unde e piscina?",
+      "summary": "Găsite 2 fragmente în 2 documente",
+      "ms": "<ms>"
+    }
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "În "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "documentele "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "publice "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "ale "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Primăriei "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "disponibile "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "asistentului "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "nu "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "există "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "informații "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "despre "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "această "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "întrebare. "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "Răspund "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "doar "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "pe "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "baza "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "documentelor, "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "deci "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "nu "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "voi "
+  },
+  {
+    "type": "delta",
+    "index": 0,
+    "text": "ghici. "
+  },
+  {
+    "type": "sentence",
+    "index": 0,
+    "sentence": {
+      "text": "În documentele publice ale Primăriei disponibile asistentului nu există informații despre această întrebare. Răspund doar pe baza documentelor, deci nu voi ghici.",
+      "cites": []
+    },
+    "verified": true
+  },
+  {
+    "type": "done",
+    "response": {
+      "id": "<answer id>",
+      "status": "not_found",
+      "lang": "ro",
+      "answer": "În documentele publice ale Primăriei disponibile asistentului nu există informații despre această întrebare. Răspund doar pe baza documentelor, deci nu voi ghici.",
+      "sentences": [
+        {
+          "text": "În documentele publice ale Primăriei disponibile asistentului nu există informații despre această întrebare. Răspund doar pe baza documentelor, deci nu voi ghici.",
+          "cites": []
+        }
+      ],
+      "citations": [],
+      "conflict": null,
+      "checklist": null,
+      "nav_links": [
+        {
+          "title": "Contacte DGAURF",
+          "url": "https://dgaurf.md/contacte",
+          "kind": "contact",
+          "selector": null
+        }
+      ],
+      "followups": [],
+      "trace": [
+        {
+          "tool": "search",
+          "input": "Unde e piscina?",
+          "summary": "Găsite 2 fragmente în 2 documente",
+          "ms": "<ms>"
+        }
+      ],
+      "meta": {
+        "model": "fake",
+        "path": "fast",
+        "latency_ms": "<ms>",
+        "verified": true
+      },
+      "focus_citation_id": null,
+      "contacts": []
+    }
+  }
+]

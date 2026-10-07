@@ -1240,7 +1240,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "crawl" | "refresh";
+            kind: "crawl" | "refresh" | "check" | "backlog";
             /**
              * Status
              * @enum {string}

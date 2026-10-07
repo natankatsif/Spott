@@ -58,7 +58,7 @@ packages = ["src/spott"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]  # tests import shared fakes from each other (tests.api.test_answering)
+pythonpath = ["."]  # the tests import their shared fakes as tests.api.fakes
 markers = [
     "db: database integration tests",
     "browser: headless Chromium end-to-end tests (Playwright, a running API)",

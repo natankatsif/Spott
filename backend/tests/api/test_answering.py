@@ -1,133 +1,12 @@
 """/api/ask logic against docs/API.md with a fake store, fake retrieval and a fake LLM: no database, no network."""
 
-import json
+import pytest
+from tests.api.fakes import BOX, CONTACTS, DECISION, DGMU, DOC, LINES, NEWER, FakeLLM, FakeStore, model, s
 
 from spott.api import answering
 from spott.api.answering import answer_events, answer_question, detect_lang, numbers_backed, to_top_left
-from spott.api.llm import LLMResult
 from spott.api.schemas import AskRequest, AskResponse
 from spott.core.pipeline import RetrievalResult
-
-DOC = "file:dgaurf.md/storage/d.pdf"
-DECISION = {
-    "chunk_id": "c1", "doc_id": DOC, "kind": "file", "lang": "ro", "site": "dgaurf.md",
-    "text": "5. Taxa este de 200 lei.\n6. Termenul este de 10 zile.",
-    "title": "Cu privire la taxe", "doc_type": "decizie", "number": "12/14", "date": "2020-07-28",
-    "citation_label": "Decizie nr. 12/14 din 2020-07-28 › pct. 5", "legal_path": ["pct. 5"],
-    "url": "https://dgaurf.md/storage/d.pdf", "found_on": "https://dgaurf.md/ro/acte",
-    "pages": [2], "has_contacts": False, "block_ids": [4],
-}
-NEWER = DECISION | {
-    "chunk_id": "c2", "doc_id": "file:dgaurf.md/storage/n.pdf", "number": "3/1", "date": "2024-01-10",
-    "text": "Taxa este de 350 lei.", "citation_label": "Decizie nr. 3/1 din 2024-01-10", "legal_path": [],
-    "url": "https://dgaurf.md/storage/n.pdf",
-}
-CONTACTS = {
-    "chunk_id": "c3", "doc_id": "page:dgaurf.md/contacte", "kind": "page", "lang": "ro", "site": "dgaurf.md",
-    "text": "Tel: 022 000 000", "title": "Contacte DGAURF", "url": "https://dgaurf.md/contacte",
-    "found_on": "https://dgaurf.md/contacte", "has_contacts": True,
-}
-BOX = {"page": 2, "l": 70.0, "t": 700.0, "r": 500.0, "b": 680.0, "origin": "BOTTOMLEFT"}
-LINES = {
-    "c1": [{"line_id": "l1", "idx": 0, "text": "5. Taxa este de 200 lei.", "page": 2, "bboxes": [BOX]},
-           {"line_id": "l2", "idx": 1, "text": "6. Termenul este de 10 zile.", "page": 2, "bboxes": []}],
-    "c2": [{"line_id": "l3", "idx": 0, "text": "Taxa este de 350 lei.", "page": 1, "bboxes": []}],
-}
-
-
-class FakeStore:
-    def __init__(self, meta=None, following=(), has_file=True, links=(), later=(), contacts=(), general=None):
-        self.meta, self.following, self.has_file = meta or {}, list(following), has_file
-        self.links, self.later = list(links), list(later)
-        self.contacts, self.general = list(contacts), general
-        self.anchors, self.grep_patterns = [], []
-
-    def contacts_near(self, question, limit=8):
-        return self.contacts, self.general
-
-    def chunk_meta(self, ids):
-        return {i: self.meta[i] for i in ids if i in self.meta}
-
-    def next_chunks(self, anchors):
-        self.anchors += anchors
-        return self.following
-
-    def lines(self, ids):
-        return {i: LINES[i] for i in ids if i in LINES}
-
-    def documents(self, doc_ids):
-        return {d: {"page_sizes": [{"n": 2, "width": 595.0, "height": 842.0}], "has_file": self.has_file}
-                for d in doc_ids}
-
-    def later_acts(self, patterns, exclude_doc_ids, limit=20):
-        self.grep_patterns += patterns
-        return [{"chunk_id": c["chunk_id"], "line_id": f"{c['chunk_id']}-l1"} for c in self.later]
-
-    def grep_lines(self, keywords, limit=200):
-        return [{"chunk_id": cid, "line_id": line["line_id"], "text": line["text"]}
-                for cid, lines in LINES.items() for line in lines
-                if any(k.casefold() in line["text"].casefold() for k in keywords)]
-
-    def relation_lines(self, doc_ids):
-        return [link for link in self.links if link["to_doc_id"] in doc_ids or link["from_doc_id"] in doc_ids]
-
-    def dated_lines(self, doc_ids):
-        return {d: [line["text"] for lines in LINES.values() for line in lines if d in line.get("doc", "")]
-                for d in doc_ids}
-
-
-def model(verdict="answered", sentences=(), missing=(), conflict=None, checklist=None, translations=(),
-          followups=(), locate=False, search_ro="", contacts=()):
-    return {"verdict": verdict, "sentences": list(sentences), "missing": list(missing), "conflict": conflict,
-            "checklist": checklist, "translations": list(translations), "followups": list(followups),
-            "locate": locate, "search_ro": search_ro, "contacts": list(contacts)}
-
-
-def s(text, *refs):
-    return {"refs": list(refs), "text": text}
-
-
-class FakeLLM:
-    """Answers with the given outputs in turn (the last one repeats); remembers every prompt. The answer
-    streams as JSON in small pieces; `finished` tells whether the stream has ended."""
-
-    def __init__(self, *outputs, rewrite=None, piece=7):
-        self.outputs, self.prompts, self.rewrite, self.piece = list(outputs), [], rewrite, piece
-        self.finished = False
-
-    @property
-    def user(self):
-        return self.prompts[-1] if self.prompts else None
-
-    def next_output(self, user):
-        self.prompts.append(user)
-        return self.outputs[min(len(self.prompts), len(self.outputs)) - 1]
-
-    route = None  # the routing call: unreachable unless a test sets it, so questions go to the search
-
-    def complete_json(self, system, user, schema_name, schema, **kw):
-        if schema_name == "quotes":
-            if getattr(self, "quotes", None) is None:
-                raise answering.LLMUnavailable("no quote translation in this test")
-            return LLMResult(data={"translations": self.quotes}, model="fake-mini", prompt_tokens=20, completion_tokens=5)
-        if schema_name == "route":
-            if self.route is None:
-                raise answering.LLMUnavailable("no routing in this test")
-            return LLMResult(data=self.route, model="fake-mini", prompt_tokens=20, completion_tokens=5)
-        if schema_name == "rewrite":
-            if self.rewrite is None:
-                raise answering.LLMUnavailable("no rewrite in this test")
-            return LLMResult(data=self.rewrite, model="fake-mini", prompt_tokens=50, completion_tokens=10)
-        return LLMResult(data=self.next_output(user), model="fake", prompt_tokens=100, completion_tokens=20)
-
-    def stream_json(self, system, user, schema_name, schema, **kw):
-        self.finished = False
-        data = self.next_output(user)
-        text = json.dumps(data, ensure_ascii=False)
-        for i in range(0, len(text), self.piece):
-            yield text[i:i + self.piece]
-        self.finished = True
-        return LLMResult(data=data, model="fake", prompt_tokens=100, completion_tokens=20)
 
 
 def run(question, chunks, data, monkeypatch, tmp_path, store=None, retrieve_fn=None, freshness=False, rewrite=False,
@@ -350,8 +229,14 @@ MID_ACT = DECISION | {"chunk_id": "o2", "doc_id": "file:dgaurf.md/storage/79.pdf
                       "text": "2. DGAURF va selecta elaboratorul prin achiziții publice."}
 NEW_ACT = DECISION | {"chunk_id": "n1", "doc_id": "file:dgaurf.md/storage/366d.pdf", "doc_type": "dispozitie",
                       "number": "366-d", "date": "2025-10-09", "text": "Elaboratorul PUG este Consorțiul ARHICON."}
-for c in (OLD_ACT, MID_ACT, NEW_ACT):
-    LINES[c["chunk_id"]] = [{"line_id": f"{c['chunk_id']}-l1", "idx": 0, "text": c["text"], "page": 1, "bboxes": []}]
+
+
+@pytest.fixture(autouse=True)
+def act_lines(monkeypatch):
+    """The three acts' lines, for the tests in this module only."""
+    for c in (OLD_ACT, MID_ACT, NEW_ACT):
+        monkeypatch.setitem(LINES, c["chunk_id"], [{"line_id": f"{c['chunk_id']}-l1", "idx": 0, "text": c["text"],
+                                                    "page": 1, "bboxes": []}])
 
 
 def test_newer_acts_are_in_the_first_prompt_newest_first(monkeypatch, tmp_path):
@@ -436,7 +321,8 @@ def test_newest_candidate_joins_the_top_chunks():
 def test_amending_act_is_added_with_a_note(monkeypatch, tmp_path):
     amending = DECISION | {"chunk_id": "a1", "doc_id": "file:dgaurf.md/storage/12-14.pdf", "number": "12/14",
                            "date": "2020-07-28", "text": "Se operează modificări în decizia nr. 4/1."}
-    LINES["a1"] = [{"line_id": "a1-l1", "idx": 0, "text": amending["text"], "page": 1, "bboxes": []}]
+    monkeypatch.setitem(LINES, "a1", [{"line_id": "a1-l1", "idx": 0, "text": amending["text"], "page": 1,
+                                       "bboxes": []}])
     link = {"from_doc_id": amending["doc_id"], "to_doc_id": OLD_ACT["doc_id"], "relation": "amends",
             "line_id": "a1-l1", "chunk_id": "a1"}
     store = FakeStore(links=[link], meta={"a1": amending})
@@ -455,7 +341,7 @@ def test_undated_document_is_as_recent_as_the_dates_it_mentions():
 
 def test_own_repeal_line_is_noted_even_when_the_target_is_not_in_the_corpus(monkeypatch, tmp_path):
     repeal = NEW_ACT | {"chunk_id": "g6", "text": "6. Grupul aprobat prin Dispoziția 185-d își încetează activitatea."}
-    LINES["g6"] = [{"line_id": "g6-l1", "idx": 0, "text": repeal["text"], "page": 1, "bboxes": []}]
+    monkeypatch.setitem(LINES, "g6", [{"line_id": "g6-l1", "idx": 0, "text": repeal["text"], "page": 1, "bboxes": []}])
     link = {"from_doc_id": NEW_ACT["doc_id"], "to_doc_id": None, "to_ref_text": "Dispoziția 185-d din 23.04.2020",
             "relation": "repeals", "line_id": "g6-l1", "chunk_id": "g6"}
     _, _, llm = run("Ce grup?", [NEW_ACT], model("not_found"), monkeypatch, tmp_path,
@@ -627,11 +513,6 @@ def test_common_keywords_are_ignored():
 
 # ─────────────── task 09: contacts when there's no answer ───────────────
 
-DGMU = {"contact_id": "k1", "name": "Direcția Generală Mobilitate Urbană", "area": "infrastructura urbană",
-        "phone": ["022-20-46-90"], "email": ["dirtrans@pmc.md"], "address": None, "hours": None,
-        "url": "https://mobilitatechisinau.md/", "site": "mobilitatechisinau.md", "line_ids": ["m1"],
-        "is_general": False, "similarity": 0.53,
-        "line_texts": ["ANTICAMERA TEL: 022-20-46-90 FAX: 022 -20-46-58 EMAIL: dirtrans@pmc.md"]}
 CITY_HALL = DGMU | {"contact_id": "k0", "name": "Primăria municipiului Chișinău", "phone": ["022 20 17 07"], "email": [],
                     "url": "https://example.md/contacte", "site": "example.md", "line_ids": ["g1"], "is_general": True,
                     "similarity": 0.0, "line_texts": ["Primăria municipiului Chișinău, tel. 022 20 17 07"]}

@@ -355,12 +355,15 @@ class AdminMe(Strict):
 # ─────────────── admin: sources and jobs ───────────────
 
 JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
+# The admin starts crawl and refresh; the worker queues check (the nightly look for changes) and backlog (the
+# autopilot) into the same table, and a retry repeats the kind, so any of them can be listed.
+JobKind = Literal["crawl", "refresh", "check", "backlog"]
 
 
 class Job(Strict):
     id: int
     source_id: int | None  # null = all sources
-    kind: Literal["crawl", "refresh"]
+    kind: JobKind
     status: JobStatus
     stage: Literal["crawl", "download", "parse", "index"] | None
     stage_done: int
