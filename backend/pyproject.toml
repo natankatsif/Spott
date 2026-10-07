@@ -111,3 +111,9 @@ layers = [
     "corpus",
     "chunks | claims | prompts | texts",
 ]
+
+[[tool.importlinter.contracts]]
+name = "chunking: the chunker on top of the merges, both on the leaf modules"
+type = "layers"
+containers = ["spott.ingest.chunking"]
+layers = ["chunker", "merge", "labels | legal | limits | lines"]

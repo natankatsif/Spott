@@ -16,7 +16,7 @@ from pathlib import Path
 
 from spott.core.db import get_connection, init_db
 from spott.core.paths import DATA_DIR
-from spott.ingest.chunking.chunker import chunk_document, extract_chunk_lines
+from spott.ingest.chunking.chunker import chunk_document
 from spott.ingest.common.loader import load_active_documents
 
 from .indexer import Indexer
@@ -97,13 +97,7 @@ def main() -> None:
         return
     started = time.monotonic()
     all_chunks = [c for chunks in by_doc.values() for c in chunks]
-    all_lines = []
-    for c in all_chunks:
-        c_lines = c.get("lines")
-        if not c_lines:
-            c_lines = extract_chunk_lines(c)
-            c["lines"] = c_lines
-        all_lines.extend(c_lines)
+    all_lines = [line for c in all_chunks for line in c["lines"]]
     indexer.progress.set_total(len(all_chunks) + len(all_lines))
     log.info("Indexing %d chunks from %d documents", len(all_chunks), len(by_doc))
 
