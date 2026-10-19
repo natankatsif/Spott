@@ -16,3 +16,5 @@ data/*
 
 # Test artifacts
 backend/tests/api/artifacts/
+
+offline_indexation
