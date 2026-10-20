@@ -1,6 +1,6 @@
 # Spott: AI Document Assistant with Verified Citations
 
-**An end-to-end RAG system that answers questions from large collections of official documents (including scanned PDFs) in Romanian and Russian, and backs every sentence with the exact source passage.**
+**An end-to-end RAG system that answers questions from large collections of official documents (including scanned PDFs) in English, Romanian and Russian, and backs every sentence with the exact source passage.**
 
 Built for the Chișinău City Hall use case: citizens and staff ask questions in plain language, and the assistant answers only from the city's public documents, with links to the original act, page and point.
 
@@ -52,7 +52,7 @@ Spott turns that pile of documents into an assistant people can **trust and veri
 
 ### For end users
 - **Cited answers.** Each answer quotes the source verbatim (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*). One click opens the original PDF or web page next to the chat with the quote highlighted.
-- **Cross-language search.** Ask in Russian, get an answer from a Romanian-only document (with a translation of the quote), and vice versa. UI in Romanian, Russian and English.
+- **Answers in English, Romanian and Russian.** The answer follows the language of the question. Ask in English or Russian and get an answer from a Romanian-only document, with the quote translated next to the original. The UI is available in all three languages.
 - **Honest answer statuses.** `answered`, `partial` (says what's missing), `not_found`, `conflict` (cites all sides with dates), `refused`.
 - **Navigation.** Answers include links to the relevant contacts page, service portal or procedure.
 - **Streaming responses**, light / dark theme, mobile-first layout, and an **embeddable widget** to put the assistant on any existing website.
