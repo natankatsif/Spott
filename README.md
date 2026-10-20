@@ -1,138 +1,133 @@
-# Spott: Chișinău Municipal Assistant
+# Spott: AI Document Assistant with Verified Citations
 
-An AI assistant for the Chișinău City Hall (Primăria Municipiului Chișinău) that answers questions from citizens and municipal employees in **Romanian and Russian**, using **only** the City Hall's public documents, and shows the exact document and passage behind every answer.
+**An end-to-end RAG system that answers questions from large collections of official documents (including scanned PDFs) in Romanian and Russian, and backs every sentence with the exact source passage.**
 
-Built for the Primăria Chișinău challenge at DeepTech GigaHack 2026. **Live demo: [spott-sepia.vercel.app](https://spott-sepia.vercel.app)**
+Built for the Chișinău City Hall use case: citizens and staff ask questions in plain language, and the assistant answers only from the city's public documents, with links to the original act, page and point.
+
+**[▶ Live demo](https://spott-sepia.vercel.app)** · [API reference](docs/API.md) · [Development guide](docs/DEVELOPMENT.md)
+
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL_17-pgvector-4169E1?logo=postgresql&logoColor=white)
+![OpenAI](https://img.shields.io/badge/LLM-OpenAI%20%7C%20Claude%20%7C%20Gemini-412991)
+![Docker](https://img.shields.io/badge/Docker-one--command%20deploy-2496ED?logo=docker&logoColor=white)
 
 ![An answer with its sources: the scanned council decision opens next to the chat, the quoted point highlighted](docs/images/chat.png)
 
-| A Russian question answered from Romanian documents | Admin: sources, processing, unanswered questions, spending |
+| Russian question, answered from Romanian documents | Admin panel: sources, processing, unanswered questions, spending |
 |---|---|
 | <img src="docs/images/chat-mobile-ru.png" width="280" alt="Mobile chat in Russian with a cited Romanian source"> | <img src="docs/images/admin-sources.png" alt="Admin panel, sources page"> |
 
-<sub>Screenshots use the demo answers in `frontend/src/lib/mocks/`, which come from the real index.</sub>
-
 ---
 
-## The problem
+## Results at a glance
 
-The information people need is spread across many municipal websites: council decisions, mayor's dispositions, regulations, procedures, contacts, schedules. Much of it is published as PDFs, and many of those are scanned paper documents.
+Measured on our evaluation set with [`backend/scripts/eval_speed.py`](backend/scripts/eval_speed.py):
 
-A generic chatbot can't be trusted here. An answer that is incomplete, outdated or invented can mislead someone about their rights, obligations or the procedure they need to follow.
+| Metric | Result |
+|---|---|
+| Sentences backed by a verified source quote | **100%** |
+| False "the sources contradict each other" warnings | **0%** |
+| Time to first word of the answer (median) | **~2.6 s** (1.4 s for Romanian questions) |
+| Full answer (median) | **~4.2 s** |
+| Hybrid search over the whole corpus | **~0.1–0.2 s** per query |
+| LLM cost | **~$0.07 per 100 questions** (`gpt-6-luna`) |
+| Hosting | **one 8 GB CPU server, ~€7 / month** |
 
-## What the assistant does
+## The problem it solves
 
-Mapped one-to-one to the challenge brief.
+Organizations publish critical information as hundreds of PDFs, Word files and web pages spread across many websites. Much of it is **scanned paper**: no text layer, invisible to search. A generic chatbot on top of this is dangerous: one invented, incomplete or outdated answer can mislead someone about their rights, deadlines or the procedure to follow.
 
-### Must-have
+Spott turns that pile of documents into an assistant people can **trust and verify**:
 
-| Requirement | How we meet it | Status |
-|---|---|---|
-| **Answer questions from a defined corpus** | The corpus is built only from the Annex 1 websites. Answers are generated only from passages retrieved from it, never from the model's general knowledge. | ✅ |
-| **Romanian and Russian** | Questions in either language, answer in the same language. Retrieval works across languages, so a Russian question can be answered from a Romanian-only document. | ✅ |
-| **Cite the exact document and passage** | Every answer cites the act (type, number, date), the passage quoted verbatim, the page and point (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*), and links to the original on the City Hall website. Quotes come from the index, with PDF page boxes for highlighting. | ✅ |
-| **Flag missing information** | If retrieval finds nothing relevant enough, the answer is `not_found`: the assistant says the corpus doesn't cover the question instead of guessing; `partial` says which part is missing. | ✅ |
-| **Flag contradictions** | If sources disagree, the answer is `conflict` and cites all of them with their dates. Example: an older decision amended by a newer one. `outdated` (a newer act replaces the older) is told apart from a real `contradiction`. | ✅ in answers<br>⏳ corpus-wide scan |
-| **Website navigation** | Answers include links to the relevant page: a department's contacts, a service portal, a procedure page. Every crawled page (URL, title, language versions) is in the registry. An embeddable widget puts the assistant on any City Hall site. | ✅ links in answers, site widget<br>⏳ highlighting the element on the page |
-| **Monthly model-maintenance budget** | External API vs self-hosted model, deployment location, estimated monthly cost. See [Budget](#budget). | ✅ |
+- it answers **only** from your documents, never from the model's general knowledge;
+- every sentence links to the **exact passage**, page and point it came from;
+- it **says so** when the documents don't cover the question instead of guessing;
+- it **warns** when sources contradict each other, and prefers the newest version of a rule.
 
-### Bonus
+## Key features
 
-| Requirement | How | Status |
-|---|---|---|
-| **Feedback on answers** | 👍 / 👎 with an optional comment on each answer, stored together with the question, the answer and its sources, so weak spots of the corpus or the retrieval become visible. | ✅ in the chat, reviewed in the admin panel |
-| **Innovative solution** | See [What's innovative](#whats-innovative). | partly ✅ |
+### For end users
+- **Cited answers.** Each answer quotes the source verbatim (e.g. *Decizia nr. 12/14 din 28.07.2020, pct. 5, p. 2*). One click opens the original PDF or web page next to the chat with the quote highlighted.
+- **Cross-language search.** Ask in Russian, get an answer from a Romanian-only document (with a translation of the quote), and vice versa. UI in Romanian, Russian and English.
+- **Honest answer statuses.** `answered`, `partial` (says what's missing), `not_found`, `conflict` (cites all sides with dates), `refused`.
+- **Navigation.** Answers include links to the relevant contacts page, service portal or procedure.
+- **Streaming responses**, light / dark theme, mobile-first layout, and an **embeddable widget** to put the assistant on any existing website.
+- **Feedback** (👍 / 👎 with comments) on every answer.
 
-## What's innovative
+### For administrators
+- **Add sources by URL** and watch processing jobs with live progress.
+- **Unanswered questions grouped by topic**: shows exactly which documents are missing.
+- **Answer ratings** with the question, answer and sources stored together.
+- **Model switching** (OpenAI, Claude, Gemini or a self-hosted OpenAI-compatible server) without redeploying.
+- **Spending dashboard**: tokens and cost per model and per day, a monthly budget and a forecast.
+- **Automatic updates**: nightly check for changed documents, weekly full refresh.
 
-- **Scanned acts become searchable and citable.** Most official acts on the sites, such as council decisions and mayor's dispositions, are published as scans with no text at all. The pipeline OCRs them and recovers their structure (points, tables), so they can be cited down to the point. A plain text extractor would find nothing in them. ✅
-- **Every quote is traceable.** Each passage carries its full provenance: the file, the page of the PDF, the point of the act, the website page where the document was published, and the link text used there. ✅
-- **Newer acts first.** The registry counts the versions of each document, and act numbers and dates are extracted. Alongside the question's own search, the assistant looks for later acts that mention the found acts by number and for newer acts on the same sites. The model sees the newest first, and a partial or conflicting answer gets a second pass over what turned up, so an outdated rule isn't presented as current. ✅
-- **Publication quality report for the City Hall.** Cross-checking the site against the documents reveals inconsistencies. We already found a link labelled "Dispoziția nr. 23/1" whose document is actually a *Decizie*. Collected into a report, these checks help the City Hall fix its own publications. ⏳
-- **Anti-hallucination guard.** The model never writes quotes. It only points at numbered lines of the retrieved passages; the quotes are taken from the index, a sentence without a backing line is dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. ✅
+## What makes it reliable
 
-## How it works
+- **Anti-hallucination by design.** The model never writes quotes. It only points to numbered lines of the retrieved passages; quotes are then copied from the index, any sentence without a backing line is dropped, and a sentence whose numbers don't appear in its quotes is flagged as unverified.
+- **Scanned documents become searchable and citable.** OCR plus layout analysis recovers headings, numbered points and tables from scans, so answers can cite down to the point of an act. A plain text extractor would find nothing in them.
+- **Newest rules first.** Act numbers and dates are extracted; the assistant looks for later acts that amend or repeal the ones it found and shows the newest first, so an outdated rule isn't presented as current.
+- **Full provenance for every passage**: the file, PDF page, point of the act, the web page where it was published and the link text used there.
+- **Incremental, deduplicated ingestion.** Files are stored by SHA-256; unchanged files are skipped with conditional HTTP requests; a changed document replaces its old version in the index; documents removed from the site are removed from the index.
 
-The system has two halves. **Offline indexation** turns the City Hall websites into a searchable, citable corpus. The **online** part answers questions against that corpus.
+## Architecture
 
+```mermaid
+flowchart LR
+    subgraph Offline["Offline ingestion (incremental)"]
+        A[Websites<br/>42 domains] --> B[Crawler<br/>pages + document links]
+        B --> C[Downloader<br/>SHA-256 dedup, versions]
+        C --> D[Parsing<br/>Docling, OCR, structure]
+        D --> E[Chunking + indexing<br/>passages + single lines]
+    end
+    E --> F[(PostgreSQL 17<br/>pgvector + full-text)]
+    subgraph Online
+        G[Next.js chat,<br/>admin, widget] -->|SSE stream| H[FastAPI backend<br/>retrieval + LLM + verification]
+    end
+    H --> F
 ```
-                        OFFLINE INDEXATION                                        ONLINE
-┌───────────┐   ┌─────────┐   ┌────────────┐   ┌─────────┐   ┌────────────┐
-│ 42 public │──►│ crawler │──►│ downloader │──►│ parsing │──►│ chunking + │──► index ◄── backend ◄── frontend
-│ websites  │   └─────────┘   └────────────┘   └─────────┘   │  indexing  │             (retrieval,   (chat,
-└───────────┘   pages, doc    files, dedup     text, OCR,    └────────────┘              LLM answer    RO / RU)
-                links         by SHA-256       structure     Postgres+pgvector           with citations)
-                     └──────────────┴────────────────┴─ Postgres registry ─┘
-```
 
-### Offline indexation
+**Ingestion pipeline.** Each stage is a separate command sharing one registry in Postgres, so every stage is incremental and can be re-run on its own.
 
-Each stage is a separate command. The stages share one registry, the `registry_*` tables in Postgres, so every stage is incremental and can be re-run on its own.
+1. **Crawler**: breadth-first crawl that records every page and document link (PDF, DOC/DOCX, XLS/XLSX, ODT, …) with its anchor text. Reads WordPress media APIs to find unlinked files. Respects `robots.txt` and rate limits, resumes after interruption.
+2. **Downloader**: content-addressed storage, three levels of deduplication, version history.
+3. **Parsing**: [Docling](https://github.com/docling-project/docling) layout analysis, OCR (Tesseract, or Apple Vision on macOS), Romanian diacritics and Latin/Cyrillic look-alike normalization, extraction of act type, number, date and language. Legacy formats (`.doc`, `.rtf`, `.xls`, `.ppt`, …) via LibreOffice.
+4. **Chunking and indexing**: splits documents along their legal structure (article / point) and into single lines, so a fact in one line can be found and quoted on its own.
 
-1. **Crawler.** Breadth-first crawl of the sites listed in Annex 1. It records every page and every link to a document (PDF, DOC/DOCX, XLS/XLSX, ODT, …), including where the link was found and its anchor text. This provenance is later used for citations. On WordPress sites it also reads the media library API, which finds files that no page links to. It respects `robots.txt` and rate limits, and can resume after an interruption.
-2. **Downloader.** Stores files by content hash (`data/raw/<sha256>.<ext>`). Deduplication happens at three levels:
-   - URLs already downloaded are skipped;
-   - re-checks use conditional HTTP requests, so unchanged files return `304 Not Modified` without a body;
-   - identical content found under different URLs is stored and parsed once.
+**Hybrid search.** Multilingual `bge-m3` embeddings (one vector space for Romanian and Russian) over passages and lines, full-text search with Romanian and Russian stemming, trigram matching for exact act numbers and street names, all fused with weighted Reciprocal Rank Fusion. Every hit carries a deep link to the PDF page (`#page=N`) or the exact text on the web page (`#:~:text=`).
 
-   A changed file keeps its previous version in the history.
-3. **Parsing.** Converts each file into a structured text representation using [Docling](https://github.com/docling-project/docling):
-   - layout analysis recovers headings, numbered points and tables;
-   - OCR (Apple Vision on macOS, Tesseract elsewhere) handles scanned pages. Most official acts on the sites are scans;
-   - text normalization fixes Romanian diacritics (ş/ţ → ș/ț) and mixed Latin/Cyrillic look-alike characters;
-   - metadata extraction pulls out act type, number, date and language (ro / ru / uk / en).
-4. **Chunking and indexing.** Splits documents into citable passages along their structure (article / point `legal_path`, headings attached) and into single **lines**, so a fact that lives in one line can be found and quoted on its own. Everything goes into Postgres 17 + pgvector:
-   - vector search with the multilingual `bge-m3` model (one space for Romanian and Russian), over passages and over lines;
-   - full-text search with Romanian and Russian stemming (unaccented), plus trigram `grep` for exact act numbers and street names;
-   - results are fused with weighted RRF; each hit carries a deep link to the PDF page (`#page=N`) or the exact text on the web page (`#:~:text=`).
+**Answering.** FastAPI streams the answer over Server-Sent Events. The model receives numbered lines, answers in strict JSON with line references, and the backend verifies and assembles the citations.
 
-   Documents are keyed by their source URL: a changed file **replaces** the old version in the index (the registry keeps its version number and previous hash), and a document missing from the site on two crawls in a row is removed. Unchanged text reuses its embeddings.
-5. **Corpus tools.** `search`, `grep`, `toc` and `open` walk the corpus like a file tree and quote lines by their id; testers use them in the `qsearch` console (`:grep`, `:toc`, `:open`).
+## Tech stack
 
-### Online
+| Layer | Technologies |
+|---|---|
+| Backend | Python 3.14, FastAPI, Uvicorn, SSE streaming, uv |
+| AI / ML | OpenAI API (pluggable: Claude, Gemini, Ollama, vLLM), `bge-m3` embeddings via sentence-transformers / PyTorch |
+| Search | PostgreSQL 17, pgvector, full-text search, trigram, Reciprocal Rank Fusion |
+| Document processing | Docling, Tesseract OCR, LibreOffice, trafilatura, selectolax |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
+| Infrastructure | Docker Compose, Caddy + Let's Encrypt, Cloudflare Tunnel, Vercel, GitHub Actions |
+| Quality | 45+ test files (pytest), Ruff, import-layer contracts, OpenAPI contract checks, CI on Linux + Windows |
 
-- **Backend** (FastAPI, contract in [docs/API.md](docs/API.md)). Retrieves the most relevant passages and gives the LLM their lines, numbered. The model answers only from them and marks which lines back each sentence; the quotes are then taken from the index (never written by the model), sentences without a backing line are dropped, and a sentence whose numbers don't appear in its quotes is marked unverified. Answers stream over SSE (`/api/ask/stream`).
-- **Frontend** (Next.js). Chat interface with a Romanian / Russian switch. It shows each answer with its sources and navigation links.
+## Quick start
 
-## Data sources
-
-The corpus is built from the websites listed in the challenge's Annex 1: 42 domains across transparency, urban mobility, architecture and utilities, education, healthcare, district administrations, and public services. The list, with per-site crawl settings, is in [`data/sources/sites.toml`](data/sources/sites.toml).
-
-> `chisinau.md` disallows all crawling in its `robots.txt`, so it is skipped by default. It can be enabled per site with `ignore_robots = true` once crawling has been agreed with the City Hall.
-
-## Repository layout
-
-Two independent projects that talk only over HTTP: the Python backend and the Next.js frontend. The contract between them is [`backend/openapi.json`](backend/openapi.json), generated from the API's models; the frontend's types are generated from it.
-
-| Directory | Stack | Purpose |
-|---|---|---|
-| [`backend/`](backend) | Python 3.14, uv | One package, `spott` (one `pyproject.toml`, one `uv.lock`): a library, `core`, and three apps on it: |
-| [`backend/src/spott/core/`](backend/src/spott/core) | pgvector, bge-m3 | the library the rest builds on: the database schema, embeddings, the corpus search (`retrieve`), sources and crawl rules |
-| [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Docling | corpus building: `crawler`, `downloader`, `parsing`, `pages_parsing`, `chunking`, `indexing`, the admin `worker`, `tools` (doctor, pipeline, index export/import) |
-| [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI | the API: `main` builds the app, `routes` are the public endpoints, `answering/` the answer pipeline, `admin/` the admin panel by section |
-| [`backend/src/spott/qsearch/`](backend/src/spott/qsearch) | rich | the `qsearch` console for testers: search, grep, toc, open |
-| [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | | eval sets, benchmarks and one-off scripts |
-| [`frontend/`](frontend) | Node, Next.js 16 | Chat UI, admin panel, site widget |
-| [`data/`](data) | | everything generated (crawl, files, dumps, logs; `SPOTT_DATA_DIR`), only `data/sources/sites.toml` is versioned |
-
-`api`, `ingest` and `qsearch` build on `core` and never import each other; CI checks it, and the layers inside `api`, with `uv run lint-imports` (rules in `backend/pyproject.toml`). The API needs only the `api` extra, the pipeline the `ingest` extra (Docling, OCR); `uv sync --all-extras` installs both.
-
-## Run the backend in Docker (one command)
-
-Needs only Docker. Put the index dump (`index-YYYY-MM-DD.dump`, made with `python -m spott.ingest.tools.index_io export` on the machine that has the index) into `data/export/`, then:
+Requires only Docker. Put an index dump (`index-YYYY-MM-DD.dump`, created with `python -m spott.ingest.tools.index_io export`) into `data/export/`, then:
 
 ```bash
 ./start.sh            # database + API + admin worker → http://localhost:8000
-./start.sh --public   # also a public https://….trycloudflare.com address (for the Vercel frontend), no server needed
-./start.sh --https    # on a server with its own domain: Caddy + Let's Encrypt for DOMAIN from .env
+./start.sh --public   # also a public https://….trycloudflare.com URL, no server needed
+./start.sh --https    # on a server with its own domain: Caddy + Let's Encrypt
 ./start.sh --stop
 ```
 
-The first run asks for the OpenAI key and writes `.env` (random database and admin passwords, printed once); the first build downloads ~3 GB (CPU-only torch, the bge-m3 model baked into the image). On start the API container creates the schema, restores the dump into an empty database, fills the sources and builds the contact cards. A server that should update itself on every push to `main`: set the `DEPLOY_*` secrets described in `.github/workflows/ci.yml`.
+The first run asks for the OpenAI key and generates `.env` with random database and admin passwords. On start, the API container creates the schema, restores the dump, loads the sources and builds contact cards. For continuous deployment on every push to `main`, set the `DEPLOY_*` secrets described in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
-## Getting started
-
-**New here or testing on Mac / Windows: follow [docs/TESTER.md](docs/TESTER.md)** (in Russian). Running every part locally, stage by stage, and the format of parsed documents: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Technical notes on every pipeline stage, eval and benchmarks: [docs/README.ru.md](docs/README.ru.md).
+Running each part locally, stage by stage: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Setup guide for testers on Mac / Windows (in Russian): [docs/TESTER.md](docs/TESTER.md).
 
 ## API
 
@@ -155,30 +150,14 @@ The first run asks for the OpenAI key and writes `.env` (random database and adm
 }
 ```
 
-Shortened; the full contract, including the streaming events of `/api/ask/stream`, is in [docs/API.md](docs/API.md). It is defined in [`backend/src/spott/api/schemas.py`](backend/src/spott/api/schemas.py) and mirrored in [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts).
+Shortened. The full contract, including the streaming events of `/api/ask/stream`, is in [docs/API.md](docs/API.md). It is generated into [`backend/openapi.json`](backend/openapi.json) from [`backend/src/spott/api/schemas.py`](backend/src/spott/api/schemas.py), and the frontend types in [`frontend/src/lib/api/types.ts`](frontend/src/lib/api/types.ts) are checked against it in CI.
 
-## Budget
+## Cost of ownership
 
-Measured on this code unless marked as an estimate. Admin → Spending tracks the real spend: tokens of every model call, cost per model and per day, a monthly budget and the month's forecast.
+The admin panel tracks real spend; the numbers below are measured on this code unless marked as an estimate.
 
-**What runs where**
-
-| Part | Where | What it costs |
-|---|---|---|
-| Answer model, query rewrite for Russian questions | external API: OpenAI by default; Claude, Gemini or an OpenAI-compatible server of your own can be switched in Admin → Models | tokens per question |
-| Crawling, OCR (Tesseract), embeddings (bge-m3), hybrid search, Postgres + pgvector, the background worker | one server, CPU only (`./start.sh`) | the server |
-| Chat UI | Vercel, or `next start` on the same server | nothing extra on the same server |
-
-**Indexing** makes no paid API calls. OCR, structure recovery and embeddings run on the server's CPU, so the initial corpus costs only CPU hours, and the background worker works through it batch by batch. Nightly updates re-process only what changed.
-
-**Answering, per question.** The prompt is ~3,650 tokens (p50). A second model call happens for ~25% of questions, those about later amendments to an act. Measured with `backend/scripts/eval_speed.py` over all model calls of a question (REPORT.md, "Задача 10"):
-
-| Model | $ per 100 questions | Quality on our eval set |
-|---|---|---|
-| `gpt-6-luna` | 0.067 | within the noise of gpt-4o; 100% verified sentences, 0% false contradictions |
-| `gpt-4o` (the team's default) | 1.22–1.45 | reference |
-
-**Monthly estimate by traffic**, model calls only:
+- **Ingestion costs nothing in API fees.** OCR, structure recovery and embeddings run on the server's CPU.
+- **Per question:** ~3,650 prompt tokens (median); a second model call for ~25% of questions (those about amendments to an act).
 
 | Questions per month | `gpt-6-luna` | `gpt-4o` |
 |---|---|---|
@@ -186,36 +165,47 @@ Measured on this code unless marked as an estimate. Admin → Spending tracks th
 | 30,000 (~1,000 a day) | ~$20 | $365–435 |
 | 300,000 (~10,000 a day) | ~$200 | $3,650–4,350 |
 
-The daily re-check of quick questions adds at most 20 calls a day: under $0.50 a month on `gpt-6-luna`, under $9 on `gpt-4o`. Rate limits matter as much as price: our OpenAI organisation has 30,000 tokens per minute on `gpt-4o`, about 7 questions a minute for everyone, against 200,000 on `gpt-6-luna`.
+- **Server:** 8 GB RAM is enough for Postgres with the index, the API with `bge-m3` in memory, and parsing of long scanned PDFs. Example: Hetzner CX33 (4 vCPU, 8 GB), about €6.50 / month (estimate, verify current prices).
+- **Self-hosted model** (Ollama, vLLM) plugs in through Admin → Models when data must not leave your infrastructure. A GPU server starts at roughly €184–234 / month (estimate), which pays off only at high volume or for data-residency requirements.
 
-**Server.** 8 GB of RAM is the floor: Postgres with the index, the API with bge-m3 in memory, and parsing of long scanned PDFs, which once reached ~6 GB before pages were rendered one at a time. Example: Hetzner Cloud CX33 (4 vCPU, 8 GB, 80 GB SSD), €6.49 a month after its April 2026 price change ([price check](https://costgoat.com/pricing/hetzner), verify before ordering).
+**Recommended setup:** `gpt-6-luna` through the API plus one 8 GB server: **under €30 / month** for up to ~30,000 questions.
 
-**A self-hosted model instead of the API.** Any OpenAI-compatible server (Ollama, vLLM) plugs in through Admin → Models. A GPU server that can run a mid-size open model starts at about €184–234 a month (Hetzner GEX44, RTX 4000 Ada 20 GB; [prices vary by source](https://bex.co/blog/2026/07/13/hetzner-gex44-gpu-pricing-break-even)). That equals the API cost of roughly 300,000+ questions a month on `gpt-6-luna`, or 15,000–20,000 on `gpt-4o`. We have not measured an open model's quality on our eval set (Romanian and Russian, strict JSON with line references). So self-hosting pays off only when questions must not leave the city's infrastructure, or at gpt-4o-class quality and high volume.
+## Project structure
 
-**Recommendation:** `gpt-6-luna` through the API plus one 8 GB server. That is about €7 a month for the server and $2–20 a month for the model at 3,000–30,000 questions, under €30 a month in total.
-
-## Status
-
-| Part | State |
+| Directory | Purpose |
 |---|---|
-| Crawler, downloader, parsing (incl. OCR) | ✅ working, tested on a subset of the sites |
-| Chunking, line index, hybrid search (Postgres + pgvector) | ✅ ~0.1–0.2 s per query; the background worker indexes the remaining sites batch by batch |
-| Document updates (replace, not duplicate; removal of vanished documents) | ✅ |
-| Corpus tools `search / grep / toc / open` in the `qsearch` console for testers | ✅ |
-| Cited answers `/api/ask` + `/api/ask/stream` (docs/API.md): answered / partial / not_found / conflict / refused, checklists, translations of quotes | ✅ fast path; agent path (`mode=deep`) ⏳ |
-| Mac / Windows setup, CI on Linux + Windows (backend) and frontend lint + build | ✅ |
-| Later acts that amend or repeal a cited act, found by number and put first | ✅ |
-| Corpus-wide contradiction scan, highlighting the element on the page from the widget | ⏳ planned |
-| Chat UI | ✅ streaming answers with inline citations, the source opened next to the answer with the quote highlighted (PDF and web pages), RO / RU / EN, light / dark, mobile; embeddable site widget |
-| Admin panel | ✅ sources added by URL, processing jobs with progress, unanswered questions grouped by topic, ratings, quick questions, models and spending |
-| Automatic updates | ✅ nightly check of what changed, weekly full refresh, earlier on users' signals |
-| Feedback, corpus totals in the admin | ✅ |
-| Legacy and OpenDocument files (`.doc`, `.rtf`, `.xls`, `.ppt`, `.odt`, `.ods`, `.odp`) | ✅ the binary formats through LibreOffice (in the Docker image) |
-| Monthly maintenance budget | ✅ [Budget](#budget) |
+| [`backend/src/spott/core/`](backend/src/spott/core) | Shared library: database schema, embeddings, hybrid search, sources and crawl rules |
+| [`backend/src/spott/ingest/`](backend/src/spott/ingest) | Ingestion pipeline: crawler, downloader, parsing, chunking, indexing, background worker, maintenance tools |
+| [`backend/src/spott/api/`](backend/src/spott/api) | FastAPI app: public endpoints, answer pipeline, admin API |
+| [`backend/src/spott/qsearch/`](backend/src/spott/qsearch) | Console for testers: search, grep, table of contents, open document |
+| [`backend/eval/`](backend/eval), [`backend/scripts/`](backend/scripts) | Evaluation sets and benchmarks |
+| [`frontend/`](frontend) | Next.js chat UI, admin panel, embeddable widget |
+| [`data/sources/sites.toml`](data/sources/sites.toml) | The list of source websites with per-site crawl settings |
+
+The backend and frontend communicate only over HTTP through a typed OpenAPI contract. Inside the backend, `api`, `ingest` and `qsearch` depend only on `core` and never on each other, which CI enforces with `import-linter`.
+
+## Adapting it to your use case
+
+The pipeline is not tied to municipal data. The same architecture works for any case where answers must come from a fixed set of documents and be verifiable:
+
+- **Legal and compliance**: contracts, regulations, internal policies, with citations down to the clause.
+- **Customer support**: product manuals, help centers and FAQs, with "I don't know" instead of invented answers.
+- **Internal knowledge bases**: HR handbooks, procedures, technical documentation across many sources.
+- **Healthcare, finance, insurance**: domains where an unverified answer is a liability.
+- **Public sector**: laws, decisions and public services in several languages.
+
+Typical adaptations: new data sources (websites, file shares, Google Drive, Notion, databases), additional languages, a different LLM provider or a self-hosted model, and integration into an existing website or product through the widget or the API.
+
+## Roadmap
+
+- Corpus-wide scan for contradictions between documents.
+- A publication quality report: inconsistencies between how documents are labelled on the website and what they actually are.
+- Highlighting the referenced element directly on the website from the widget.
+- An agent mode (`mode=deep`) for multi-step questions.
 
 ## Team
 
-Built at DeepTech GigaHack 2026 by [Natan Katsif](https://github.com/natankatsif), [Karnavski S.](https://github.com/rlwq), [TheMorkovkaBest](https://github.com/TheMorkovkaBest) and [Pooromens](https://github.com/Pooromens).
+[Natan Katsif](https://github.com/natankatsif), [Karnavski S.](https://github.com/rlwq), [TheMorkovkaBest](https://github.com/TheMorkovkaBest) and [Pooromens](https://github.com/Pooromens). The first version was built at DeepTech GigaHack 2026 for the Primăria Chișinău challenge.
 
 - **Natan Katsif**: chunking and the line index, hybrid search, the chat and admin UI, source preview.
 - **Karnavski S.**: crawler, downloader, parsing and OCR; the answering API with verified citations, streaming, the search for later acts; admin backend and the background worker; Docker deploy.
