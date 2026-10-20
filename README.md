@@ -4,7 +4,7 @@
 
 Built for the Chișinău City Hall use case: citizens and staff ask questions in plain language, and the assistant answers only from the city's public documents, with links to the original act, page and point.
 
-**[▶ Live demo](https://spott-sepia.vercel.app)** · [API reference](docs/API.md) · [Development guide](docs/DEVELOPMENT.md)
+Docs: [API reference](docs/API.md) · [Development guide](docs/DEVELOPMENT.md)
 
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
