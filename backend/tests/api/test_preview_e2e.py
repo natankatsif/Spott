@@ -5,7 +5,7 @@ Needs the index in Postgres and a running API with the harness origin allowed:
     PREVIEW_API=http://127.0.0.1:8011 uv run pytest -m browser tests/api/test_preview_e2e.py
 The chat is mimicked by preview_harness/index.html, served from another origin (port 8012), embedding the preview
 in an iframe with the same attributes as AI Elements' WebPreviewBody. Screenshots and timings go to
-backend/tests/artifacts/preview/ (gitignored). No LLM is called.
+backend/tests/api/artifacts/preview/ (gitignored). No LLM is called.
 """
 
 import functools

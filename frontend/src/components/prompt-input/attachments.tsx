@@ -59,6 +59,7 @@ export function AttachmentThumb({
       )}
       aria-label={`Open preview of ${attachment.name}`}
     >
+      {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: preview of the attached file, nothing for next/image to optimize */}
       <img src={attachment.url} alt={attachment.name} className="size-full object-cover" draggable={false} />
       <span className={cn("absolute inset-0 flex items-start justify-end bg-black/0 transition-colors duration-200", isHovered && "bg-black/25")}>
         <span
@@ -158,6 +159,7 @@ export function AttachmentGalleryModal({
         onTransitionEnd={() => { if (phase === "closing") onClose(); }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: preview of the attached file, nothing for next/image to optimize */}
         <img ref={imgRef} src={attachment.url} alt={attachment.name} className="size-full object-cover" draggable={false} />
       </div>
 

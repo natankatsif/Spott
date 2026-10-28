@@ -14,6 +14,10 @@ data/*
 .env
 .DS_Store
 
+# AI agent skills, installed locally (npx skills add vercel/ai-elements)
+.agents/
+skills-lock.json
+
 # Test artifacts
 backend/tests/api/artifacts/
 

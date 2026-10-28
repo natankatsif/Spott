@@ -1,8 +1,8 @@
 # API contract (frontend ↔ backend)
 
-**This document is the contract.** The backend implements it (Pydantic models in `backend/src/spott/api/schemas.py`); the machine-readable form is [`backend/openapi.json`](../backend/openapi.json), generated from those models (`cd backend && uv run python scripts/export_openapi.py`, CI fails when it is stale). The frontend mirrors it in `frontend/src/lib/api.ts` and `stream.ts`; `frontend/src/lib/api-contract.ts` checks those types against `openapi.json` at build time, and `npm run check:mocks` the mocks. Example payloads: `frontend/src/lib/mocks/`, one per UI state, built from **real corpus data** (real doc_ids, line_ids, quotes, bboxes). Wording of the mock answers is illustrative.
+**This document is the contract.** The backend implements it (Pydantic models in `backend/src/spott/api/schemas.py`); the machine-readable form is [`backend/openapi.json`](../backend/openapi.json), generated from those models (`cd backend && uv run python scripts/export_openapi.py`, CI fails when it is stale). The frontend mirrors it in `frontend/src/lib/api/` (the types in `types.ts`) and `frontend/src/lib/stream.ts`; `frontend/src/lib/api-contract.ts` checks those types against `openapi.json` at build time, and `npm run check:mocks` the mocks. Example payloads: `frontend/src/lib/mocks/`, one per UI state, built from **real corpus data** (real doc_ids, line_ids, quotes, bboxes). Wording of the mock answers is illustrative.
 
-**To change the contract**, change this file, the models, `openapi.json` (regenerate it), `api.ts` (`npm run api:types` refreshes the generated `api-schema.d.ts`) and the mocks in one PR, and tell the other side.
+**To change the contract**, change this file, the models, `openapi.json` (regenerate it), `frontend/src/lib/api/types.ts` (`npm run api:types` refreshes the generated `frontend/src/lib/api-schema.d.ts`) and the mocks in one PR, and tell the other side.
 
 **For the backend:** add a test that validates every `frontend/src/lib/mocks/**/*.json` against your models. Then drift shows up in CI, not in the demo.
 
@@ -18,7 +18,7 @@
 | `GET /api/documents/{doc_id}/file` | works: fetched from the city hall site by the document's URL (or a stored copy), passed through |
 | Error body `ApiError`, CORS | works: `CORS_ORIGINS`, rate limit `ASK_RATE_LIMIT` per minute per client |
 
-Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. Then `ask()` picks a mock by keywords in the question:
+Frontend without backend: `NEXT_PUBLIC_API_MOCK=1` in `frontend/.env.local`. Mock mode is switched off for now: `getApiMode()` in `frontend/src/lib/mode.ts` always returns `live`; restore its commented-out body to use the mocks. Then `ask()` picks a mock by keywords in the question:
 
 | Question contains | Mock shown |
 |---|---|
@@ -160,7 +160,7 @@ How the backend streams (task 10):
 POST /api/admin/login   { login, password } → { token, login, expires_at }   (mock: mocks/admin/session.json)
 GET  /api/admin/me      → { login }   (is the stored token still valid)
 ```
-Every other admin call needs `Authorization: Bearer <token>`. The token is signed by the server and lasts 12 h (`ADMIN_SESSION_HOURS`); changing the password ends every session. Wrong login/password, a missing, expired or forged token → `401 unauthorized` (show the login form). More than 5 login attempts a minute from one IP → `429 rate_limited`. Without `ADMIN_LOGIN`/`ADMIN_PASSWORD` on the server the admin is off (always 401). Client: `adminLogin()` and the `admin*()` functions in `frontend/src/lib/api.ts`. Mocks: `mocks/admin/*.json`.
+Every other admin call needs `Authorization: Bearer <token>`. The token is signed by the server and lasts 12 h (`ADMIN_SESSION_HOURS`); changing the password ends every session. Wrong login/password, a missing, expired or forged token → `401 unauthorized` (show the login form). More than 5 login attempts a minute from one IP → `429 rate_limited`. Without `ADMIN_LOGIN`/`ADMIN_PASSWORD` on the server the admin is off (always 401). Client: `adminLogin()` and the `admin*()` functions in `frontend/src/lib/api/admin.ts`. Mocks: `mocks/admin/*.json`.
 ```
 GET    /api/admin/sources                    → { sources: SourceRow[], totals }   (one call for the whole admin page)
 POST   /api/admin/sources                    { url } → 201 SourceAdded (new) · 200 SourceAdded (merged into an existing source)
@@ -253,7 +253,7 @@ Wiring guide for the frontend (WebPreview snippet, mobile, gotchas): `docs/FRONT
 | `not_implemented` | 501 | feature not ready: hide it |
 | `internal` | 500 | generic error |
 
-Before the stream starts (bad request, rate limit), `/api/ask/stream` answers with HTTP status + `ApiError`. After it starts, errors come as the `error` event. Client: `ApiRequestError` in `api.ts`.
+Before the stream starts (bad request, rate limit), `/api/ask/stream` answers with HTTP status + `ApiError`. After it starts, errors come as the `error` event. Client: `ApiRequestError` in `frontend/src/lib/api/http.ts`.
 
 ## CORS
 - Local frontend: `http://localhost:3000`, `http://127.0.0.1:3000`.

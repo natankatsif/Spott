@@ -60,7 +60,7 @@ brew install git uv
 brew install --cask docker          # затем открой Docker Desktop из Программ и дождись "Running"
 
 # 2. Проект
-git clone https://github.com/rlwq/DocumentParsing.git qwerty
+git clone https://github.com/natankatsif/Spott.git qwerty
 cd qwerty
 cp .env.example .env                # ключ OpenAI для тестирования не нужен
 
@@ -90,7 +90,7 @@ winget install --id Docker.DockerDesktop -e
 
 # 2. Проект (путь покороче: у Windows ограничение на длину путей)
 cd C:\
-git clone https://github.com/rlwq/DocumentParsing.git qwerty
+git clone https://github.com/natankatsif/Spott.git qwerty
 cd qwerty
 copy .env.example .env
 
