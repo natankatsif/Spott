@@ -11,7 +11,7 @@ AI-ассистент Примэрии Кишинэу (челлендж DeepTech
 | Папка | Стек | Назначение |
 |---|---|---|
 | [`backend/`](../backend) | Python, uv | Один пакет `spott`: `core` (схема БД, эмбеддинги, поиск), `ingest` (сбор корпуса: обход сайтов из Annex 1, скачивание, OCR, индексация, worker админки), `api` (FastAPI: ответ с цитатами, админка). `api` и `ingest` зависят только от `core` |
-| [`frontend/`](../frontend) | Node, Next.js | Веб-чат (RO / RU), админка, виджет |
+| [`frontend/`](../frontend) | Node, Next.js | Веб-чат (RO / RU / EN), админка, виджет |
 | [`data/`](../data) | | Всё сгенерированное (обход, файлы, реестр, дампы, логи); в git только `data/sources/sites.toml` |
 
 ## Как запустить (Mac и Windows)
@@ -68,11 +68,11 @@ graph TD
 |---|---|---|---|---|---|
 | **0** | `docker compose` | `docker-compose.yml` | PostgreSQL порт 5432 | 🟢 Лёгкий | PostgreSQL 17 с `pgvector`: реестр этапов, потом индекс |
 | **1** | `crawler` | `data/sources/sites.toml` | реестр (Postgres) | 🌐 Сеть (умеренно) | Обход муниципальных сайтов, сбор ссылок на акты и страниц |
-| **2** | `downloader` | реестр (Postgres) | `data/raw/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
+| **2** | `downloader` | реестр (Postgres) | `data/raw/<sha[:2]>/<sha>.<ext>` | 🌐 Сеть + Диск | Скачивание бинарных документов (PDF, DOCX, XLSX) |
 | **3** | `parsing` | `data/raw/` | `data/parsed/<sha>.json` | ⚡ **Тяжёлый** (CPU/RAM/OCR) | Оцифровка через Docling: текстовый слой, OCR сканов, bboxes, таблицы |
-| **4** | `pages_parsing` | `data/crawled/pages/` | `data/parsed/pages/*.json` | 🟢 Лёгкий (~секунды) | Парсинг текстовых страниц сайтов, очистка навигации, извлечение контактов |
+| **4** | `pages_parsing` | `data/crawl/<site>/` | `data/parsed/pages/*.json` | 🟢 Лёгкий (~секунды) | Парсинг текстовых страниц сайтов, очистка навигации, извлечение контактов |
 | **5** | `indexing` | `data/parsed/` | Таблицы `documents`, `chunks`, `lines` | ⚡ **Тяжёлый** (GPU/CPU, сеть) | Нарезка в памяти (привязка заголовков, `legal_path`, слияние <150 симв., секунды на корпус), затем модель `bge-m3` (~2.3 GB): векторы (1024 dim) и FTS-индекс |
-| **6** | `indexing.search` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска (RRF: FTS `simple` + Vector Cosine) с дедупликацией |
+| **6** | `qsearch` | Пользовательский запрос | Ранжированный список цитат | 🟢 Быстрый (~50-100 мс) | Проверка гибридного поиска, тот же `retrieve()`, что у API: векторы `bge-m3` по фрагментам и строкам, полнотекстовый поиск с румынской и русской морфологией, триграммы; взвешенный RRF и дедупликация |
 
 ---
 
@@ -134,12 +134,7 @@ curl -s http://localhost:8000/health | jq .
   "status": "ok",
   "device": "mps",
   "models_loaded": true,
-  "chunks_count": 2269,
-  "pool_stats": {
-    "pool_size": 2,
-    "pool_available": 2,
-    "requests_waiting": 0
-  }
+  "chunk_count": 2269
 }
 ```
 
@@ -153,6 +148,6 @@ npm run dev
 
 ## Контракт API
 
-- `GET /health` → статус сервиса, готовность моделей, размер индекса и пул БД.
-- `POST /api/ask` → `{ status: "answered" | "not_found" | "conflict", lang, answer, citations[], nav_links[] }`.
+- `GET /health` → статус сервиса, готовность моделей, размер индекса.
+- `POST /api/ask` → `{ status: "answered" | "partial" | "not_found" | "conflict" | "refused", lang, answer, citations[], nav_links[] }`.
 Описан в [`backend/src/spott/api/schemas.py`](../backend/src/spott/api/schemas.py), зеркально — в [`frontend/src/lib/api/types.ts`](../frontend/src/lib/api/types.ts).

@@ -4,7 +4,7 @@ How to wire what task 11 added. The contract is in `docs/API.md` (Citation `prev
 
 ## 1. Inline preview on desktop (AI Elements `WebPreview`)
 
-The component isn't in the repo yet. Add it with `npx ai-elements@latest add web-preview`, or copy `web-preview.tsx` from github.com/vercel/ai-elements if the registry is unreachable.
+The component is in `frontend/src/components/ai-elements/web-preview.tsx` (added with `npx ai-elements@latest add web-preview`).
 
 ```tsx
 import { API_URL } from "@/lib/api";
@@ -143,5 +143,5 @@ The demo loop: a gap → paste the missing document's link → wait until its ro
 - When matching iframes by URL (e.g. several previews), the parent URL contains `/api/preview/`: compare `e.source`, not URLs.
 
 ## 7. Screenshots and test page
-- `backend/tests/preview_harness/index.html` is the iframe setup the e2e test uses: same attributes, other origin. Copy it.
-- Screenshots of the e2e run are in `backend/tests/artifacts/preview/` (gitignored; run `test_preview_e2e.py` to get them).
+- `backend/tests/api/preview_harness/index.html` is the iframe setup the e2e test uses: same attributes, other origin. Copy it.
+- Screenshots of the e2e run are in `backend/tests/api/artifacts/preview/` (gitignored; run `backend/tests/api/test_preview_e2e.py` to get them).

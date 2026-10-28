@@ -445,6 +445,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       setIsModelSelectOpen(false);
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the fast/deep switch below, hidden until the backend has a deep mode
     const cycleEffort = (e: React.MouseEvent) => {
       e.stopPropagation();
       setEffortIndex((prev) => (prev + 1) % efforts.length);
